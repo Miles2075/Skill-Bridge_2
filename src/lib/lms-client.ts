@@ -372,35 +372,35 @@ export const lmsClient = {
   },
 
   async uploadAvatar(file: File): Promise<{ avatarUrl: string; fileName: string; size: number }> {
-    try {
-      const uploaded = await uploadToVercelBlob("avatar", file);
-      await request("profile", {
-        method: "PATCH",
-        body: JSON.stringify({ avatarUrl: uploaded.publicUrl }),
-      });
-      return { avatarUrl: uploaded.publicUrl, fileName: file.name, size: file.size };
-    } catch (error) {
-      if (!(error instanceof Error) || error.message !== "LOCAL_STORAGE_FALLBACK") throw error;
+    // Avatars use the dedicated server endpoint so Vercel can return the
+    // canonical Blob URL from put(). Videos and thumbnails continue to use
+    // direct signed Blob uploads to avoid serverless request-size limits.
+    const authHeaders = await getAuthHeaders();
+    const response = await fetch("/api/lms/upload-avatar", {
+      method: "POST",
+      headers: {
+        ...authHeaders,
+        "Content-Type": file.type || "application/octet-stream",
+        "X-File-Name": encodeURIComponent(file.name),
+        "X-File-Size": String(file.size),
+      },
+      body: file,
+    });
 
-      const authHeaders = await getAuthHeaders();
-      const response = await fetch("/api/lms/upload-avatar", {
-        method: "POST",
-        headers: {
-          ...authHeaders,
-          "Content-Type": file.type || "application/octet-stream",
-          "X-File-Name": encodeURIComponent(file.name),
-          "X-File-Size": String(file.size),
-        },
-        body: file,
-      });
-
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data?.error || data?.message || `Avatar upload failed (HTTP ${response.status})`);
-      }
-      return data as { avatarUrl: string; fileName: string; size: number };
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        data?.error || data?.message || `Avatar upload failed (HTTP ${response.status})`,
+      );
     }
-  },
+
+    const uploaded = data as { avatarUrl: string; fileName: string; size: number };
+    await request("profile", {
+      method: "PATCH",
+      body: JSON.stringify({ avatarUrl: uploaded.avatarUrl }),
+    });
+    return uploaded;
+  }
 
   // COURSE MANAGEMENT
   async createCourse(data: Partial<ClientCourse>): Promise<{ course: ClientCourse }> {
