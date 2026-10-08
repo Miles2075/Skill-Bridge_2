@@ -39,6 +39,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { lmsClient, type StudentDashboardData, type ClientCourse } from "@/lib/lms-client";
+import { getCourseThumbnail } from "@/lib/course-media";
 import { createCourseOrder, verifyCoursePayment } from "@/lib/payments.functions";
 import type { StudentNavView } from "./route";
 
@@ -46,11 +47,6 @@ import { CodeLabView } from "@/components/student/CodeLabView";
 import { RecallDecksView } from "@/components/student/RecallDecksView";
 import { FocusStudioView } from "@/components/student/FocusStudioView";
 import { ProfileEditor } from "@/components/ProfileEditor";
-
-import tsThumb from "@/assets/course-typescript.jpg";
-import reactThumb from "@/assets/course-react.jpg";
-import systemThumb from "@/assets/course-system-design.jpg";
-import dsaThumb from "@/assets/course-dsa.jpg";
 
 declare global {
   interface Window {
@@ -65,14 +61,7 @@ export const Route = createFileRoute("/_authenticated/student/")({
 });
 
 function getCourseImage(slug: string, thumbnail?: string | null): string {
-  // Instructor-uploaded thumbnails must take priority over the legacy
-  // slug-based seed images. Only use a seed image when no thumbnail exists.
-  if (thumbnail) return thumbnail;
-  if (slug === "advanced-typescript") return tsThumb;
-  if (slug === "react-performance") return reactThumb;
-  if (slug === "system-design") return systemThumb;
-  if (slug === "dsa") return dsaThumb;
-  return tsThumb;
+  return getCourseThumbnail(slug, thumbnail);
 }
 
 interface ActiveQuizState {
