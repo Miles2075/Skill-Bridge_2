@@ -1255,6 +1255,7 @@ function TeachDashboardPage() {
                     <Save className="size-3.5" /> Save Changes
                   </Button>
                   </div>
+                </div>
 
                 <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-4 text-xs">
                   <div>
