@@ -333,34 +333,9 @@ export function StudentLayout({
             ))}
           </nav>
 
-          {/* Teacher Mode Invitation Box */}
-          {isTeacher ? (
-            <div className="mt-6 rounded-xl border border-primary/30 bg-primary/10 p-4">
-              <div className="flex items-center gap-2 text-sm font-bold text-primary">
-                <GraduationCap className="size-4" /> Instructor Mode Active
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Manage course prices, review student assignments, and track enrollments.
-              </p>
-              <Link to="/teach" className="mt-3 block">
-                <Button variant="chrome" size="sm" className="w-full">
-                  Open Instructor Studio
-                </Button>
-              </Link>
-            </div>
-          ) : (
-            <div className="mt-6 rounded-xl border border-border bg-card p-4">
-              <div className="mb-1 text-sm font-semibold">Teach on Skillbridge</div>
-              <p className="mb-3 text-xs text-muted-foreground">
-                Share your expertise, set course pricing, and mentor students worldwide.
-              </p>
-              <Link to="/teach">
-                <Button variant="violet" className="w-full">
-                  <Users className="size-4" /> Instructor area
-                </Button>
-              </Link>
-            </div>
-          )}
+          {/* Instructor controls are intentionally not shown in the student portal.
+              Teacher accounts are redirected to /teach, while student accounts have no
+              instructor entry point here. */}
 
           {signedIn && (
             <Button
