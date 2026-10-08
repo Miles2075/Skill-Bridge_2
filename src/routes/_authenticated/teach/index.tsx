@@ -781,21 +781,28 @@ function TeachDashboardPage() {
 
     try {
       setIsUploadingVideo(Boolean(newLessonVideoFile));
-      let videoUrl = newLessonVideoUrl.trim();
-
-      if (newLessonVideoFile) {
-        const uploaded = await lmsClient.uploadVideo(selectedContentCourse, newLessonVideoFile);
-        videoUrl = uploaded.videoUrl;
-      }
-
-      const { lesson } = await lmsClient.addLesson(selectedContentCourse, {
+      const { lesson: createdLesson } = await lmsClient.addLesson(selectedContentCourse, {
         title: newLessonTitle.trim(),
         duration: newLessonDuration.trim(),
-        videoUrl: videoUrl || undefined,
+        videoUrl: newLessonVideoUrl.trim() || undefined,
         lessonOrder: newLessonOrder > 0 ? newLessonOrder : undefined,
         isRequired: newLessonRequired,
         isPreview: newLessonPreview,
       });
+
+      let lesson = createdLesson;
+      if (newLessonVideoFile) {
+        const uploaded = await lmsClient.uploadVideo(
+          selectedContentCourse,
+          newLessonVideoFile,
+          createdLesson.id,
+        );
+        const updated = await lmsClient.updateLesson(createdLesson.id, {
+          videoUrl: uploaded.videoUrl,
+          video_url: uploaded.videoUrl,
+        });
+        lesson = updated.lesson;
+      }
 
       setLessons((prev) => [
         ...prev,
