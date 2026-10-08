@@ -294,14 +294,10 @@ function TeachDashboardPage() {
   const [newPrice, setNewPrice] = useState(999);
   const [newPreview, setNewPreview] = useState(5);
   const [newHours, setNewHours] = useState(16);
-  const [newVideoUrl, setNewVideoUrl] = useState(
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-  );
+  const [newVideoUrl, setNewVideoUrl] = useState("");
   const [newVideoFile, setNewVideoFile] = useState<File | null>(null);
   const [newVideoFiles, setNewVideoFiles] = useState<File[]>([]);
-  const [newVideoUrls, setNewVideoUrls] = useState<string[]>([
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-  ]);
+  const [newVideoUrls, setNewVideoUrls] = useState<string[]>([]);
   const [newUrlInput, setNewUrlInput] = useState("");
   const [isUploadingCourseVideo, setIsUploadingCourseVideo] = useState(false);
   const [uploadProgressText, setUploadProgressText] = useState<string | null>(null);
@@ -686,9 +682,7 @@ function TeachDashboardPage() {
       setNewSlug("");
       setNewVideoFile(null);
       setNewVideoFiles([]);
-      setNewVideoUrls([
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-      ]);
+      setNewVideoUrls([]);
       setNewUrlInput("");
       setMsg({
         text: `Course "${createdCourse.title}" successfully created with ${createdCourse.video_urls?.length || 1} video(s)!`,
