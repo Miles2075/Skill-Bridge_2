@@ -64,7 +64,10 @@ export const Route = createFileRoute("/_authenticated/student/")({
   component: StudentDashboardPage,
 });
 
-function getCourseImage(slug: string): string {
+function getCourseImage(slug: string, thumbnail?: string | null): string {
+  // Instructor-uploaded thumbnails must take priority over the legacy
+  // slug-based seed images. Only use a seed image when no thumbnail exists.
+  if (thumbnail) return thumbnail;
   if (slug === "advanced-typescript") return tsThumb;
   if (slug === "react-performance") return reactThumb;
   if (slug === "system-design") return systemThumb;
@@ -830,7 +833,7 @@ function StudentDashboardPage() {
 
               <div className="flex flex-col md:flex-row gap-5 items-center">
                 <img
-                  src={getCourseImage(currentContinueCourse.slug)}
+                  src={getCourseImage(currentContinueCourse.slug, currentContinueCourse.thumbnail)}
                   alt={currentContinueCourse.title}
                   className="w-full md:w-56 h-32 rounded-xl object-cover"
                 />
@@ -1061,7 +1064,7 @@ function StudentDashboardPage() {
                   >
                     <div className="relative h-44 w-full bg-slate-900">
                       <img
-                        src={getCourseImage(course.slug)}
+                        src={getCourseImage(course.slug, course.thumbnail)}
                         alt={course.title}
                         className="h-full w-full object-cover opacity-90"
                       />
