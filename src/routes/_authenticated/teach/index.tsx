@@ -298,6 +298,8 @@ function TeachDashboardPage() {
   const [newVideoFile, setNewVideoFile] = useState<File | null>(null);
   const [newVideoFiles, setNewVideoFiles] = useState<File[]>([]);
   const [newVideoUrls, setNewVideoUrls] = useState<string[]>([]);
+  const [newThumbnailFile, setNewThumbnailFile] = useState<File | null>(null);
+  const [newThumbnailPreview, setNewThumbnailPreview] = useState<string>("");
   const [newUrlInput, setNewUrlInput] = useState("");
   const [isUploadingCourseVideo, setIsUploadingCourseVideo] = useState(false);
   const [uploadProgressText, setUploadProgressText] = useState<string | null>(null);
@@ -651,6 +653,22 @@ function TeachDashboardPage() {
 
       let createdCourse = course as unknown as CourseRow;
 
+      if (newThumbnailFile) {
+        try {
+          setUploadProgressText(`Uploading thumbnail: ${newThumbnailFile.name}…`);
+          const uploadedThumbnail = await lmsClient.uploadThumbnail(createdCourse.id, newThumbnailFile);
+          const updated = await lmsClient.updateCourse(createdCourse.id, {
+            thumbnail: uploadedThumbnail.thumbnailUrl,
+          });
+          createdCourse = updated.course as unknown as CourseRow;
+        } catch (thumbnailErr) {
+          await lmsClient.deleteCourse(createdCourse.id).catch(() => {});
+          throw new Error(
+            `Course thumbnail upload failed: ${thumbnailErr instanceof Error ? thumbnailErr.message : "Upload error"}`,
+          );
+        }
+      }
+
       if (filesToUpload.length > 0) {
         try {
           const uploadedUrls: string[] = [];
@@ -683,6 +701,8 @@ function TeachDashboardPage() {
       setNewVideoFile(null);
       setNewVideoFiles([]);
       setNewVideoUrls([]);
+      setNewThumbnailFile(null);
+      setNewThumbnailPreview("");
       setNewUrlInput("");
       setMsg({
         text: `Course "${createdCourse.title}" successfully created with ${createdCourse.video_urls?.length || 1} video(s)!`,
@@ -1437,6 +1457,55 @@ function TeachDashboardPage() {
                   className="text-xs"
                 />
               </div>
+            </div>
+
+            {/* Course Thumbnail Upload */}
+            <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <label className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <Film className="size-4 text-teal-600" />
+                    <span>Course Thumbnail</span>
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Upload the image shown on course cards and the catalog. JPG, PNG, WebP, or GIF, max 10 MB.
+                  </p>
+                </div>
+                <label className="inline-flex items-center gap-1.5 rounded-lg bg-teal-50 border border-teal-200 px-3 py-1.5 text-xs font-semibold text-teal-700 hover:bg-teal-100 cursor-pointer transition-colors shrink-0">
+                  <Upload className="size-3.5" />
+                  <span>{newThumbnailFile ? "Change Thumbnail" : "Choose Thumbnail"}</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      setNewThumbnailFile(file);
+                      if (newThumbnailPreview) URL.revokeObjectURL(newThumbnailPreview);
+                      setNewThumbnailPreview(file ? URL.createObjectURL(file) : "");
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+              {newThumbnailFile && (
+                <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+                  {newThumbnailPreview && (
+                    <img src={newThumbnailPreview} alt="Course thumbnail preview" className="h-20 w-32 rounded-md object-cover border border-slate-200" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[11px] font-semibold text-slate-800">{newThumbnailFile.name}</p>
+                    <p className="text-[10px] text-slate-500">{(newThumbnailFile.size / (1024 * 1024)).toFixed(1)} MB</p>
+                  </div>
+                  <button type="button" onClick={() => {
+                    if (newThumbnailPreview) URL.revokeObjectURL(newThumbnailPreview);
+                    setNewThumbnailFile(null);
+                    setNewThumbnailPreview("");
+                  }} className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer" title="Remove thumbnail">
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Multiple Video Files Upload */}
