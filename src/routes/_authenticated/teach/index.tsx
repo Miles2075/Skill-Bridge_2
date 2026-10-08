@@ -362,6 +362,10 @@ function TeachDashboardPage() {
       setAssignmentDefs(data.assignments as unknown as AssignmentDefinition[]);
     } catch (e) {
       console.error("Failed to load instructor data:", e);
+      setMsg({
+        text: e instanceof Error ? e.message : "Failed to load instructor courses.",
+        isError: true,
+      });
     }
   };
 
