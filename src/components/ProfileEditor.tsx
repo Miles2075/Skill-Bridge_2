@@ -3,7 +3,7 @@ import { Loader2, Save, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { lmsClient } from "@/lib/lms-client";
-import { updateLocalSessionProfile, type LocalUser } from "@/lib/local-db";
+import { syncLocalSessionProfile, type LocalUser } from "@/lib/local-db";
 
 export function ProfileEditor({
   user,
@@ -46,7 +46,7 @@ export function ProfileEditor({
     try {
       const uploaded = await lmsClient.uploadAvatar(file);
       setAvatarUrl(uploaded.avatarUrl);
-      updateLocalSessionProfile({ avatarUrl: uploaded.avatarUrl });
+      syncLocalSessionProfile({ avatarUrl: uploaded.avatarUrl });
       setMessage("Profile picture updated successfully.");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Unable to upload profile picture.");
@@ -66,7 +66,7 @@ export function ProfileEditor({
     setMessage("");
     try {
       await lmsClient.updateProfile({ displayName });
-      updateLocalSessionProfile({ displayName });
+      syncLocalSessionProfile({ displayName });
       setMessage("Profile updated successfully.");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Unable to update profile.");
