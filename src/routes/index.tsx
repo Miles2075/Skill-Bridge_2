@@ -813,7 +813,17 @@ function MyLearning({
 }
 
 function Skillbridge() {
+  const { isTeacher } = useAuth();
+  const navigate = useNavigate();
   const [view, setView] = useState<StudentView>("dashboard");
+
+  // Teachers use the Instructor Studio as their primary portal.
+  // Do not expose the student dashboard/navigation to instructor accounts.
+  useEffect(() => {
+    if (isTeacher) {
+      navigate({ to: "/teach", replace: true });
+    }
+  }, [isTeacher, navigate]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
