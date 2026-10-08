@@ -181,6 +181,7 @@ export function getLocalSession(): LocalUser | null {
             display_name: displayName,
             email: u.email || "student@skillbridge.edu",
             role,
+            avatar_url: u.user_metadata?.avatar_url,
           },
           created_at: u.created_at || new Date().toISOString(),
           updated_at: u.updated_at || new Date().toISOString(),
