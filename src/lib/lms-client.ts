@@ -326,6 +326,26 @@ export const lmsClient = {
     });
   },
 
+  async uploadAvatar(file: File): Promise<{ avatarUrl: string; fileName: string; size: number }> {
+    const authHeaders = await getAuthHeaders();
+    const response = await fetch("/api/lms/upload-avatar", {
+      method: "POST",
+      headers: {
+        ...authHeaders,
+        "Content-Type": file.type || "application/octet-stream",
+        "X-File-Name": encodeURIComponent(file.name),
+        "X-File-Size": String(file.size),
+      },
+      body: file,
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data?.error || data?.message || `Avatar upload failed (HTTP ${response.status})`);
+    }
+    return data as { avatarUrl: string; fileName: string; size: number };
+  },
+
   // COURSE MANAGEMENT
   async createCourse(data: Partial<ClientCourse>): Promise<{ course: ClientCourse }> {
     return request("course", {
