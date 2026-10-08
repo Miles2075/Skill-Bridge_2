@@ -338,6 +338,12 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
 
       const existing = lmsDB.getCourse(courseId);
       if (!existing) return errorResponse("Course not found", 404);
+      // Legacy seed courses without an owner are claimable by the first instructor
+      // who edits them; courses already owned by another instructor stay protected.
+      if (!user.isAdmin && existing.teacher_id === null) {
+        lmsDB.updateCourse(existing.id, { teacher_id: user.userId });
+        existing.teacher_id = user.userId;
+      }
       if (!user.isAdmin && existing.teacher_id !== user.userId) {
         return errorResponse("Forbidden: You can only modify your own courses", 403);
       }
@@ -373,6 +379,11 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
 
       const course = lmsDB.getCourse(courseId);
       if (!course) return errorResponse("Course not found.", 404);
+      // Claim legacy unowned seed courses on first instructor upload.
+      if (!user.isAdmin && course.teacher_id === null) {
+        lmsDB.updateCourse(course.id, { teacher_id: user.userId });
+        course.teacher_id = user.userId;
+      }
       if (!user.isAdmin && course.teacher_id !== user.userId) {
         return errorResponse("Forbidden: You can only upload videos to your own courses", 403);
       }
@@ -492,6 +503,11 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
 
       const course = lmsDB.getCourse(courseId);
       if (!course) return errorResponse("Course not found.", 404);
+      // Claim legacy unowned seed courses on first thumbnail upload.
+      if (!user.isAdmin && course.teacher_id === null) {
+        lmsDB.updateCourse(course.id, { teacher_id: user.userId });
+        course.teacher_id = user.userId;
+      }
       if (!user.isAdmin && course.teacher_id !== user.userId) {
         return errorResponse("Forbidden: You can only upload thumbnails to your own courses", 403);
       }
