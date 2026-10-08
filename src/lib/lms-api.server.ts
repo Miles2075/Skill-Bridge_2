@@ -95,7 +95,7 @@ function errorResponse(message: string, status = 400) {
   return jsonResponse({ error: message }, status);
 }
 
-export async function handleLmsApiRequest(req: Request): Promise<Response | null> {
+async function handleLmsApiRequestInternal(req: Request): Promise<Response | null> {
   const url = new URL(req.url);
   if (!url.pathname.startsWith("/api/lms")) {
     return null;
@@ -893,5 +893,14 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
     console.error("LMS API Error:", err);
     const msg = err instanceof Error ? err.message : "Internal Server Error";
     return errorResponse(msg, 500);
+  }
+}
+
+export async function handleLmsApiRequest(req: Request): Promise<Response | null> {
+  await lmsDB.ready();
+  try {
+    return await handleLmsApiRequestInternal(req);
+  } finally {
+    await lmsDB.flush();
   }
 }
