@@ -1664,18 +1664,18 @@ function StudentDashboardPage() {
       {/* ------------------------------------------------------------- */}
       {currentView === "settings" && (
         <div className="space-y-6 max-w-2xl">
-          <div className="border-b border-slate-200 pb-3">
-            <h1 className="text-xl font-extrabold text-slate-900">Learning Settings</h1>
-            <p className="text-xs text-slate-500">
+          <div className="border-b border-border pb-3">
+            <h1 className="text-xl font-extrabold text-foreground">Learning Settings</h1>
+            <p className="text-xs text-muted-foreground">
               Account and notification preferences for your student session.
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs space-y-5 text-xs">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="rounded-2xl border border-border bg-card p-6 shadow-2xs space-y-5 text-xs">
+            <div className="flex items-center justify-between border-b border-border pb-4">
               <div>
-                <h4 className="font-bold text-slate-900">Appearance</h4>
-                <p className="text-slate-500 text-[11px]">
+                <h4 className="font-bold text-foreground">Appearance</h4>
+                <p className="text-muted-foreground text-[11px]">
                   Switch between the light and dark Skillbridge theme.
                 </p>
               </div>
@@ -1684,22 +1684,30 @@ function StudentDashboardPage() {
 
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="font-bold text-slate-900">Assignment Notifications</h4>
-                <p className="text-slate-500 text-[11px]">
+                <h4 className="font-bold text-foreground">Assignment Notifications</h4>
+                <p className="text-muted-foreground text-[11px]">
                   Receive notifications when an instructor grades your submissions.
                 </p>
               </div>
-              <input type="checkbox" defaultChecked className="h-4 w-4 rounded accent-indigo-600" />
+              <input
+                type="checkbox"
+                defaultChecked
+                className="h-4 w-4 rounded accent-indigo-600 dark:accent-[var(--primary)]"
+              />
             </div>
 
-            <div className="flex items-center justify-between border-t border-slate-100 pt-4">
+            <div className="flex items-center justify-between border-t border-border pt-4">
               <div>
-                <h4 className="font-bold text-slate-900">Auto-play Next Lesson</h4>
-                <p className="text-slate-500 text-[11px]">
+                <h4 className="font-bold text-foreground">Auto-play Next Lesson</h4>
+                <p className="text-muted-foreground text-[11px]">
                   Advance to the next lecture automatically after completing a video.
                 </p>
               </div>
-              <input type="checkbox" defaultChecked className="h-4 w-4 rounded accent-indigo-600" />
+              <input
+                type="checkbox"
+                defaultChecked
+                className="h-4 w-4 rounded accent-indigo-600 dark:accent-[var(--primary)]"
+              />
             </div>
           </div>
         </div>
