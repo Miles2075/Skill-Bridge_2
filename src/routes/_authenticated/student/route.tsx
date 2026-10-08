@@ -203,7 +203,7 @@ function StudentRouteLayout() {
     badgeColor?: string | undefined;
   }[] = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "courses", label: "My Courses", icon: BookOpen, badge: `${enrolledCoursesCount} Active` },
+    { id: "courses", label: "Explore Courses", icon: BookOpen, badge: `${enrolledCoursesCount} Active` },
     {
       id: "assignments",
       label: "Assignments",
@@ -284,8 +284,8 @@ function StudentRouteLayout() {
 
           <div className="flex items-center gap-3">
             <Link
-              to="/"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
+              to="/student?view=courses"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100 transition-colors shadow-2xs"
             >
               <Compass className="size-3.5 text-indigo-600" />
               <span>Explore Catalog</span>
