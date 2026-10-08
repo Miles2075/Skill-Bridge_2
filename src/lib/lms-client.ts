@@ -190,6 +190,7 @@ export interface InstructorDashboardData {
     studentId: string;
     studentName: string;
     studentEmail: string;
+    avatarUrl?: string | null;
     courseId: string;
     courseSlug: string;
     courseTitle: string;
