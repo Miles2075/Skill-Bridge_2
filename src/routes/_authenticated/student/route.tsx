@@ -265,9 +265,9 @@ function StudentRouteLayout() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 text-slate-900 flex flex-col font-sans">
+    <div className="min-h-screen bg-background text-foreground flex flex-col font-sans">
       {/* Student Portal Header */}
-      <header className="sticky top-0 z-40 border-b border-slate-200/90 bg-white/95 backdrop-blur-md shadow-2xs">
+      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-md shadow-2xs">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
             <button
@@ -287,7 +287,7 @@ function StudentRouteLayout() {
               <span className="grid size-8 place-items-center rounded-lg bg-indigo-600 font-extrabold text-white shadow-xs">
                 S
               </span>
-              <span className="text-lg font-bold tracking-tight text-slate-900">skillbridge</span>
+              <span className="text-lg font-bold tracking-tight text-foreground">skillbridge</span>
             </button>
 
             <span className="hidden sm:inline-flex items-center rounded-full bg-indigo-50 px-2.5 py-0.5 text-xs font-semibold text-indigo-700 border border-indigo-100">
@@ -346,7 +346,7 @@ function StudentRouteLayout() {
       {/* Main Container: Student Sidebar + Content */}
       <div className="mx-auto flex max-w-7xl flex-1 w-full">
         {/* Desktop Student Sidebar */}
-        <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-slate-200/80 bg-white/90 backdrop-blur-sm p-4">
+        <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-border bg-card/90 backdrop-blur-sm p-4">
           <div className="mb-3 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
             Student Menu
           </div>
@@ -473,7 +473,7 @@ function StudentRouteLayout() {
       </div>
 
       {/* Student Portal Footer */}
-      <footer className="mt-auto border-t border-slate-200 bg-white py-4 text-xs text-slate-500">
+      <footer className="mt-auto border-t border-border bg-card py-4 text-xs text-muted-foreground">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <span>© 2026 Skillbridge Student Workspace — Hands-on Engineering Education</span>
           <div className="flex items-center gap-4">
