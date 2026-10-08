@@ -813,7 +813,7 @@ function MyLearning({
 }
 
 function Skillbridge() {
-  const { isTeacher } = useAuth();
+  const { user, isTeacher } = useAuth();
   const navigate = useNavigate();
   const [view, setView] = useState<StudentView>("dashboard");
 
