@@ -15,6 +15,12 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     port: 3000,
+    // Uploaded course media is written under public/uploads while the dev
+    // server is running. Do not watch that directory: otherwise every write
+    // chunk can trigger Vite HMR/reload, aborting the browser's upload request.
+    watch: {
+      ignored: ["**/public/uploads/**"],
+    },
   },
   optimizeDeps: {
     exclude: ["@tanstack/react-router", "@tanstack/react-store"],
