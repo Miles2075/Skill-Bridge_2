@@ -1611,9 +1611,14 @@ class DatabaseManager {
           studentId: e.student_id,
           studentName: e.student_name,
           studentEmail: e.student_email,
-          avatarUrl: db.users.find((u) => u.id === e.student_id)?.user_metadata?.avatar_url
-            ? `/api/lms/avatar?userId=${encodeURIComponent(e.student_id)}`
-            : null,
+          avatarUrl: (() => {
+            const student = db.users.find((u) => u.id === e.student_id);
+            return student?.user_metadata?.avatar_url
+              ? `/api/lms/avatar?userId=${encodeURIComponent(e.student_id)}&v=${encodeURIComponent(
+                  student.updated_at,
+                )}`
+              : null;
+          })(),
           courseId: course.id,
           courseSlug: course.slug,
           courseTitle: course.title,
