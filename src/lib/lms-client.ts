@@ -382,6 +382,40 @@ export const lmsClient = {
     return res.json();
   },
 
+  // COURSE THUMBNAIL UPLOAD
+  async uploadThumbnail(
+    courseId: string,
+    file: File,
+  ): Promise<{ thumbnailUrl: string; fileName: string; size: number }> {
+    const authHeaders = await getAuthHeaders();
+    const headers: Record<string, string> = {
+      ...authHeaders,
+      "Content-Type": file.type || "application/octet-stream",
+      "X-File-Name": encodeURIComponent(file.name),
+      "X-File-Size": String(file.size),
+    };
+
+    const query = new URLSearchParams({ courseId });
+    const res = await fetch(`/api/lms/upload-thumbnail?${query.toString()}`, {
+      method: "POST",
+      headers,
+      body: file,
+    });
+
+    if (!res.ok) {
+      let errMsg = `Thumbnail upload failed: ${res.status} ${res.statusText}`;
+      try {
+        const body = await res.json();
+        if (body.error) errMsg = body.error;
+      } catch {
+        // ignore
+      }
+      throw new Error(errMsg);
+    }
+
+    return res.json();
+  },
+
   // LESSON MANAGEMENT
   async addLesson(
     courseId: string,
