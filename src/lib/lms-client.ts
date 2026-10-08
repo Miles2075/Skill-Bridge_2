@@ -373,15 +373,35 @@ export const lmsClient = {
 
   async uploadAvatar(file: File): Promise<{ avatarUrl: string; fileName: string; size: number }> {
     try {
-      const uploaded = await uploadToVercelBlob("avatar", file);
-      await request("profile", {
-        method: "PATCH",
-        body: JSON.stringify({ avatarUrl: uploaded.publicUrl }),
+      // Avatars use the LMS server endpoint so Vercel Blob returns the
+      // canonical public URL from the server-side put operation. The signed
+      // PUT URL is only an upload URL and must not be used as the media URL.
+      const authHeaders = await getAuthHeaders();
+      const response = await fetch("/api/lms/upload-avatar", {
+        method: "POST",
+        headers: {
+          ...authHeaders,
+          "Content-Type": file.type || "application/octet-stream",
+          "X-File-Name": encodeURIComponent(file.name),
+          "X-File-Size": String(file.size),
+        },
+        body: file,
       });
 
-      // Public Blob URLs are immutable and can be rendered directly by the
-      // browser. Return the canonical URL stored by the profile update.
-      return { avatarUrl: uploaded.publicUrl, fileName: file.name, size: file.size };
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          data?.error || data?.message || `Avatar upload failed (HTTP ${response.status})`,
+        );
+      }
+
+      const avatarUrl = String(data?.avatarUrl || "");
+      if (!avatarUrl) {
+        throw new Error("Avatar upload completed without a public image URL.");
+      }
+
+      updateLocalSessionProfile({ avatarUrl });
+      return data as { avatarUrl: string; fileName: string; size: number };
     } catch (error) {
       if (!(error instanceof Error) || error.message !== "LOCAL_STORAGE_FALLBACK") throw error;
 
@@ -404,6 +424,7 @@ export const lmsClient = {
         );
       }
 
+      updateLocalSessionProfile({ avatarUrl: String(data?.avatarUrl || "") });
       return data as { avatarUrl: string; fileName: string; size: number };
     }
   },
