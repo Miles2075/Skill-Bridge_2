@@ -81,6 +81,7 @@ function StudentRouteLayout() {
   const displayName =
     (user?.user_metadata?.["display_name"] as string) || user?.email?.split("@")[0] || "Student";
   const initials = (displayName[0] || "S").toUpperCase();
+  const [avatarUrl, setAvatarUrl] = useState(user?.user_metadata?.avatar_url || "");
 
   const [activeView, setActiveView] = useState<StudentNavView>("dashboard");
 
@@ -94,6 +95,13 @@ function StudentRouteLayout() {
     if (typeof window !== "undefined") {
       const p = new URLSearchParams(window.location.search).get("view") as StudentNavView;
       if (p) setActiveView(p);
+
+      const syncAvatar = () => {
+        const session = getLocalSession();
+        setAvatarUrl(session?.user_metadata?.avatar_url || "");
+      };
+      window.addEventListener("local_auth_changed", syncAvatar);
+      return () => window.removeEventListener("local_auth_changed", syncAvatar);
     }
   }, []);
 
@@ -297,7 +305,16 @@ function StudentRouteLayout() {
                 className="flex items-center gap-2 text-left cursor-pointer group"
               >
                 <div className="grid size-8 place-items-center overflow-hidden rounded-full bg-indigo-600 text-xs font-bold uppercase text-white shadow-xs group-hover:ring-2 group-hover:ring-indigo-300 transition-all">
-                  {initials}
+                  {avatarUrl ? (
+                    <img
+                      src={avatarUrl}
+                      alt={displayName}
+                      className="h-full w-full object-cover"
+                      onError={() => setAvatarUrl("")}
+                    />
+                  ) : (
+                    initials
+                  )}
                 </div>
                 <div className="hidden sm:flex flex-col">
                   <span className="text-xs font-semibold text-slate-800 leading-tight group-hover:text-indigo-600">
