@@ -3,7 +3,7 @@ import nodePath from "node:path";
 import fs from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { issueSignedToken, presignUrl, put } from "@vercel/blob";
+import { issueSignedToken, list, presignUrl, put } from "@vercel/blob";
 import { lmsDB } from "./lms-db.server";
 
 interface UserContext {
@@ -364,6 +364,74 @@ async function handleLmsApiRequestInternal(req: Request): Promise<Response | nul
       return Response.redirect(sourceUrl, 302);
     }
 
+    // STORAGE: POST /api/lms/finalize-upload
+    // Confirms a direct browser-to-Blob upload and persists its canonical public URL.
+    if (path === "finalize-upload" && method === "POST") {
+      if (!user.userId) return errorResponse("Unauthorized", 401);
+      const body = await req.json().catch(() => ({}));
+      const kind = body?.kind as "video" | "thumbnail" | undefined;
+      const courseId = typeof body?.courseId === "string" ? body.courseId : "";
+      const lessonId = typeof body?.lessonId === "string" ? body.lessonId : "";
+      const pathname = typeof body?.pathname === "string" ? body.pathname : "";
+
+      if (!kind || !["video", "thumbnail"].includes(kind)) {
+        return errorResponse("Invalid upload type.", 400);
+      }
+      if (!courseId || !pathname) return errorResponse("Course id and pathname are required.", 400);
+      if (!pathname.startsWith(`courses/${courseId}/${kind === "video" ? "videos" : "thumbnails"}/`)) {
+        return errorResponse("Invalid upload pathname.", 400);
+      }
+
+      const course = lmsDB.getCourse(courseId);
+      if (!course) return errorResponse("Course not found.", 404);
+      if (!user.isAdmin && course.teacher_id === null) {
+        lmsDB.updateCourse(course.id, { teacher_id: user.userId });
+        course.teacher_id = user.userId;
+      }
+      if (!user.isAdmin && course.teacher_id !== user.userId) {
+        return errorResponse("Forbidden: You can only upload to your own courses.", 403);
+      }
+
+      if (kind === "video" && lessonId) {
+        const lesson = lmsDB.getLesson(lessonId);
+        if (!lesson || lesson.course_id !== course.id) {
+          return errorResponse("Lesson does not belong to this course.", 403);
+        }
+      }
+
+      try {
+        const result = await list({ prefix: pathname, limit: 10 });
+        const blob = result.blobs.find((item) => item.pathname === pathname);
+        if (!blob) return errorResponse("Upload has not finished yet. Please try again.", 409);
+
+        if (kind === "thumbnail") {
+          lmsDB.updateCourse(course.id, { thumbnail: blob.url });
+        } else if (lessonId) {
+          lmsDB.updateLesson(lessonId, { video_url: blob.url });
+        } else {
+          const currentUrls = Array.isArray(course.video_urls)
+            ? [...course.video_urls]
+            : course.video_url
+              ? [course.video_url]
+              : [];
+          if (!currentUrls.includes(blob.url)) currentUrls.push(blob.url);
+          lmsDB.updateCourse(course.id, {
+            video_url: course.video_url || blob.url,
+            video_urls: currentUrls,
+          });
+        }
+
+        return jsonResponse({
+          publicUrl: blob.url,
+          pathname: blob.pathname,
+          size: blob.size,
+        });
+      } catch (err) {
+        console.warn("Failed to finalize Blob upload:", err);
+        return errorResponse(err instanceof Error ? err.message : "Failed to finalize upload.", 500);
+      }
+    }
+
     // STORAGE: POST /api/lms/create-upload-url
     if (path === "create-upload-url" && method === "POST") {
       if (!process.env.BLOB_READ_WRITE_TOKEN && !process.env.VERCEL) {
@@ -456,7 +524,6 @@ async function handleLmsApiRequestInternal(req: Request): Promise<Response | nul
 
       return jsonResponse({
         uploadUrl: presignedUrl,
-        publicUrl: presignedUrl.split("?")[0],
         pathname,
       });
     }
