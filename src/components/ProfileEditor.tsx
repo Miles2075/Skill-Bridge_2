@@ -113,6 +113,7 @@ export function ProfileEditor({
               }}
             />
           </label>
+          </div>
         </div>
 
         <div>
