@@ -822,8 +822,14 @@ function Skillbridge() {
   useEffect(() => {
     if (isTeacher) {
       navigate({ to: "/teach", replace: true });
+      return;
     }
-  }, [isTeacher, navigate]);
+    // Authenticated students use the unified Student Portal.
+    // The legacy root catalog is kept only for signed-out visitors.
+    if (user) {
+      navigate({ to: "/student", replace: true });
+    }
+  }, [isTeacher, navigate, user]);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
