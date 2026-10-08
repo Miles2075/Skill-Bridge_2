@@ -144,6 +144,82 @@ export default defineConfig({
       },
     },
     {
+      name: "lms-thumbnail-static-middleware",
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (!req.url?.startsWith("/uploads/thumbnails/")) return next();
+
+          const relativeName = decodeURIComponent(
+            req.url.split("?")[0].replace(/^\/uploads\/thumbnails\//, ""),
+          );
+          if (
+            !relativeName ||
+            relativeName.includes("..") ||
+            relativeName.includes("\\") ||
+            relativeName.includes("/")
+          ) {
+            res.statusCode = 400;
+            res.end("Invalid thumbnail path");
+            return;
+          }
+
+          const filePath = path.resolve(
+            process.cwd(),
+            "public",
+            "uploads",
+            "thumbnails",
+            relativeName,
+          );
+          const uploadRoot = path.resolve(process.cwd(), "public", "uploads", "thumbnails");
+          const normFile = path.normalize(filePath).toLowerCase();
+          const normRoot = (path.normalize(uploadRoot) + path.sep).toLowerCase();
+          if (!normFile.startsWith(normRoot)) {
+            res.statusCode = 400;
+            res.end("Invalid thumbnail path");
+            return;
+          }
+
+          try {
+            const stat = fs.statSync(filePath);
+            if (!stat.isFile()) {
+              res.statusCode = 404;
+              res.end("Thumbnail not found");
+              return;
+            }
+
+            const ext = path.extname(filePath).toLowerCase();
+            const contentTypes: Record<string, string> = {
+              ".jpg": "image/jpeg",
+              ".jpeg": "image/jpeg",
+              ".png": "image/png",
+              ".webp": "image/webp",
+              ".gif": "image/gif",
+            };
+
+            res.setHeader("Content-Type", contentTypes[ext] || "application/octet-stream");
+            res.setHeader("Content-Length", String(stat.size));
+            res.setHeader("Cache-Control", "no-store");
+
+            if (req.method === "HEAD") {
+              res.statusCode = 200;
+              res.end();
+              return;
+            }
+
+            res.statusCode = 200;
+            fs.createReadStream(filePath).pipe(res);
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+              res.statusCode = 404;
+              res.end("Thumbnail not found");
+              return;
+            }
+            next(error);
+          }
+        });
+      },
+    },
+    {
       name: "lms-dev-api-middleware",
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
