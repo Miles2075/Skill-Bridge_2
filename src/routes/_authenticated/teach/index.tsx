@@ -657,18 +657,19 @@ function TeachDashboardPage() {
 
       let createdCourse = course as unknown as CourseRow;
 
+      const mediaWarnings: string[] = [];
+
       if (newThumbnailFile) {
         try {
           setUploadProgressText(`Uploading thumbnail: ${newThumbnailFile.name}…`);
           const uploadedThumbnail = await lmsClient.uploadThumbnail(createdCourse.id, newThumbnailFile);
-          const updated = await lmsClient.updateCourse(createdCourse.id, {
+          createdCourse = {
+            ...createdCourse,
             thumbnail: uploadedThumbnail.thumbnailUrl,
-          });
-          createdCourse = updated.course as unknown as CourseRow;
+          };
         } catch (thumbnailErr) {
-          await lmsClient.deleteCourse(createdCourse.id).catch(() => {});
-          throw new Error(
-            `Course thumbnail upload failed: ${thumbnailErr instanceof Error ? thumbnailErr.message : "Upload error"}`,
+          mediaWarnings.push(
+            `thumbnail: ${thumbnailErr instanceof Error ? thumbnailErr.message : "Upload error"}`,
           );
         }
       }
@@ -691,10 +692,10 @@ function TeachDashboardPage() {
           });
           createdCourse = updated.course as unknown as CourseRow;
         } catch (uploadErr) {
-          // If video upload failed, abort course creation so UI doesn't pretend upload succeeded
-          await lmsClient.deleteCourse(createdCourse.id).catch(() => {});
-          throw new Error(
-            `Course video upload failed: ${uploadErr instanceof Error ? uploadErr.message : "Upload error"}`,
+          // Keep the course even if a large media upload fails. The instructor can
+          // retry the media from Course Portfolio instead of losing the course.
+          mediaWarnings.push(
+            `video: ${uploadErr instanceof Error ? uploadErr.message : "Upload error"}`,
           );
         }
       }
@@ -709,7 +710,10 @@ function TeachDashboardPage() {
       setNewThumbnailPreview("");
       setNewUrlInput("");
       setMsg({
-        text: `Course "${createdCourse.title}" successfully created with ${createdCourse.video_urls?.length || 1} video(s)!`,
+        text: mediaWarnings.length
+          ? `Course "${createdCourse.title}" was created, but media upload needs attention — ${mediaWarnings.join(" | ")}`
+          : `Course "${createdCourse.title}" successfully created with ${createdCourse.video_urls?.length || 0} video(s)!`,
+        isError: mediaWarnings.length > 0,
       });
       // Re-read the persisted server data before navigating to Course Portfolio.
       // This guarantees the newly-created course is visible from the actual LMS database,
