@@ -3,6 +3,7 @@ import nodePath from "node:path";
 import fs from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { issueSignedToken, presignUrl } from "@vercel/blob";
 import { lmsDB } from "./lms-db.server";
 
 interface UserContext {
@@ -251,6 +252,103 @@ async function handleLmsApiRequestInternal(req: Request): Promise<Response | nul
         avatarUrl: publicAvatarUrl,
         fileName: originalName,
         size: declaredSize || 0,
+      });
+    }
+
+    // STORAGE: POST /api/lms/create-upload-url
+    if (path === "create-upload-url" && method === "POST") {
+      if (!process.env.BLOB_READ_WRITE_TOKEN && !process.env.VERCEL) {
+        return errorResponse("Cloud file storage is not configured.", 503);
+      }
+      if (!user.userId) return errorResponse("Unauthorized", 401);
+
+      const body = await req.json().catch(() => ({}));
+      const kind = body?.kind as "video" | "thumbnail" | "avatar" | undefined;
+      const courseId = typeof body?.courseId === "string" ? body.courseId : "";
+      const lessonId = typeof body?.lessonId === "string" ? body.lessonId : "";
+      const fileName = typeof body?.fileName === "string" ? body.fileName : "upload";
+      const contentType = typeof body?.contentType === "string" ? body.contentType : "";
+      const size = Number(body?.size || 0);
+
+      const limits = {
+        video: {
+          max: 500 * 1024 * 1024,
+          types: ["video/mp4", "video/webm", "video/quicktime", "video/x-m4v"],
+        },
+        thumbnail: {
+          max: 10 * 1024 * 1024,
+          types: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+        },
+        avatar: {
+          max: 5 * 1024 * 1024,
+          types: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+        },
+      } as const;
+
+      if (!kind || !(kind in limits)) return errorResponse("Invalid upload type.", 400);
+      const limit = limits[kind];
+      if (!contentType || !limit.types.includes(contentType as never)) {
+        return errorResponse("Unsupported file type.", 400);
+      }
+      if (!Number.isFinite(size) || size <= 0 || size > limit.max) {
+        return errorResponse(`File is too large or invalid. Maximum size is ${Math.round(limit.max / 1024 / 1024)} MB.`, 413);
+      }
+
+      if (kind === "video" || kind === "thumbnail") {
+        const course = lmsDB.getCourse(courseId);
+        if (!course) return errorResponse("Course not found.", 404);
+        if (!user.isAdmin && course.teacher_id === null) {
+          lmsDB.updateCourse(course.id, { teacher_id: user.userId });
+          course.teacher_id = user.userId;
+        }
+        if (!user.isAdmin && course.teacher_id !== user.userId) {
+          return errorResponse("Forbidden: you can only upload to your own courses.", 403);
+        }
+        if (kind === "video" && lessonId) {
+          const lesson = lmsDB.getLesson(lessonId);
+          if (!lesson || lesson.course_id !== course.id) {
+            return errorResponse("Lesson does not belong to this course.", 403);
+          }
+        }
+      }
+
+      const extension = nodePath.extname(fileName).toLowerCase();
+      const allowedExtensions =
+        kind === "video"
+          ? new Set([".mp4", ".webm", ".mov", ".m4v"])
+          : new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
+      if (!allowedExtensions.has(extension)) return errorResponse("Unsupported file extension.", 400);
+
+      const safeBase =
+        fileName
+          .slice(0, fileName.length - extension.length)
+          .replace(/[^a-zA-Z0-9_-]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 80) || kind;
+
+      const folder =
+        kind === "avatar"
+          ? `avatars/${user.userId}`
+          : `courses/${courseId}/${kind === "video" ? "videos" : "thumbnails"}`;
+      const pathname = `${folder}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}-${safeBase}${extension}`;
+
+      const token = await issueSignedToken({
+        pathname,
+        operations: ["put"],
+        maximumSizeInBytes: limit.max,
+        allowedContentTypes: [...limit.types],
+        validUntil: Date.now() + 15 * 60 * 1000,
+      });
+      const { presignedUrl } = await presignUrl(token, {
+        pathname,
+        operation: "put",
+        validUntil: Date.now() + 15 * 60 * 1000,
+      });
+
+      return jsonResponse({
+        uploadUrl: presignedUrl,
+        publicUrl: presignedUrl.split("?")[0],
+        pathname,
       });
     }
 
