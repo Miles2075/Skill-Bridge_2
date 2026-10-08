@@ -165,7 +165,23 @@ function AuthPage() {
         });
 
         if (!error && data?.session) {
-          const userMetaRole = (data.session.user.user_metadata?.role as string) || "student";
+          const supabaseUser = data.session.user;
+          const userMetaRole =
+            (supabaseUser.user_metadata?.role as "student" | "teacher" | "admin") || "student";
+          setLocalSession({
+            id: supabaseUser.id,
+            email: supabaseUser.email || cleanEmail,
+            user_metadata: {
+              display_name:
+                (supabaseUser.user_metadata?.display_name as string) ||
+                supabaseUser.email?.split("@")[0] ||
+                "Learner",
+              email: supabaseUser.email || cleanEmail,
+              role: userMetaRole,
+            },
+            created_at: supabaseUser.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
           window.location.href = getRedirectRoute(userMetaRole);
           return;
         }
@@ -193,6 +209,21 @@ function AuthPage() {
         });
 
         if (!error && data?.session) {
+          const supabaseUser = data.session.user;
+          setLocalSession({
+            id: supabaseUser.id,
+            email: supabaseUser.email || cleanEmail,
+            user_metadata: {
+              display_name:
+                (supabaseUser.user_metadata?.display_name as string) ||
+                name.trim() ||
+                cleanEmail.split("@")[0],
+              email: supabaseUser.email || cleanEmail,
+              role,
+            },
+            created_at: supabaseUser.created_at || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
           window.location.href = getRedirectRoute(role);
           return;
         }
