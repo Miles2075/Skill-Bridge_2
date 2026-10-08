@@ -6,6 +6,22 @@ async function getAuthHeaders(): Promise<HeadersInit> {
     "Content-Type": "application/json",
   };
 
+  // The LMS uses the local session as its authoritative role/session source.
+  // Prefer it over a stale Supabase browser session so switching between
+  // student and teacher accounts cannot leak the previous role into API calls.
+  try {
+    const localUser = getLocalSession();
+    if (localUser) {
+      headers["x-user-id"] = localUser.id;
+      headers["x-user-email"] = localUser.email;
+      headers["x-user-name"] = localUser.user_metadata?.display_name || "";
+      headers["x-user-role"] = localUser.user_metadata?.role || "student";
+      return headers;
+    }
+  } catch {
+    // Fall through to Supabase if no local session is available.
+  }
+
   try {
     const { data } = await supabase.auth.getSession();
     const session = data?.session;
@@ -15,26 +31,13 @@ async function getAuthHeaders(): Promise<HeadersInit> {
     if (session?.user) {
       headers["x-user-id"] = session.user.id;
       headers["x-user-email"] = session.user.email || "";
-      headers["x-user-name"] = (session.user.user_metadata?.display_name as string) || "";
-      headers["x-user-role"] = (session.user.user_metadata?.role as string) || "student";
+      headers["x-user-name"] =
+        (session.user.user_metadata?.display_name as string) || "";
+      headers["x-user-role"] =
+        (session.user.user_metadata?.role as string) || "student";
     }
   } catch {
-    // If running during SSR or storage reading fails
-  }
-
-  // Also fallback to local LMS session if Supabase session is absent
-  try {
-    const localUser = getLocalSession();
-    if (localUser) {
-      if (!headers["x-user-id"]) headers["x-user-id"] = localUser.id;
-      if (!headers["x-user-email"]) headers["x-user-email"] = localUser.email;
-      if (!headers["x-user-name"])
-        headers["x-user-name"] = localUser.user_metadata?.display_name || "";
-      if (!headers["x-user-role"])
-        headers["x-user-role"] = localUser.user_metadata?.role || "student";
-    }
-  } catch {
-    // ignore
+    // No browser Supabase session available.
   }
 
   return headers;
