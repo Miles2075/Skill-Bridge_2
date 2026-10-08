@@ -1611,17 +1611,18 @@ class DatabaseManager {
           studentId: e.student_id,
           studentName: e.student_name,
           studentEmail: e.student_email,
-          // Return the canonical stored avatar URL directly. New production uploads
-          // are Vercel Blob public URLs, which are immutable and can be rendered by
-          // the instructor browser without routing the image through a serverless
-          // avatar endpoint. Legacy/local avatar URLs continue to work as-is.
+          // Use the app-origin avatar endpoint for roster images. It proxies the
+          // durable Blob object and also supports legacy local avatar files.
           avatarUrl: (() => {
             const student = db.users.find((u) => u.id === e.student_id);
-            return (
+            const avatar =
               student?.user_metadata?.avatar_blob_url ||
-              student?.user_metadata?.avatar_url ||
-              null
-            );
+              student?.user_metadata?.avatar_url;
+            return avatar
+              ? `/api/lms/avatar?userId=${encodeURIComponent(e.student_id)}&v=${encodeURIComponent(
+                  student.updated_at,
+                )}`
+              : null;
           })(),
           courseId: course.id,
           courseSlug: course.slug,
