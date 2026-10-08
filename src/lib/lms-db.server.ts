@@ -1534,6 +1534,7 @@ class DatabaseManager {
           studentId: e.student_id,
           studentName: e.student_name,
           studentEmail: e.student_email,
+          avatarUrl: db.users.find((u) => u.id === e.student_id)?.user_metadata?.avatar_url || null,
           courseId: course.id,
           courseSlug: course.slug,
           courseTitle: course.title,
