@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState, useCallback } from "react";
 import {
   AlertCircle,
@@ -203,6 +204,8 @@ function StudentDashboardPage() {
   const [markingLesson, setMarkingLesson] = useState(false);
   const [availableCourses, setAvailableCourses] = useState<ClientCourse[]>([]);
   const [buyingCourseId, setBuyingCourseId] = useState<string | null>(null);
+  const createOrder = useServerFn(createCourseOrder);
+  const verifyPayment = useServerFn(verifyCoursePayment);
 
   const loadDashboard = useCallback(async () => {
     if (!user) return;
@@ -251,7 +254,7 @@ function StudentDashboardPage() {
       }
 
       if (!window.Razorpay) throw new Error("Payment gateway is unavailable.");
-      const order = await createCourseOrder({ data: { courseId: c.id } });
+      const order = await createOrder({ data: { courseId: c.id } });
 
       await new Promise<void>((resolve, reject) => {
         const razorpay = new window.Razorpay!({
@@ -269,7 +272,7 @@ function StudentDashboardPage() {
             razorpay_signature: string;
           }) => {
             try {
-              await verifyCoursePayment({
+              await verifyPayment({
                 data: {
                   courseId: c.id,
                   orderId: payment.razorpay_order_id,
