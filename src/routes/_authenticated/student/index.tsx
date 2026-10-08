@@ -286,31 +286,6 @@ function StudentDashboardPage() {
             completed: completedIds.has(l.id),
           }));
 
-          const cVideoUrls =
-            course?.video_urls && course.video_urls.length > 0
-              ? course.video_urls
-              : course?.video_url
-                ? [course.video_url]
-                : [];
-
-          if (enriched.length === 0 && cVideoUrls.length > 0) {
-            enriched = cVideoUrls.map((vUrl, i) => ({
-              id: `video_part_${i}`,
-              course_id: course?.id || "",
-              title:
-                cVideoUrls.length > 1
-                  ? `Video Part ${i + 1}: ${course?.title || "Lecture"}`
-                  : course?.title || "Lecture",
-              description: course?.description || "",
-              video_url: vUrl,
-              duration: "15:00",
-              lesson_order: i + 1,
-              is_required: true,
-              is_preview: i === 0,
-              completed: false,
-            }));
-          }
-
           setPlayerLessons(enriched);
           const firstIncompleteIdx = enriched.findIndex((l) => !l.completed);
           setActiveLessonIndex(firstIncompleteIdx >= 0 ? firstIncompleteIdx : 0);
@@ -594,7 +569,7 @@ function StudentDashboardPage() {
                   </button>
                 ) : (
                   <Link
-                    to="/"
+                    to="/student?view=courses"
                     className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-indigo-900 hover:bg-indigo-50 transition-all shadow-sm cursor-pointer"
                   >
                     <BookOpen className="size-3.5 text-indigo-900" />
@@ -970,12 +945,24 @@ function StudentDashboardPage() {
       {/* VIEW 2: MY COURSES */}
       {/* ------------------------------------------------------------- */}
       {currentView === "courses" && (
-        <div className="space-y-6">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 pb-3">
+        <div className="space-y-8">
+          <div className="relative overflow-hidden rounded-2xl border border-indigo-100 bg-gradient-to-br from-indigo-700 via-indigo-600 to-violet-700 p-6 text-white shadow-lg">
+            <div className="relative z-10 max-w-2xl">
+              <span className="inline-flex items-center rounded-full bg-white/15 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-indigo-100 ring-1 ring-white/15">
+                Skillbridge Course Library
+              </span>
+              <h1 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">Explore Courses</h1>
+              <p className="mt-2 max-w-xl text-sm leading-relaxed text-indigo-100">
+                Continue your enrolled courses or discover new instructor-published courses — all from one student portal.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h1 className="text-xl font-extrabold text-slate-900">My Enrolled Courses</h1>
+              <h2 className="text-lg font-extrabold text-slate-900">My Learning</h2>
               <p className="text-xs text-slate-500">
-                Track real lesson progress, complete modules, and resume video lectures.
+                Track lesson progress and resume your enrolled courses.
               </p>
             </div>
 
@@ -1106,10 +1093,10 @@ function StudentDashboardPage() {
             <div className="pt-6 border-t border-slate-200 mt-6">
               <div className="mb-4">
                 <h3 className="text-base font-extrabold text-slate-900">
-                  More Courses from Instructors ({availableCourses.length})
+                  Discover More Courses
                 </h3>
                 <p className="text-xs text-slate-500">
-                  New courses and video masterclasses published by your engineering instructors.
+                  New courses and video masterclasses published by your instructors.
                 </p>
               </div>
 
@@ -1144,7 +1131,7 @@ function StudentDashboardPage() {
                       className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition cursor-pointer"
                     >
                       <Play className="size-3.5 fill-white" />
-                      <span>Enroll & Watch Video</span>
+                      <span>Enroll & Start Learning</span>
                     </button>
                   </div>
                 ))}
@@ -1954,11 +1941,11 @@ function StudentDashboardPage() {
                 <div className="lg:col-span-2 flex flex-col space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <span className="text-xs font-bold text-slate-900">
-                      Curriculum Syllabus ({playerLessons.length || 3} Lessons)
+                      Curriculum Syllabus ({playerLessons.length} Lessons)
                     </span>
                     <span className="text-[11px] font-semibold text-indigo-600">
                       {playerLessons.filter((l) => l.completed).length} /{" "}
-                      {playerLessons.length || 3} Completed
+                      {playerLessons.length} Completed
                     </span>
                   </div>
 
