@@ -438,12 +438,16 @@ function TeachDashboardPage() {
     setUploadingRowId(row.id);
     setMsg(null);
     try {
-      let currentUrls =
+      // Drop the legacy placeholder URL that was created by the old
+      // signed-upload flow. It is not a real video asset and should never be
+      // carried forward when saving the course after a new upload.
+      let currentUrls = (
         row.video_urls && Array.isArray(row.video_urls)
           ? [...row.video_urls]
           : row.video_url
             ? [row.video_url]
-            : [];
+            : []
+      ).filter((url) => !/^https?:\/\/vercel\.com\/api\/blob\/?(?:\?|$)/i.test(url));
 
       for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i]!;
