@@ -3,7 +3,7 @@ import nodePath from "node:path";
 import fs from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { issueSignedToken, presignUrl } from "@vercel/blob";
+import { issueSignedToken, presignUrl, put } from "@vercel/blob";
 import { lmsDB } from "./lms-db.server";
 
 interface UserContext {
@@ -180,12 +180,23 @@ async function handleLmsApiRequestInternal(req: Request): Promise<Response | nul
     // AUTH: POST /api/lms/upload-avatar
     if (path === "upload-avatar" && method === "POST") {
       if (!user.userId) return errorResponse("Unauthorized", 401);
-      const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
+
+      // Vercel Functions have a request-size limit, so keep server-side avatar
+      // uploads below that limit. Course videos/thumbnails continue to use the
+      // direct signed-URL Blob flow above.
+      const MAX_AVATAR_SIZE = process.env.VERCEL
+        ? 4 * 1024 * 1024
+        : 5 * 1024 * 1024;
       const declaredSize = Number(
         req.headers.get("x-file-size") || req.headers.get("content-length") || 0,
       );
       if (declaredSize > MAX_AVATAR_SIZE) {
-        return errorResponse("Profile picture is too large. Maximum file size is 5 MB.", 413);
+        return errorResponse(
+          `Profile picture is too large. Maximum file size is ${Math.round(
+            MAX_AVATAR_SIZE / 1024 / 1024,
+          )} MB.`,
+          413,
+        );
       }
       if (!req.body) return errorResponse("Profile picture is required.", 400);
 
@@ -199,24 +210,65 @@ async function handleLmsApiRequestInternal(req: Request): Promise<Response | nul
         }
       }
 
-      const allowedExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
-      const dot = originalName.lastIndexOf(".");
-      const extension = dot >= 0 ? originalName.slice(dot).toLowerCase() : "";
-      if (!allowedExtensions.has(extension)) {
-        return errorResponse("Unsupported image format. Use JPG, JPEG, PNG, WebP, or GIF.", 400);
+      const contentType = req.headers.get("content-type") || "application/octet-stream";
+      const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+      if (!allowedTypes.has(contentType)) {
+        return errorResponse("Use a JPG, PNG, WebP, or GIF image.", 400);
       }
 
-      const safeBase =
-        originalName
-          .slice(0, dot >= 0 ? dot : originalName.length)
-          .replace(/[^a-zA-Z0-9_-]+/g, "-")
-          .replace(/^-+|-+$/g, "")
-          .slice(0, 60) || "avatar";
-      const uniqueName =
-        user.userId + "-" + Date.now() + "-" + crypto.randomUUID().slice(0, 8) + "-" + safeBase + extension;
+      // On Vercel, upload the avatar through the Blob SDK and use the exact
+      // canonical public URL returned by Blob. This avoids deriving a display
+      // URL from a signed PUT URL.
+      if (process.env.VERCEL) {
+        try {
+          const extension = nodePath.extname(originalName).toLowerCase() || ".jpg";
+          const safeBase =
+            originalName
+              .slice(0, Math.max(0, originalName.length - extension.length))
+              .replace(/[^a-zA-Z0-9_-]+/g, "-")
+              .replace(/^-+|-+$/g, "")
+              .slice(0, 80) || "avatar";
+          const pathname = `avatars/${user.userId}/${Date.now()}-${crypto.randomUUID().slice(
+            0,
+            8,
+          )}-${safeBase}${extension}`;
+
+          const blob = await put(pathname, req.body, {
+            access: "public",
+            contentType,
+            addRandomSuffix: false,
+          });
+
+          const updated = lmsDB.updateUserProfile(user.userId, { avatarUrl: blob.url });
+          if (!updated) return errorResponse("User not found.", 404);
+
+          return jsonResponse({
+            avatarUrl: blob.url,
+            fileName: originalName,
+            size: blob.size ?? declaredSize ?? 0,
+          });
+        } catch (err) {
+          console.warn("Failed to upload profile picture to Vercel Blob:", err);
+          return errorResponse(
+            err instanceof Error ? err.message : "Failed to save profile picture.",
+            500,
+          );
+        }
+      }
 
       const uploadDir = nodePath.resolve(process.cwd(), "public", "uploads", "avatars");
       fs.mkdirSync(uploadDir, { recursive: true });
+      const uniqueName =
+        user.userId +
+        "-" +
+        Date.now() +
+        "-" +
+        crypto.randomUUID().slice(0, 8) +
+        "-" +
+        nodePath
+          .basename(originalName)
+          .replace(/[^a-zA-Z0-9._-]+/g, "-");
+
       const filePath = nodePath.join(uploadDir, uniqueName);
 
       try {
