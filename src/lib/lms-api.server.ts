@@ -176,6 +176,84 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
       }
     }
 
+    // AUTH: POST /api/lms/upload-avatar
+    if (path === "upload-avatar" && method === "POST") {
+      if (!user.userId) return errorResponse("Unauthorized", 401);
+      const MAX_AVATAR_SIZE = 5 * 1024 * 1024;
+      const declaredSize = Number(
+        req.headers.get("x-file-size") || req.headers.get("content-length") || 0,
+      );
+      if (declaredSize > MAX_AVATAR_SIZE) {
+        return errorResponse("Profile picture is too large. Maximum file size is 5 MB.", 413);
+      }
+      if (!req.body) return errorResponse("Profile picture is required.", 400);
+
+      let originalName = "avatar";
+      const encodedName = req.headers.get("x-file-name");
+      if (encodedName) {
+        try {
+          originalName = decodeURIComponent(encodedName);
+        } catch {
+          originalName = encodedName;
+        }
+      }
+
+      const allowedExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
+      const dot = originalName.lastIndexOf(".");
+      const extension = dot >= 0 ? originalName.slice(dot).toLowerCase() : "";
+      if (!allowedExtensions.has(extension)) {
+        return errorResponse("Unsupported image format. Use JPG, JPEG, PNG, WebP, or GIF.", 400);
+      }
+
+      const safeBase =
+        originalName
+          .slice(0, dot >= 0 ? dot : originalName.length)
+          .replace(/[^a-zA-Z0-9_-]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 60) || "avatar";
+      const uniqueName =
+        user.userId + "-" + Date.now() + "-" + crypto.randomUUID().slice(0, 8) + "-" + safeBase + extension;
+
+      const uploadDir = nodePath.resolve(process.cwd(), "public", "uploads", "avatars");
+      fs.mkdirSync(uploadDir, { recursive: true });
+      const filePath = nodePath.join(uploadDir, uniqueName);
+
+      try {
+        const writeStream = fs.createWriteStream(filePath);
+        await pipeline(Readable.fromWeb(req.body as ReadableStream<Uint8Array>), writeStream);
+        const writtenStat = await fs.promises.stat(filePath);
+        if (declaredSize > 0 && writtenStat.size === 0) {
+          await fs.promises.rm(filePath, { force: true }).catch(() => {});
+          return errorResponse("Profile picture upload failed: 0 bytes written to disk.", 500);
+        }
+      } catch (err) {
+        await fs.promises.rm(filePath, { force: true }).catch(() => {});
+        if (req.signal?.aborted) {
+          return errorResponse("Profile picture upload was cancelled before completion.", 499);
+        }
+        throw err;
+      }
+
+      const publicAvatarUrl = "/uploads/avatars/" + uniqueName;
+      try {
+        const updated = lmsDB.updateUserProfile(user.userId, { avatarUrl: publicAvatarUrl });
+        if (!updated) {
+          await fs.promises.rm(filePath, { force: true }).catch(() => {});
+          return errorResponse("User not found.", 404);
+        }
+      } catch (dbErr) {
+        await fs.promises.rm(filePath, { force: true }).catch(() => {});
+        console.warn("Failed to save profile picture:", dbErr);
+        return errorResponse("Failed to save profile picture.", 500);
+      }
+
+      return jsonResponse({
+        avatarUrl: publicAvatarUrl,
+        fileName: originalName,
+        size: declaredSize || 0,
+      });
+    }
+
     // AUTH: POST /api/lms/auth/logout
     if (path === "auth/logout" && method === "POST") {
       const token = (req.headers.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
