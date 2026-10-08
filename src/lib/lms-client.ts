@@ -1,5 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
-import { getLocalSession } from "@/lib/local-db";
+import { getLocalSession, syncLocalSessionProfile } from "@/lib/local-db";
 
 async function getAuthHeaders(): Promise<HeadersInit> {
   const headers: Record<string, string> = {
@@ -400,7 +400,7 @@ export const lmsClient = {
         throw new Error("Avatar upload completed without a public image URL.");
       }
 
-      updateLocalSessionProfile({ avatarUrl });
+      syncLocalSessionProfile({ avatarUrl });
       return data as { avatarUrl: string; fileName: string; size: number };
     } catch (error) {
       if (!(error instanceof Error) || error.message !== "LOCAL_STORAGE_FALLBACK") throw error;
@@ -424,7 +424,7 @@ export const lmsClient = {
         );
       }
 
-      updateLocalSessionProfile({ avatarUrl: String(data?.avatarUrl || "") });
+      syncLocalSessionProfile({ avatarUrl: String(data?.avatarUrl || "") });
       return data as { avatarUrl: string; fileName: string; size: number };
     }
   },
