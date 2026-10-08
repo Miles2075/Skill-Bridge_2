@@ -40,6 +40,7 @@ import { ProfileEditor } from "@/components/ProfileEditor";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { lmsClient } from "@/lib/lms-client";
+import { getCourseThumbnail } from "@/lib/course-media";
 import {
   type AssignmentSubmission,
   type EnrolledStudent,
@@ -1194,11 +1195,12 @@ function TeachDashboardPage() {
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <img
-                      src={row.thumbnail || "/course-typescript.jpg"}
+                      src={getCourseThumbnail(row.slug, row.thumbnail)}
                       alt={row.title}
                       className="h-16 w-28 shrink-0 rounded-lg border border-slate-200 object-cover bg-slate-100"
                       onError={(e) => {
-                        e.currentTarget.src = "/course-typescript.jpg";
+                        const fallback = getCourseThumbnail(row.slug);
+                        if (e.currentTarget.src !== fallback) e.currentTarget.src = fallback;
                       }}
                     />
                     <div>
