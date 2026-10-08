@@ -1611,18 +1611,15 @@ class DatabaseManager {
           studentId: e.student_id,
           studentName: e.student_name,
           studentEmail: e.student_email,
-          // Use the app-origin avatar endpoint for roster images. It proxies the
-          // durable Blob object and also supports legacy local avatar files.
+          // Store and return the canonical public Blob URL so instructors
+          // can render the same profile picture as the student.
           avatarUrl: (() => {
             const student = db.users.find((u) => u.id === e.student_id);
-            const avatar =
+            return (
               student?.user_metadata?.avatar_blob_url ||
-              student?.user_metadata?.avatar_url;
-            return avatar
-              ? `/api/lms/avatar?userId=${encodeURIComponent(e.student_id)}&v=${encodeURIComponent(
-                  student.updated_at,
-                )}`
-              : null;
+              student?.user_metadata?.avatar_url ||
+              null
+            );
           })(),
           courseId: course.id,
           courseSlug: course.slug,
