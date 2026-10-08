@@ -240,13 +240,13 @@ async function handleLmsApiRequestInternal(req: Request): Promise<Response | nul
           });
 
           const updated = lmsDB.updateUserProfile(user.userId, {
-            avatarUrl: `/api/lms/avatar?userId=${encodeURIComponent(user.userId)}`,
+            avatarUrl: `/api/lms/avatar?userId=${encodeURIComponent(user.userId)}&v=${Date.now()}`,
             avatarBlobUrl: blob.url,
           });
           if (!updated) return errorResponse("User not found.", 404);
 
           return jsonResponse({
-            avatarUrl: `/api/lms/avatar?userId=${encodeURIComponent(user.userId)}`,
+            avatarUrl: `/api/lms/avatar?userId=${encodeURIComponent(user.userId)}&v=${Date.now()}`,
             fileName: originalName,
             size: blob.size ?? declaredSize ?? 0,
           });
