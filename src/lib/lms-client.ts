@@ -43,6 +43,50 @@ async function getAuthHeaders(): Promise<HeadersInit> {
   return headers;
 }
 
+async function uploadToVercelBlob(
+  kind: "video" | "thumbnail" | "avatar",
+  file: File,
+  courseId?: string,
+  lessonId?: string,
+): Promise<{ publicUrl: string }> {
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch("/api/lms/create-upload-url", {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({
+      kind,
+      courseId,
+      lessonId,
+      fileName: file.name,
+      contentType: file.type,
+      size: file.size,
+    }),
+  });
+
+  if (response.status === 503) {
+    throw new Error("LOCAL_STORAGE_FALLBACK");
+  }
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data.uploadUrl || !data.publicUrl) {
+    throw new Error(data?.error || `Unable to prepare ${kind} upload (HTTP ${response.status})`);
+  }
+
+  const putResponse = await fetch(data.uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type || "application/octet-stream",
+    },
+    body: file,
+  });
+
+  if (!putResponse.ok) {
+    throw new Error(`${kind} upload to cloud storage failed (HTTP ${putResponse.status})`);
+  }
+
+  return { publicUrl: data.publicUrl };
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const authHeaders = await getAuthHeaders();
   const res = await fetch(`/api/lms/${endpoint}`, {
@@ -328,23 +372,34 @@ export const lmsClient = {
   },
 
   async uploadAvatar(file: File): Promise<{ avatarUrl: string; fileName: string; size: number }> {
-    const authHeaders = await getAuthHeaders();
-    const response = await fetch("/api/lms/upload-avatar", {
-      method: "POST",
-      headers: {
-        ...authHeaders,
-        "Content-Type": file.type || "application/octet-stream",
-        "X-File-Name": encodeURIComponent(file.name),
-        "X-File-Size": String(file.size),
-      },
-      body: file,
-    });
+    try {
+      const uploaded = await uploadToVercelBlob("avatar", file);
+      await request("profile", {
+        method: "PATCH",
+        body: JSON.stringify({ avatarUrl: uploaded.publicUrl }),
+      });
+      return { avatarUrl: uploaded.publicUrl, fileName: file.name, size: file.size };
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== "LOCAL_STORAGE_FALLBACK") throw error;
 
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data?.error || data?.message || `Avatar upload failed (HTTP ${response.status})`);
+      const authHeaders = await getAuthHeaders();
+      const response = await fetch("/api/lms/upload-avatar", {
+        method: "POST",
+        headers: {
+          ...authHeaders,
+          "Content-Type": file.type || "application/octet-stream",
+          "X-File-Name": encodeURIComponent(file.name),
+          "X-File-Size": String(file.size),
+        },
+        body: file,
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || data?.message || `Avatar upload failed (HTTP ${response.status})`);
+      }
+      return data as { avatarUrl: string; fileName: string; size: number };
     }
-    return data as { avatarUrl: string; fileName: string; size: number };
   },
 
   // COURSE MANAGEMENT
@@ -375,35 +430,38 @@ export const lmsClient = {
     file: File,
     lessonId?: string,
   ): Promise<{ videoUrl: string; fileName: string; size: number }> {
-    const authHeaders = await getAuthHeaders();
-    const headers: Record<string, string> = {
-      ...authHeaders,
-      "Content-Type": file.type || "application/octet-stream",
-      "X-File-Name": encodeURIComponent(file.name),
-      "X-File-Size": String(file.size),
-    };
+    try {
+      const uploaded = await uploadToVercelBlob("video", file, courseId, lessonId);
+      return { videoUrl: uploaded.publicUrl, fileName: file.name, size: file.size };
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== "LOCAL_STORAGE_FALLBACK") throw error;
 
-    const query = new URLSearchParams({ courseId });
-    if (lessonId) query.set("lessonId", lessonId);
+      const authHeaders = await getAuthHeaders();
+      const headers: Record<string, string> = {
+        ...authHeaders,
+        "Content-Type": file.type || "application/octet-stream",
+        "X-File-Name": encodeURIComponent(file.name),
+        "X-File-Size": String(file.size),
+      };
+      const query = new URLSearchParams({ courseId });
+      if (lessonId) query.set("lessonId", lessonId);
 
-    const res = await fetch(`/api/lms/upload-video?${query.toString()}`, {
-      method: "POST",
-      headers,
-      body: file,
-    });
+      const res = await fetch(`/api/lms/upload-video?${query.toString()}`, {
+        method: "POST",
+        headers,
+        body: file,
+      });
 
-    if (!res.ok) {
-      let errMsg = `Upload failed: ${res.status} ${res.statusText}`;
-      try {
-        const body = await res.json();
-        if (body.error) errMsg = body.error;
-      } catch {
-        // ignore
+      if (!res.ok) {
+        let errMsg = `Upload failed: ${res.status} ${res.statusText}`;
+        try {
+          const body = await res.json();
+          if (body.error) errMsg = body.error;
+        } catch {}
+        throw new Error(errMsg);
       }
-      throw new Error(errMsg);
+      return res.json();
     }
-
-    return res.json();
   },
 
   // COURSE THUMBNAIL UPLOAD
@@ -411,33 +469,40 @@ export const lmsClient = {
     courseId: string,
     file: File,
   ): Promise<{ thumbnailUrl: string; fileName: string; size: number }> {
-    const authHeaders = await getAuthHeaders();
-    const headers: Record<string, string> = {
-      ...authHeaders,
-      "Content-Type": file.type || "application/octet-stream",
-      "X-File-Name": encodeURIComponent(file.name),
-      "X-File-Size": String(file.size),
-    };
+    try {
+      const uploaded = await uploadToVercelBlob("thumbnail", file, courseId);
+      await request("course", {
+        method: "PUT",
+        body: JSON.stringify({ id: courseId, thumbnail: uploaded.publicUrl }),
+      });
+      return { thumbnailUrl: uploaded.publicUrl, fileName: file.name, size: file.size };
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== "LOCAL_STORAGE_FALLBACK") throw error;
 
-    const query = new URLSearchParams({ courseId });
-    const res = await fetch(`/api/lms/upload-thumbnail?${query.toString()}`, {
-      method: "POST",
-      headers,
-      body: file,
-    });
+      const authHeaders = await getAuthHeaders();
+      const headers: Record<string, string> = {
+        ...authHeaders,
+        "Content-Type": file.type || "application/octet-stream",
+        "X-File-Name": encodeURIComponent(file.name),
+        "X-File-Size": String(file.size),
+      };
+      const query = new URLSearchParams({ courseId });
+      const res = await fetch(`/api/lms/upload-thumbnail?${query.toString()}`, {
+        method: "POST",
+        headers,
+        body: file,
+      });
 
-    if (!res.ok) {
-      let errMsg = `Thumbnail upload failed: ${res.status} ${res.statusText}`;
-      try {
-        const body = await res.json();
-        if (body.error) errMsg = body.error;
-      } catch {
-        // ignore
+      if (!res.ok) {
+        let errMsg = `Thumbnail upload failed: ${res.status} ${res.statusText}`;
+        try {
+          const body = await res.json();
+          if (body.error) errMsg = body.error;
+        } catch {}
+        throw new Error(errMsg);
       }
-      throw new Error(errMsg);
+      return res.json();
     }
-
-    return res.json();
   },
 
   // LESSON MANAGEMENT
