@@ -2002,8 +2002,25 @@ class DatabaseManager {
       if (params.avatarUrl !== null && params.avatarUrl.length > 2_000_000) {
         throw new Error("Profile picture is too large. Please choose a smaller image.");
       }
-      if (params.avatarUrl === null) delete user.user_metadata.avatar_url;
-      else user.user_metadata.avatar_url = params.avatarUrl;
+
+      if (params.avatarUrl === null) {
+        delete user.user_metadata.avatar_url;
+        delete user.user_metadata.avatar_blob_url;
+      } else {
+        user.user_metadata.avatar_url = params.avatarUrl;
+
+        // Direct Vercel Blob uploads currently send the canonical public Blob
+        // URL through the normal profile update endpoint. Keep a dedicated
+        // copy as well so server-side avatar delivery remains stable even if
+        // the frontend URL format changes later.
+        if (
+          /^https:\/\/[a-zA-Z0-9-]+\.public\.blob\.vercel-storage\.com\//.test(
+            params.avatarUrl,
+          )
+        ) {
+          user.user_metadata.avatar_blob_url = params.avatarUrl;
+        }
+      }
     }
 
     if (params.avatarBlobUrl !== undefined) {
