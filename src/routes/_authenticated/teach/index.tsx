@@ -74,6 +74,7 @@ type CourseRow = {
   slug: string;
   title: string;
   teacher_id: string | null;
+  thumbnail?: string;
   price_inr: number;
   preview_minutes: number;
   video_url: string;
@@ -408,6 +409,26 @@ function TeachDashboardPage() {
   // Handlers
   const updateRow = (id: string, patch: Partial<CourseRow>) => {
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  };
+
+  const handleUploadRowThumbnail = async (row: CourseRow, file: File) => {
+    setUploadingRowId(row.id);
+    setMsg(null);
+    try {
+      setUploadProgressText(`Uploading thumbnail: ${file.name}…`);
+      const uploaded = await lmsClient.uploadThumbnail(row.id, file);
+      updateRow(row.id, { thumbnail: uploaded.thumbnailUrl });
+      setMsg({ text: `Thumbnail updated for "${row.title}"!` });
+      window.dispatchEvent(new CustomEvent("lms_data_updated"));
+    } catch (err: unknown) {
+      setMsg({
+        text: err instanceof Error ? err.message : "Failed to upload course thumbnail",
+        isError: true,
+      });
+    } finally {
+      setUploadingRowId(null);
+      setUploadProgressText(null);
+    }
   };
 
   const handleUploadRowVideos = async (row: CourseRow, files: FileList | File[] | File) => {
@@ -1171,7 +1192,16 @@ function TeachDashboardPage() {
                 className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <img
+                      src={row.thumbnail || "/course-typescript.jpg"}
+                      alt={row.title}
+                      className="h-16 w-28 shrink-0 rounded-lg border border-slate-200 object-cover bg-slate-100"
+                      onError={(e) => {
+                        e.currentTarget.src = "/course-typescript.jpg";
+                      }}
+                    />
+                    <div>
                     <div className="flex items-center gap-2 text-xs">
                       <span className="font-bold text-teal-700 uppercase font-mono">
                         {row.slug}
@@ -1188,7 +1218,34 @@ function TeachDashboardPage() {
                       </span>
                     </div>
                     <h3 className="text-base font-bold text-slate-900 mt-1">{row.title}</h3>
+                    </div>
                   </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <label className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-bold text-teal-700 hover:bg-teal-100 cursor-pointer">
+                      {uploadingRowId === row.id ? (
+                        <>
+                          <Loader2 className="size-3 animate-spin" />
+                          <span>Uploading…</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="size-3.5" />
+                          <span>Change Thumbnail</span>
+                        </>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        className="hidden"
+                        disabled={uploadingRowId === row.id}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) void handleUploadRowThumbnail(row, file);
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
 
                   <Button
                     size="sm"
@@ -1197,7 +1254,7 @@ function TeachDashboardPage() {
                   >
                     <Save className="size-3.5" /> Save Changes
                   </Button>
-                </div>
+                  </div>
 
                 <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-4 text-xs">
                   <div>
