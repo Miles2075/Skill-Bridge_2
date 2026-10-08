@@ -52,6 +52,7 @@ export interface EnrolledStudent {
   studentId: string;
   studentName: string;
   studentEmail: string;
+  avatarUrl?: string | null;
   courseSlug: string;
   courseTitle: string;
   enrolledAt: string;
