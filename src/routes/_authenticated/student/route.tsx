@@ -83,6 +83,10 @@ function StudentRouteLayout() {
   const initials = (displayName[0] || "S").toUpperCase();
   const [avatarUrl, setAvatarUrl] = useState(user?.user_metadata?.avatar_url || "");
 
+  useEffect(() => {
+    setAvatarUrl(user?.user_metadata?.avatar_url || "");
+  }, [user?.user_metadata?.avatar_url]);
+
   const [activeView, setActiveView] = useState<StudentNavView>("dashboard");
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -98,7 +102,8 @@ function StudentRouteLayout() {
 
       const syncAvatar = () => {
         const session = getLocalSession();
-        setAvatarUrl(session?.user_metadata?.avatar_url || "");
+        const nextAvatar = session?.user_metadata?.avatar_url || "";
+        setAvatarUrl(nextAvatar);
       };
       window.addEventListener("local_auth_changed", syncAvatar);
       return () => window.removeEventListener("local_auth_changed", syncAvatar);
