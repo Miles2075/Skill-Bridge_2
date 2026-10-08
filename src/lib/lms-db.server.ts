@@ -1135,6 +1135,11 @@ class DatabaseManager {
     return newLesson;
   }
 
+  getLesson(lessonId: string): CourseLesson | null {
+    const db = this.read();
+    return db.lessons.find((lesson) => lesson.id === lessonId) || null;
+  }
+
   updateLesson(lessonId: string, patch: Partial<CourseLesson>): CourseLesson | null {
     const db = this.read();
     const idx = db.lessons.findIndex((l) => l.id === lessonId);
