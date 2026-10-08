@@ -106,6 +106,26 @@ async function handleLmsApiRequestInternal(req: Request): Promise<Response | nul
   const method = req.method.toUpperCase();
   const user = parseUserContext(req);
 
+  // Keep externally authenticated users (for example Supabase users) in the
+  // LMS database as well. Their auth UUID may not exist in the LMS snapshot
+  // yet, which otherwise makes profile/avatar updates return "User not found".
+  if (user.userId && user.email) {
+    const syncedUser = lmsDB.ensureExternalUser({
+      id: user.userId,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    });
+    user.userId = syncedUser.id;
+    user.email = syncedUser.email;
+    user.name = String(
+      syncedUser.user_metadata?.display_name || syncedUser.email.split("@")[0] || "Learner",
+    );
+    user.role = (syncedUser.user_metadata?.role || user.role) as "student" | "teacher" | "admin";
+    user.isAdmin = user.role === "admin";
+    user.isTeacher = user.role === "teacher" || user.isAdmin;
+  }
+
   try {
     // AUTH: POST /api/lms/auth/login
     if (path === "auth/login" && method === "POST") {
