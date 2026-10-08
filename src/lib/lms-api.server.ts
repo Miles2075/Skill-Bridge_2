@@ -525,8 +525,16 @@ async function handleLmsApiRequestInternal(req: Request): Promise<Response | nul
         validUntil: Date.now() + 15 * 60 * 1000,
       });
 
+      // A Vercel Blob signed PUT URL points at the actual Blob object.
+      // The query string is only the temporary write authorization, so the
+      // same URL without its query is the canonical public media URL.
+      const publicUrl = new URL(presignedUrl);
+      publicUrl.search = "";
+      publicUrl.hash = "";
+
       return jsonResponse({
         uploadUrl: presignedUrl,
+        publicUrl: publicUrl.toString(),
         pathname,
       });
     }
