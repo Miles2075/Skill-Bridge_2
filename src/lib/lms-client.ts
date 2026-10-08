@@ -379,15 +379,11 @@ export const lmsClient = {
         body: JSON.stringify({ avatarUrl: uploaded.publicUrl }),
       });
 
-      // Always expose avatars through the SkillBridge origin. This keeps the
-      // same stable delivery path for the profile page, student header, and
-      // instructor roster instead of depending on direct Blob CDN loading.
-      const localUser = getLocalSession();
-      const stableAvatarUrl = localUser
-        ? `/api/lms/avatar?userId=${encodeURIComponent(localUser.id)}&v=${Date.now()}`
-        : uploaded.publicUrl;
-
-      return { avatarUrl: stableAvatarUrl, fileName: file.name, size: file.size };
+      // Public Vercel Blob URLs are immutable and are the most reliable
+      // browser delivery path for the newly uploaded image. The instructor
+      // roster can still use the app-origin avatar endpoint, which redirects
+      // to this same canonical Blob object.
+      return { avatarUrl: uploaded.publicUrl, fileName: file.name, size: file.size };
     } catch (error) {
       if (!(error instanceof Error) || error.message !== "LOCAL_STORAGE_FALLBACK") throw error;
 
