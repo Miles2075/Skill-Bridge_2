@@ -353,23 +353,11 @@ async function handleLmsApiRequestInternal(req: Request): Promise<Response | nul
         return errorResponse("Profile picture not found.", 404);
       }
 
-      try {
-        const imageResponse = await fetch(sourceUrl, { cache: "no-store" });
-        if (!imageResponse.ok || !imageResponse.body) {
-          return errorResponse("Profile picture could not be loaded.", 502);
-        }
-
-        return new Response(imageResponse.body, {
-          status: 200,
-          headers: {
-            "Content-Type": imageResponse.headers.get("content-type") || "image/jpeg",
-            "Cache-Control": "public, max-age=300, stale-while-revalidate=3600",
-          },
-        });
-      } catch (err) {
-        console.warn("Failed to proxy profile picture:", err);
-        return errorResponse("Profile picture could not be loaded.", 502);
-      }
+      // Public Vercel Blob objects already have globally reachable immutable
+      // URLs. Redirect the browser to the Blob URL instead of fetching the
+      // image through a serverless function; this avoids function/runtime
+      // fetch restrictions and keeps image delivery fast.
+      return Response.redirect(sourceUrl, 302);
     }
 
     // STORAGE: POST /api/lms/create-upload-url
