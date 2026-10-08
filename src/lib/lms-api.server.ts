@@ -239,11 +239,14 @@ async function handleLmsApiRequestInternal(req: Request): Promise<Response | nul
             addRandomSuffix: false,
           });
 
-          const updated = lmsDB.updateUserProfile(user.userId, { avatarUrl: blob.url });
+          const updated = lmsDB.updateUserProfile(user.userId, {
+            avatarUrl: `/api/lms/avatar?userId=${encodeURIComponent(user.userId)}`,
+            avatarBlobUrl: blob.url,
+          });
           if (!updated) return errorResponse("User not found.", 404);
 
           return jsonResponse({
-            avatarUrl: blob.url,
+            avatarUrl: `/api/lms/avatar?userId=${encodeURIComponent(user.userId)}`,
             fileName: originalName,
             size: blob.size ?? declaredSize ?? 0,
           });
@@ -305,6 +308,48 @@ async function handleLmsApiRequestInternal(req: Request): Promise<Response | nul
         fileName: originalName,
         size: declaredSize || 0,
       });
+    }
+
+    // MEDIA: GET /api/lms/avatar?userId=...
+    // Serve stored public Blob avatars through the app origin as a fallback for
+    // browsers/privacy tools that block cross-origin Blob CDN URLs.
+    if (path === "avatar" && method === "GET") {
+      const targetUserId = new URL(req.url).searchParams.get("userId") || user.userId;
+      const db = lmsDB.getUserById(targetUserId);
+      if (!db) return errorResponse("User not found.", 404);
+
+      const blobUrl = db.user_metadata?.avatar_blob_url as string | undefined;
+      const legacyUrl = db.user_metadata?.avatar_url as string | undefined;
+      const sourceUrl =
+        blobUrl ||
+        (legacyUrl && /^https:\/\/(.+)\.public\.blob\.vercel-storage\.com\//.test(legacyUrl)
+          ? legacyUrl
+          : "");
+
+      if (!sourceUrl) {
+        if (legacyUrl?.startsWith("/uploads/")) {
+          return Response.redirect(new URL(legacyUrl, req.url).toString(), 302);
+        }
+        return errorResponse("Profile picture not found.", 404);
+      }
+
+      try {
+        const imageResponse = await fetch(sourceUrl, { cache: "no-store" });
+        if (!imageResponse.ok || !imageResponse.body) {
+          return errorResponse("Profile picture could not be loaded.", 502);
+        }
+
+        return new Response(imageResponse.body, {
+          status: 200,
+          headers: {
+            "Content-Type": imageResponse.headers.get("content-type") || "image/jpeg",
+            "Cache-Control": "public, max-age=300, stale-while-revalidate=3600",
+          },
+        });
+      } catch (err) {
+        console.warn("Failed to proxy profile picture:", err);
+        return errorResponse("Profile picture could not be loaded.", 502);
+      }
     }
 
     // STORAGE: POST /api/lms/create-upload-url
