@@ -299,10 +299,7 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
         : body.video_url
           ? [body.video_url]
           : [];
-      const primaryVideoUrl =
-        body.video_url ||
-        videoUrls[0] ||
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+      const primaryVideoUrl = body.video_url || videoUrls[0] || "";
 
       const created = lmsDB.createCourse({
         title: body.title,
@@ -315,7 +312,7 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
         price_inr: Number(body.price_inr) || 999,
         preview_minutes: Number(body.preview_minutes) || 3,
         video_url: primaryVideoUrl,
-        video_urls: videoUrls.length > 0 ? videoUrls : [primaryVideoUrl],
+        video_urls: videoUrls,
         hours: Number(body.hours) || 10,
         level: body.level || "Intermediate",
         category: body.category || "Development",
