@@ -300,15 +300,20 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
           ? [body.video_url]
           : [];
       const primaryVideoUrl = body.video_url || videoUrls[0] || "";
+      // Course creation is an explicit publish action unless the instructor
+      // deliberately selected Draft/Review. Never let an empty/invalid status
+      // silently create a non-published course.
+      const courseStatus =
+        body.status === "draft" || body.status === "review" ? body.status : "published";
 
       const created = lmsDB.createCourse({
         title: body.title,
-        slug: body.slug,
+        slug: String(body.slug).trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, ""),
         description: body.description || "",
         instructor: body.instructor || user.name || "Lead Instructor",
         teacher_id: user.userId,
         thumbnail: body.thumbnail || "/course-typescript.jpg",
-        status: body.status || "published",
+        status: courseStatus,
         price_inr: Number(body.price_inr) || 999,
         preview_minutes: Number(body.preview_minutes) || 3,
         video_url: primaryVideoUrl,
