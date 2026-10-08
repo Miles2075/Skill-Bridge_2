@@ -652,10 +652,10 @@ function useCommerceState(
 }
 
 function PriceTag({ course }: { course: Course }) {
-  const { meta, owned } = useCommerce();
+  const { meta, owned, isTeacher } = useCommerce();
   const m = meta[course.slug];
   if (!m) return null;
-  if (owned.has(m.id))
+  if (owned.has(m.id) || isTeacher)
     return (
       <span className="rounded bg-teal/15 px-2 py-0.5 text-[11px] font-bold text-teal">
         Purchased
@@ -1012,9 +1012,9 @@ function CourseCard({
   openPlayer: (course: Course) => void;
   compact?: boolean;
 }) {
-  const { meta, owned, buy, buying } = useCommerce();
+  const { meta, owned, buy, buying, isTeacher } = useCommerce();
   const m = meta[course.slug];
-  const isOwned = !!m && owned.has(m.id);
+  const isOwned = isTeacher || (!!m && owned.has(m.id));
   return (
     <article className="group flex flex-col overflow-hidden rounded-lg border border-border bg-card transition-shadow hover:shadow-md">
       <button
@@ -2129,7 +2129,7 @@ function PlayerModal({
             </div>
 
             {currentLecture ? (
-              isOwned || isCompleted ? (
+              isOwned || isCompleted || isTeacher ? (
                 <Button variant="chrome" size="sm" onClick={markComplete} className="gap-1.5">
                   <Check className="size-4" /> Mark as Complete
                 </Button>
@@ -2205,7 +2205,7 @@ function PlayerModal({
                   <button
                     key={l.id || l.title}
                     onClick={() => {
-                      if (isOwned || isCompleted || index === 0 || previewMin > 0) {
+                      if (isOwned || isCompleted || isTeacher || index === 0 || previewMin > 0) {
                         setActive(index);
                         setLocked(false);
                       }
@@ -2226,7 +2226,7 @@ function PlayerModal({
                       {l.completed && <Check className="size-3" />}
                     </span>
                     <span className="min-w-0 flex-1 truncate">{l.title}</span>
-                    {!isOwned && !isCompleted && index > 0 && previewMin === 0 ? (
+                    {!isOwned && !isCompleted && !isTeacher && index > 0 && previewMin === 0 ? (
                       <Lock className="size-3 text-muted-foreground" />
                     ) : (
                       <span className="text-[11px] text-muted-foreground">{l.length}</span>
