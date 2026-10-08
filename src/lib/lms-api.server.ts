@@ -266,7 +266,11 @@ async function handleLmsApiRequestInternal(req: Request): Promise<Response | nul
           if (!updated) return errorResponse("User not found.", 404);
 
           return jsonResponse({
-            avatarUrl: `/api/lms/avatar?userId=${encodeURIComponent(user.userId)}&v=${Date.now()}`,
+            // Return the canonical public Blob URL to the browser. The app
+            // proxy remains available as a compatibility fallback, but the
+            // client should render the actual public media URL.
+            avatarUrl: blob.url,
+            avatarProxyUrl: `/api/lms/avatar?userId=${encodeURIComponent(user.userId)}&v=${Date.now()}`,
             fileName: originalName,
             size: blob.size ?? declaredSize ?? 0,
           });
