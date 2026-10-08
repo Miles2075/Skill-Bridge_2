@@ -3,7 +3,7 @@ import { Loader2, Save, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { lmsClient } from "@/lib/lms-client";
-import { getLocalSession, updateLocalSessionProfile, type LocalUser } from "@/lib/local-db";
+import { updateLocalSessionProfile, type LocalUser } from "@/lib/local-db";
 
 export function ProfileEditor({
   user,
@@ -15,14 +15,7 @@ export function ProfileEditor({
   roleLabel: string;
 }) {
   const [name, setName] = useState(user.user_metadata?.display_name || "");
-  const initialAvatar = user.user_metadata?.avatar_url || "";
-  const [avatarUrl, setAvatarUrl] = useState(() => {
-    const localUser = getLocalSession();
-    if (localUser?.id && /^https:\/\/.+\.public\.blob\.vercel-storage\.com\//.test(initialAvatar)) {
-      return `/api/lms/avatar?userId=${encodeURIComponent(localUser.id)}&v=${Date.now()}`;
-    }
-    return initialAvatar;
-  });
+  const [avatarUrl, setAvatarUrl] = useState(user.user_metadata?.avatar_url || "");
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [message, setMessage] = useState("");
