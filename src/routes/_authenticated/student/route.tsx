@@ -252,7 +252,7 @@ function StudentRouteLayout() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/30 text-slate-900 flex flex-col font-sans">
       {/* Student Portal Header */}
       <header className="sticky top-0 z-40 border-b border-slate-200/90 bg-white/95 backdrop-blur-md shadow-2xs">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
@@ -324,7 +324,7 @@ function StudentRouteLayout() {
       {/* Main Container: Student Sidebar + Content */}
       <div className="mx-auto flex max-w-7xl flex-1 w-full">
         {/* Desktop Student Sidebar */}
-        <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white p-4">
+        <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-slate-200/80 bg-white/90 backdrop-blur-sm p-4">
           <div className="mb-3 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400">
             Student Menu
           </div>
@@ -445,7 +445,7 @@ function StudentRouteLayout() {
         )}
 
         {/* Content Viewport */}
-        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
+        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 xl:p-10">
           <Outlet />
         </main>
       </div>
