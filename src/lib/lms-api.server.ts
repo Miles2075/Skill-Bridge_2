@@ -477,6 +477,91 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
       });
     }
 
+    // POST /api/lms/upload-thumbnail
+    // The request body is the image file itself, not multipart/form-data.
+    if (path === "upload-thumbnail" && method === "POST") {
+      if (!user.isTeacher) return errorResponse("Forbidden: Instructor role required", 403);
+
+      const courseId = url.searchParams.get("courseId") || "";
+      if (!courseId) return errorResponse("Course id is required.");
+
+      const course = lmsDB.getCourse(courseId);
+      if (!course) return errorResponse("Course not found.", 404);
+      if (!user.isAdmin && course.teacher_id !== user.userId) {
+        return errorResponse("Forbidden: You can only upload thumbnails to your own courses", 403);
+      }
+
+      const MAX_THUMBNAIL_SIZE = 10 * 1024 * 1024;
+      const declaredSize = Number(
+        req.headers.get("x-file-size") || req.headers.get("content-length") || 0,
+      );
+      if (declaredSize > MAX_THUMBNAIL_SIZE) {
+        return errorResponse("Thumbnail is too large. Maximum file size is 10 MB.", 413);
+      }
+      if (!req.body) return errorResponse("Thumbnail image is required.", 400);
+
+      let originalName = "thumbnail";
+      const encodedName = req.headers.get("x-file-name");
+      if (encodedName) {
+        try {
+          originalName = decodeURIComponent(encodedName);
+        } catch {
+          originalName = encodedName;
+        }
+      }
+
+      const allowedExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif"]);
+      const dot = originalName.lastIndexOf(".");
+      const extension = dot >= 0 ? originalName.slice(dot).toLowerCase() : "";
+      if (!allowedExtensions.has(extension)) {
+        return errorResponse("Unsupported thumbnail format. Use JPG, JPEG, PNG, WebP, or GIF.", 400);
+      }
+
+      const safeBase =
+        originalName
+          .slice(0, dot >= 0 ? dot : originalName.length)
+          .replace(/[^a-zA-Z0-9_-]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 80) || "thumbnail";
+      const uniqueName =
+        course.id + "-" + Date.now() + "-" + crypto.randomUUID().slice(0, 8) + "-" + safeBase + extension;
+
+      const uploadDir = nodePath.resolve(process.cwd(), "public", "uploads", "thumbnails");
+      fs.mkdirSync(uploadDir, { recursive: true });
+      const filePath = nodePath.join(uploadDir, uniqueName);
+
+      try {
+        const writeStream = fs.createWriteStream(filePath);
+        await pipeline(Readable.fromWeb(req.body as ReadableStream<Uint8Array>), writeStream);
+        const writtenStat = await fs.promises.stat(filePath);
+        if (declaredSize > 0 && writtenStat.size === 0) {
+          await fs.promises.rm(filePath, { force: true }).catch(() => {});
+          return errorResponse("Thumbnail upload failed: 0 bytes written to disk.", 500);
+        }
+      } catch (err) {
+        await fs.promises.rm(filePath, { force: true }).catch(() => {});
+        if (req.signal?.aborted) {
+          return errorResponse("Thumbnail upload was cancelled before completion.", 499);
+        }
+        throw err;
+      }
+
+      const publicThumbnailUrl = "/uploads/thumbnails/" + uniqueName;
+      try {
+        lmsDB.updateCourse(course.id, { thumbnail: publicThumbnailUrl });
+      } catch (dbErr) {
+        await fs.promises.rm(filePath, { force: true }).catch(() => {});
+        console.warn("Failed to save course thumbnail:", dbErr);
+        return errorResponse("Failed to save course thumbnail.", 500);
+      }
+
+      return jsonResponse({
+        thumbnailUrl: publicThumbnailUrl,
+        fileName: originalName,
+        size: declaredSize,
+      });
+    }
+
     // POST /api/lms/lesson (Add lesson)
     if (path === "lesson" && method === "POST") {
       if (!user.isTeacher) return errorResponse("Forbidden", 403);
