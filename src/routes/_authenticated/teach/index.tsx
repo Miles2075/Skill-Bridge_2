@@ -342,20 +342,20 @@ function TeachDashboardPage() {
   const loadInstructorData = async () => {
     try {
       const data = await lmsClient.getInstructorData();
-      if (data.courses?.length > 0) {
-        setRows(
-          (data.courses as CourseRow[]).map((c) => ({
-            ...c,
-            video_urls:
-              c.video_urls && Array.isArray(c.video_urls) && c.video_urls.length > 0
-                ? c.video_urls
-                : c.video_url
-                  ? [c.video_url]
-                  : [],
-            video_url: c.video_url || (c.video_urls && c.video_urls[0]) || "",
-          })),
-        );
-      }
+      // Always replace the local list with the server list. The previous conditional
+      // left stale default rows on screen when the server returned an empty/new list.
+      setRows(
+        (data.courses || []).map((c) => ({
+          ...c,
+          video_urls:
+            c.video_urls && Array.isArray(c.video_urls) && c.video_urls.length > 0
+              ? c.video_urls
+              : c.video_url
+                ? [c.video_url]
+                : [],
+          video_url: c.video_url || (c.video_urls && c.video_urls[0]) || "",
+        })),
+      );
       setStudents(data.students as unknown as EnrolledStudent[]);
       setSubmissions(data.submissions as unknown as AssignmentSubmission[]);
       setQuizzes(data.quizzes as unknown as Quiz[]);
@@ -707,6 +707,10 @@ function TeachDashboardPage() {
       setMsg({
         text: `Course "${createdCourse.title}" successfully created with ${createdCourse.video_urls?.length || 1} video(s)!`,
       });
+      // Re-read the persisted server data before navigating to Course Portfolio.
+      // This guarantees the newly-created course is visible from the actual LMS database,
+      // rather than only from the temporary React state.
+      await loadInstructorData();
       window.dispatchEvent(new CustomEvent("lms_data_updated"));
       switchView("courses");
     } catch (err: unknown) {
