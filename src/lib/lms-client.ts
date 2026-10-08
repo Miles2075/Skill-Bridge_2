@@ -68,7 +68,7 @@ async function uploadToVercelBlob(
   }
 
   const data = await response.json().catch(() => ({}));
-  if (!response.ok || !data.uploadUrl || !data.pathname) {
+  if (!response.ok || !data.uploadUrl || !data.publicUrl || !data.pathname) {
     throw new Error(data?.error || `Unable to prepare ${kind} upload (HTTP ${response.status})`);
   }
 
@@ -84,26 +84,10 @@ async function uploadToVercelBlob(
     throw new Error(`${kind} upload to cloud storage failed (HTTP ${putResponse.status})`);
   }
 
-  // The PUT URL is write-only. Ask the server to resolve the uploaded pathname
-  // to the canonical public Blob URL and persist it in the LMS database.
-  const finalizeResponse = await fetch("/api/lms/finalize-upload", {
-    method: "POST",
-    headers: authHeaders,
-    body: JSON.stringify({
-      kind,
-      courseId,
-      lessonId,
-      pathname: data.pathname,
-    }),
-  });
-  const finalized = await finalizeResponse.json().catch(() => ({}));
-  if (!finalizeResponse.ok || !finalized.publicUrl) {
-    throw new Error(
-      finalized?.error || `Unable to finalize ${kind} upload (HTTP ${finalizeResponse.status})`,
-    );
-  }
-
-  return { publicUrl: String(finalized.publicUrl) };
+  // The signed PUT URL already identifies the exact Blob object. The server
+  // returns its canonical public URL separately, so no eventual-consistency
+  // HEAD/list request is needed after the upload completes.
+  return { publicUrl: String(data.publicUrl) };
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
