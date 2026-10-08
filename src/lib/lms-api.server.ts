@@ -3,7 +3,7 @@ import nodePath from "node:path";
 import fs from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { issueSignedToken, presignUrl, put } from "@vercel/blob";
+import { get, issueSignedToken, presignUrl, put } from "@vercel/blob";
 import { lmsDB } from "./lms-db.server";
 
 interface UserContext {
@@ -353,10 +353,27 @@ async function handleLmsApiRequestInternal(req: Request): Promise<Response | nul
         return errorResponse("Profile picture not found.", 404);
       }
 
-      // Public Vercel Blob objects already have globally reachable immutable
-      // URLs. Redirect the browser to the Blob URL instead of fetching the
-      // image through a serverless function; this avoids function/runtime
-      // fetch restrictions and keeps image delivery fast.
+      // Serve the Blob through the app origin first. This avoids browser/CDN
+      // blocking issues with the public Blob hostname while keeping the Blob
+      // itself as the durable source of truth.
+      try {
+        const blobPath = new URL(sourceUrl).pathname.replace(/^\\//, "");
+        const result = await get(blobPath, { access: "public" });
+        if (result?.stream) {
+          return new Response(result.stream, {
+            headers: {
+              "Content-Type": result.blob.contentType || "application/octet-stream",
+              "Cache-Control": "public, max-age=31536000, immutable",
+              ...(result.blob.size ? { "Content-Length": String(result.blob.size) } : {}),
+            },
+          });
+        }
+      } catch (blobErr) {
+        console.warn("Blob avatar proxy failed; falling back to redirect:", blobErr);
+      }
+
+      // If the SDK cannot read the object, keep the public Blob redirect as a
+      // final fallback.
       return Response.redirect(sourceUrl, 302);
     }
 
