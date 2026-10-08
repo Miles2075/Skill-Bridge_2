@@ -1613,7 +1613,10 @@ class DatabaseManager {
           studentEmail: e.student_email,
           avatarUrl: (() => {
             const student = db.users.find((u) => u.id === e.student_id);
-            return student?.user_metadata?.avatar_url
+            const avatar =
+              student?.user_metadata?.avatar_blob_url ||
+              student?.user_metadata?.avatar_url;
+            return avatar
               ? `/api/lms/avatar?userId=${encodeURIComponent(e.student_id)}&v=${encodeURIComponent(
                   student.updated_at,
                 )}`
