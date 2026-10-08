@@ -433,10 +433,21 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
 
       const lessonId = url.searchParams.get("lessonId");
       if (lessonId) {
+        const lesson = lmsDB.getLesson(lessonId);
+        if (!lesson) {
+          await fs.promises.rm(filePath, { force: true }).catch(() => {});
+          return errorResponse("Lesson not found.", 404);
+        }
+        if (lesson.course_id !== course.id) {
+          await fs.promises.rm(filePath, { force: true }).catch(() => {});
+          return errorResponse("Lesson does not belong to this course.", 403);
+        }
         try {
           lmsDB.updateLesson(lessonId, { video_url: publicVideoUrl });
         } catch (lErr) {
+          await fs.promises.rm(filePath, { force: true }).catch(() => {});
           console.warn("Failed to auto-update lesson video_url during upload:", lErr);
+          return errorResponse("Failed to save lesson video.", 500);
         }
       } else {
         // Automatically append to course's video_urls and update video_url
