@@ -3,7 +3,7 @@ import nodePath from "node:path";
 import fs from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { issueSignedToken, list, presignUrl, put } from "@vercel/blob";
+import { head, issueSignedToken, presignUrl, put } from "@vercel/blob";
 import { lmsDB } from "./lms-db.server";
 
 interface UserContext {
@@ -400,9 +400,12 @@ async function handleLmsApiRequestInternal(req: Request): Promise<Response | nul
       }
 
       try {
-        const result = await list({ prefix: pathname, limit: 10 });
-        const blob = result.blobs.find((item) => item.pathname === pathname);
-        if (!blob) return errorResponse("Upload has not finished yet. Please try again.", 409);
+        // HEAD the exact pathname instead of listing the store. A direct PUT
+        // can complete before the blob appears in a list response, while HEAD
+        // resolves the just-uploaded object directly and returns its canonical
+        // public URL.
+        const blob = await head(pathname);
+        if (!blob?.url) return errorResponse("Uploaded blob could not be resolved.", 409);
 
         if (kind === "thumbnail") {
           lmsDB.updateCourse(course.id, { thumbnail: blob.url });
