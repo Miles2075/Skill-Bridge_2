@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
+import { neon } from "@neondatabase/serverless";
 
 export interface Course {
   id: string;
@@ -841,6 +842,78 @@ const INITIAL_LESSON_PROGRESS: LessonProgress[] = [
 
 class DatabaseManager {
   private db: LMSDatabase | null = null;
+  private readonly remoteSql = process.env.DATABASE_URL ? neon(process.env.DATABASE_URL) : null;
+  private readyPromise: Promise<void> | null = null;
+  private dirty = false;
+
+  async ready(): Promise<void> {
+    if (!this.remoteSql) {
+      this.read();
+      return;
+    }
+    if (!this.readyPromise) this.readyPromise = this.loadRemote();
+    await this.readyPromise;
+  }
+
+  private async loadRemote(): Promise<void> {
+    const sql = this.remoteSql;
+    if (!sql) return;
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS skillbridge_lms_state (
+        id TEXT PRIMARY KEY,
+        data JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+
+    const rows = await sql`
+      SELECT data FROM skillbridge_lms_state
+      WHERE id = 'primary'
+      LIMIT 1
+    `;
+
+    if (rows.length > 0) {
+      this.db = rows[0].data as LMSDatabase;
+      this.ensureSchemaIntegrity(this.db);
+      this.dirty = false;
+      return;
+    }
+
+    this.db = {
+      courses: INITIAL_COURSES,
+      lessons: INITIAL_LESSONS,
+      enrollments: INITIAL_ENROLLMENTS,
+      lesson_progress: INITIAL_LESSON_PROGRESS,
+      assignments: INITIAL_ASSIGNMENTS,
+      submissions: [],
+      quizzes: INITIAL_QUIZZES,
+      quiz_attempts: [],
+      certificates: [],
+      users: INITIAL_USERS,
+      user_roles: INITIAL_USER_ROLES,
+      sessions: [],
+      purchases: [],
+      profiles: INITIAL_PROFILES,
+    };
+
+    await sql`
+      INSERT INTO skillbridge_lms_state (id, data)
+      VALUES ('primary', ${JSON.stringify(this.db)}::jsonb)
+    `;
+    this.dirty = false;
+  }
+
+  async flush(): Promise<void> {
+    if (!this.remoteSql || !this.db || !this.dirty) return;
+    await this.remoteSql`
+      UPDATE skillbridge_lms_state
+      SET data = ${JSON.stringify(this.db)}::jsonb,
+          updated_at = NOW()
+      WHERE id = 'primary'
+    `;
+    this.dirty = false;
+  }
 
   private ensureDirectory() {
     if (!fs.existsSync(DB_DIR)) {
@@ -925,6 +998,10 @@ class DatabaseManager {
 
   private write() {
     if (!this.db) return;
+    if (this.remoteSql) {
+      this.dirty = true;
+      return;
+    }
     this.ensureDirectory();
     const tempFile = `${DB_FILE}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 6)}`;
     fs.writeFileSync(tempFile, JSON.stringify(this.db, null, 2), "utf-8");
