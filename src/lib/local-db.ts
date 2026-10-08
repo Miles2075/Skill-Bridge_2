@@ -224,7 +224,7 @@ export function getLocalUserRole(user: LocalUser | null): LocalRole {
   return user?.user_metadata?.role ?? "student";
 }
 
-export function updateLocalSessionProfile(params: {
+export function syncLocalSessionProfile(params: {
   displayName?: string;
   avatarUrl?: string | null;
 }) {
