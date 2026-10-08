@@ -1898,20 +1898,6 @@ function PlayerModal({
               ? [res.course.video_url]
               : [];
 
-      if (mapped.length === 0 && cVideoUrls.length > 0) {
-        mapped = cVideoUrls.map((vUrl, i) => ({
-          id: `video_part_${i}`,
-          title:
-            cVideoUrls.length > 1
-              ? `Video ${i + 1}: ${res.course?.title || course.title}`
-              : res.course?.title || course.title,
-          length: "15:00",
-          video_url: vUrl,
-          description: res.course?.description || course.description || "",
-          completed: false,
-        }));
-      }
-
       setDbLessons(mapped);
       if (mapped.length > 0) {
         const firstIncomplete = mapped.findIndex((l) => !l.completed);
