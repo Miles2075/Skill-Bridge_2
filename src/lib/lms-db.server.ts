@@ -1881,6 +1881,103 @@ class DatabaseManager {
     return { user: newUser, session, roles: [role] };
   }
 
+  /**
+   * Make a user from an external auth provider available to the LMS database.
+   * Supabase-authenticated users can have a UUID that has never been inserted
+   * into our LMS users table, so profile/media operations must be able to
+   * provision that user before updating it.
+   */
+  ensureExternalUser(params: {
+    id: string;
+    email: string;
+    name?: string | null;
+    role?: "student" | "teacher" | "admin";
+  }): LocalUser {
+    const db = this.read();
+    const cleanEmail = params.email.trim().toLowerCase();
+    const displayName = params.name?.trim() || cleanEmail.split("@")[0] || "Learner";
+    const role = params.role || "student";
+
+    let user = db.users.find((candidate) => candidate.id === params.id);
+    if (!user && cleanEmail) {
+      user = db.users.find((candidate) => candidate.email.toLowerCase() === cleanEmail);
+    }
+
+    if (user) {
+      let changed = false;
+      if (user.email !== cleanEmail && cleanEmail) {
+        user.email = cleanEmail;
+        user.user_metadata.email = cleanEmail;
+        changed = true;
+      }
+      if (!user.user_metadata.display_name && displayName) {
+        user.user_metadata.display_name = displayName;
+        changed = true;
+      }
+      if (!user.user_metadata.role) {
+        user.user_metadata.role = role;
+        changed = true;
+      }
+      if (!db.user_roles.some((item) => item.user_id === user!.id)) {
+        db.user_roles.push({
+          id: crypto.randomUUID(),
+          user_id: user.id,
+          role: (user.user_metadata.role || role) as "student" | "teacher" | "admin",
+          created_at: new Date().toISOString(),
+        });
+        changed = true;
+      }
+      if (!db.profiles.some((item) => item.id === user!.id)) {
+        db.profiles.push({
+          id: user.id,
+          display_name: user.user_metadata.display_name || displayName,
+          email: user.email,
+          created_at: new Date().toISOString(),
+        });
+        changed = true;
+      }
+      if (changed) {
+        user.updated_at = new Date().toISOString();
+        this.write();
+      }
+      return user;
+    }
+
+    const salt = crypto.randomBytes(16).toString("hex");
+    user = {
+      id: params.id,
+      email: cleanEmail,
+      // External-auth users never use this password; it only satisfies the
+      // local user record shape so the same LMS tables can be reused.
+      password_hash: hashPassword(crypto.randomBytes(32).toString("hex"), salt),
+      salt,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      user_metadata: {
+        display_name: displayName,
+        role,
+        sub: params.id,
+        email: cleanEmail,
+      },
+    };
+
+    db.users.push(user);
+    db.user_roles.push({
+      id: crypto.randomUUID(),
+      user_id: user.id,
+      role,
+      created_at: new Date().toISOString(),
+    });
+    db.profiles.push({
+      id: user.id,
+      display_name: displayName,
+      email: cleanEmail,
+      created_at: new Date().toISOString(),
+    });
+    this.write();
+    return user;
+  }
+
   getUserById(userId: string): LocalUser | null {
     const db = this.read();
     return db.users.find((candidate) => candidate.id === userId) || null;
