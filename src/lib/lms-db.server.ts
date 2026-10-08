@@ -1611,7 +1611,9 @@ class DatabaseManager {
           studentId: e.student_id,
           studentName: e.student_name,
           studentEmail: e.student_email,
-          avatarUrl: db.users.find((u) => u.id === e.student_id)?.user_metadata?.avatar_url || null,
+          avatarUrl: db.users.find((u) => u.id === e.student_id)?.user_metadata?.avatar_url
+            ? `/api/lms/avatar?userId=${encodeURIComponent(e.student_id)}`
+            : null,
           courseId: course.id,
           courseSlug: course.slug,
           courseTitle: course.title,
