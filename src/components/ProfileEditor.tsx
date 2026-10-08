@@ -3,7 +3,7 @@ import { Loader2, Save, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { lmsClient } from "@/lib/lms-client";
-import { syncLocalSessionProfile, type LocalUser } from "@/lib/local-db";
+import { getLocalSession, type LocalUser } from "@/lib/local-db";
 
 export function ProfileEditor({
   user,
@@ -19,6 +19,52 @@ export function ProfileEditor({
   const [saving, setSaving] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [message, setMessage] = useState("");
+  function syncProfileState(params: { displayName?: string; avatarUrl?: string | null }) {
+    if (typeof window === "undefined") return;
+
+    try {
+      const current = getLocalSession();
+      if (!current) return;
+
+      if (params.displayName !== undefined) {
+        current.user_metadata.display_name = params.displayName;
+      }
+      if (params.avatarUrl !== undefined) {
+        if (params.avatarUrl === null) {
+          delete current.user_metadata.avatar_url;
+        } else {
+          current.user_metadata.avatar_url = params.avatarUrl;
+        }
+      }
+      current.updated_at = new Date().toISOString();
+
+      localStorage.setItem("skillbridge_local_session", JSON.stringify(current));
+
+      for (const key of [
+        "sb-local-auth-token",
+        "sb-csjygxumpnonfupobhih-auth-token",
+        "skillbridge_local_auth_session",
+      ]) {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const session = JSON.parse(raw);
+        if (session?.user?.id === current.id) {
+          session.user.user_metadata = {
+            ...session.user.user_metadata,
+            ...current.user_metadata,
+          };
+          session.user.updated_at = current.updated_at;
+          localStorage.setItem(key, JSON.stringify(session));
+        }
+      }
+
+      window.dispatchEvent(new CustomEvent("local_auth_changed"));
+      window.dispatchEvent(new Event("storage"));
+    } catch {
+      // Keep profile saving successful even if local session syncing fails.
+    }
+  }
+
 
   const styles =
     accent === "teal"
@@ -46,7 +92,7 @@ export function ProfileEditor({
     try {
       const uploaded = await lmsClient.uploadAvatar(file);
       setAvatarUrl(uploaded.avatarUrl);
-      syncLocalSessionProfile({ avatarUrl: uploaded.avatarUrl });
+      syncProfileState({ avatarUrl: uploaded.avatarUrl });
       setMessage("Profile picture updated successfully.");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Unable to upload profile picture.");
@@ -66,7 +112,7 @@ export function ProfileEditor({
     setMessage("");
     try {
       await lmsClient.updateProfile({ displayName });
-      syncLocalSessionProfile({ displayName });
+      syncProfileState({ displayName });
       setMessage("Profile updated successfully.");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Unable to update profile.");
