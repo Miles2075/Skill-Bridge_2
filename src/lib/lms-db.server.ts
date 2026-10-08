@@ -1876,7 +1876,7 @@ class DatabaseManager {
 
   updateUserProfile(
     userId: string,
-    params: { displayName?: string; avatarUrl?: string | null },
+    params: { displayName?: string; avatarUrl?: string | null; avatarBlobUrl?: string | null },
   ): LocalUser | null {
     const db = this.read();
     const user = db.users.find((candidate) => candidate.id === userId);
@@ -1895,6 +1895,11 @@ class DatabaseManager {
       }
       if (params.avatarUrl === null) delete user.user_metadata.avatar_url;
       else user.user_metadata.avatar_url = params.avatarUrl;
+    }
+
+    if (params.avatarBlobUrl !== undefined) {
+      if (params.avatarBlobUrl === null) delete user.user_metadata.avatar_blob_url;
+      else user.user_metadata.avatar_blob_url = params.avatarBlobUrl;
     }
 
     user.updated_at = new Date().toISOString();
