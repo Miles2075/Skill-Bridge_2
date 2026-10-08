@@ -1894,7 +1894,7 @@ function StudentDashboardPage() {
                       <video
                         key={`${playerCourse.id}_${playerLessons[activeLessonIndex]?.id || "course"}_${playerLessons[activeLessonIndex]?.video_url || playerCourse.videoUrl}`}
                         src={playerLessons[activeLessonIndex]?.video_url || playerCourse.videoUrl}
-                        poster={playerCourse.thumbnail}
+                        poster={getCourseImage(playerCourse.slug, playerCourse.thumbnail)}
                         controls
                         className="h-full w-full object-cover"
                       />
