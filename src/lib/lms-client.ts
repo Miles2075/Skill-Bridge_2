@@ -378,7 +378,16 @@ export const lmsClient = {
         method: "PATCH",
         body: JSON.stringify({ avatarUrl: uploaded.publicUrl }),
       });
-      return { avatarUrl: uploaded.publicUrl, fileName: file.name, size: file.size };
+
+      // Always expose avatars through the SkillBridge origin. This keeps the
+      // same stable delivery path for the profile page, student header, and
+      // instructor roster instead of depending on direct Blob CDN loading.
+      const localUser = getLocalSession();
+      const stableAvatarUrl = localUser
+        ? `/api/lms/avatar?userId=${encodeURIComponent(localUser.id)}&v=${Date.now()}`
+        : uploaded.publicUrl;
+
+      return { avatarUrl: stableAvatarUrl, fileName: file.name, size: file.size };
     } catch (error) {
       if (!(error instanceof Error) || error.message !== "LOCAL_STORAGE_FALLBACK") throw error;
 
