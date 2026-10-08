@@ -1160,7 +1160,11 @@ function StudentDashboardPage() {
                     <div>
                       <div className="relative h-28 w-full rounded-lg bg-slate-900 overflow-hidden mb-3">
                         <img
-                          src={c.thumbnail || "/course-typescript.jpg"}
+                          src={getCourseImage(c.slug, c.thumbnail)}
+                          onError={(e) => {
+                            const fallback = getCourseImage(c.slug);
+                            if (e.currentTarget.src !== fallback) e.currentTarget.src = fallback;
+                          }}
                           alt={c.title}
                           className="h-full w-full object-cover opacity-80"
                         />
@@ -1896,7 +1900,11 @@ function StudentDashboardPage() {
                       />
                     ) : (
                       <img
-                        src={playerCourse.thumbnail}
+                        src={getCourseImage(playerCourse.slug, playerCourse.thumbnail)}
+                        onError={(e) => {
+                          const fallback = getCourseImage(playerCourse.slug);
+                          if (e.currentTarget.src !== fallback) e.currentTarget.src = fallback;
+                        }}
                         alt={playerCourse.title}
                         className="h-full w-full object-cover opacity-80"
                       />
