@@ -2389,8 +2389,26 @@ function TeachDashboardPage() {
                   filteredStudents.map((s) => (
                     <tr key={s.id} className="hover:bg-slate-50">
                       <td className="px-4 py-3">
-                        <div className="font-bold text-slate-900">{s.studentName}</div>
-                        <div className="text-[11px] text-slate-500">{s.studentEmail}</div>
+                        <div className="flex items-center gap-2.5">
+                          <div className="grid size-9 shrink-0 place-items-center overflow-hidden rounded-full bg-teal-700 text-xs font-bold uppercase text-white">
+                            {s.avatarUrl ? (
+                              <img
+                                src={s.avatarUrl}
+                                alt={s.studentName}
+                                className="h-full w-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = "none";
+                                }}
+                              />
+                            ) : (
+                              (s.studentName || "S").charAt(0).toUpperCase()
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-bold text-slate-900">{s.studentName}</div>
+                            <div className="text-[11px] text-slate-500">{s.studentEmail}</div>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <span className="inline-flex rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-bold text-emerald-700">
