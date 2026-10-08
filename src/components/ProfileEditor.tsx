@@ -32,8 +32,8 @@ export function ProfileEditor({
         };
 
   async function uploadAvatar(file: File) {
-    if (file.size > 5 * 1024 * 1024) {
-      setMessage("Profile picture must be 5 MB or smaller.");
+    if (file.size > 4 * 1024 * 1024) {
+      setMessage("Profile picture must be 4 MB or smaller.");
       return;
     }
     if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(file.type)) {
