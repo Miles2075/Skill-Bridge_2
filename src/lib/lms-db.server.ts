@@ -1874,6 +1874,11 @@ class DatabaseManager {
     return { user: newUser, session, roles: [role] };
   }
 
+  getUserById(userId: string): LocalUser | null {
+    const db = this.read();
+    return db.users.find((candidate) => candidate.id === userId) || null;
+  }
+
   updateUserProfile(
     userId: string,
     params: { displayName?: string; avatarUrl?: string | null; avatarBlobUrl?: string | null },
