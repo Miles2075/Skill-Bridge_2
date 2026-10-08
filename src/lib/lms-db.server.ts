@@ -875,8 +875,8 @@ class DatabaseManager {
 
     if (rows.length > 0) {
       this.db = rows[0].data as LMSDatabase;
-      this.ensureSchemaIntegrity(this.db);
       this.dirty = false;
+      this.ensureSchemaIntegrity(this.db);
       return;
     }
 
