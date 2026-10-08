@@ -38,6 +38,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { lmsClient, type StudentDashboardData, type ClientCourse } from "@/lib/lms-client";
+import { createCourseOrder, verifyCoursePayment } from "@/lib/payments.functions";
 import type { StudentNavView } from "./route";
 
 import { CodeLabView } from "@/components/student/CodeLabView";
@@ -49,6 +50,14 @@ import tsThumb from "@/assets/course-typescript.jpg";
 import reactThumb from "@/assets/course-react.jpg";
 import systemThumb from "@/assets/course-system-design.jpg";
 import dsaThumb from "@/assets/course-dsa.jpg";
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: Record<string, unknown>) => {
+      open: () => void;
+    };
+  }
+}
 
 export const Route = createFileRoute("/_authenticated/student/")({
   component: StudentDashboardPage,
@@ -193,6 +202,7 @@ function StudentDashboardPage() {
   const [loadingLessons, setLoadingLessons] = useState(false);
   const [markingLesson, setMarkingLesson] = useState(false);
   const [availableCourses, setAvailableCourses] = useState<ClientCourse[]>([]);
+  const [buyingCourseId, setBuyingCourseId] = useState<string | null>(null);
 
   const loadDashboard = useCallback(async () => {
     if (!user) return;
@@ -215,36 +225,82 @@ function StudentDashboardPage() {
     }
   }, [user]);
 
-  const handleQuickEnroll = async (c: ClientCourse) => {
-    if (!user) return;
+  const handleCoursePurchase = async (c: ClientCourse) => {
+    if (!user || buyingCourseId) return;
+    setBuyingCourseId(c.id);
     try {
-      const displayName =
-        (user.user_metadata?.["display_name"] as string | undefined) ||
-        user.email?.split("@")[0] ||
-        "Student Learner";
-      await lmsClient.enroll(c.id, displayName, user.email || "");
-      await loadDashboard();
-      window.dispatchEvent(new CustomEvent("lms_data_updated"));
-      setPlayerCourse({
-        id: c.id,
-        slug: c.slug,
-        title: c.title,
-        instructor: c.instructor || "Instructor",
-        description: c.description || "",
-        thumbnail: c.thumbnail || "/course-typescript.jpg",
-        hours: c.hours || 10,
-        progress: 0,
-        lessonsDone: 0,
-        lessonsTotal: c.lessons_count || 3,
-        nextLesson: "1. Course Overview & Master Lecture",
-        status: "enrolled",
-        enrolledAt: new Date().toISOString(),
-        completedAt: null,
-        certificateId: null,
-        videoUrl: c.video_url,
+      if (c.price_inr <= 0) {
+        const displayName =
+          (user.user_metadata?.["display_name"] as string | undefined) ||
+          user.email?.split("@")[0] ||
+          "Student Learner";
+        await lmsClient.enroll(c.id, displayName, user.email || "");
+        await loadDashboard();
+        window.dispatchEvent(new CustomEvent("lms_data_updated"));
+        return;
+      }
+
+      if (typeof window !== "undefined" && !window.Razorpay) {
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://checkout.razorpay.com/v1/checkout.js";
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error("Could not load the payment gateway."));
+          document.body.appendChild(script);
+        });
+      }
+
+      if (!window.Razorpay) throw new Error("Payment gateway is unavailable.");
+      const order = await createCourseOrder({ data: { courseId: c.id } });
+
+      await new Promise<void>((resolve, reject) => {
+        const razorpay = new window.Razorpay!({
+          key: order.keyId,
+          amount: order.amount,
+          currency: order.currency,
+          order_id: order.orderId,
+          name: "Skillbridge",
+          description: c.title,
+          prefill: { email: user.email || "" },
+          theme: { color: "#4f46e5" },
+          handler: async (payment: {
+            razorpay_order_id: string;
+            razorpay_payment_id: string;
+            razorpay_signature: string;
+          }) => {
+            try {
+              await verifyCoursePayment({
+                data: {
+                  courseId: c.id,
+                  orderId: payment.razorpay_order_id,
+                  paymentId: payment.razorpay_payment_id,
+                  signature: payment.razorpay_signature,
+                },
+              });
+              const displayName =
+                (user.user_metadata?.["display_name"] as string | undefined) ||
+                user.email?.split("@")[0] ||
+                "Student Learner";
+              await lmsClient.enroll(c.id, displayName, user.email || "");
+              await loadDashboard();
+              window.dispatchEvent(new CustomEvent("lms_data_updated"));
+              resolve();
+            } catch (err) {
+              reject(err);
+            }
+          },
+          modal: { ondismiss: () => reject(new Error("Payment cancelled.")) },
+        });
+        razorpay.open();
       });
     } catch (err) {
-      console.error("Failed to quick enroll:", err);
+      console.error("Course purchase failed:", err);
+      setFeedbackMsg({
+        text: err instanceof Error ? err.message : "Could not complete the course purchase.",
+        error: true,
+      });
+    } finally {
+      setBuyingCourseId(null);
     }
   };
 
@@ -1127,11 +1183,11 @@ function StudentDashboardPage() {
                     </div>
 
                     <button
-                      onClick={() => void handleQuickEnroll(c)}
+                      onClick={() => void handleCoursePurchase(c)}
                       className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition cursor-pointer"
                     >
                       <Play className="size-3.5 fill-white" />
-                      <span>Enroll & Start Learning</span>
+                      <span>{buyingCourseId === c.id ? "Opening Checkout..." : c.price_inr > 0 ? `Buy for ₹${c.price_inr.toLocaleString("en-IN")}` : "Enroll & Start Learning"}</span>
                     </button>
                   </div>
                 ))}
