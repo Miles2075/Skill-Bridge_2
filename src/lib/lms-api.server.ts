@@ -333,6 +333,9 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
 
       const existing = lmsDB.getCourse(courseId);
       if (!existing) return errorResponse("Course not found", 404);
+      if (!user.isAdmin && existing.teacher_id !== user.userId) {
+        return errorResponse("Forbidden: You can only modify your own courses", 403);
+      }
 
       const updated = lmsDB.updateCourse(existing.id, body);
       return jsonResponse({ course: updated });
@@ -347,6 +350,9 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
 
       const existing = lmsDB.getCourse(courseId);
       if (!existing) return errorResponse("Course not found", 404);
+      if (!user.isAdmin && existing.teacher_id !== user.userId) {
+        return errorResponse("Forbidden: You can only delete your own courses", 403);
+      }
 
       const ok = lmsDB.deleteCourse(existing.id);
       return jsonResponse({ success: ok });
@@ -362,6 +368,9 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
 
       const course = lmsDB.getCourse(courseId);
       if (!course) return errorResponse("Course not found.", 404);
+      if (!user.isAdmin && course.teacher_id !== user.userId) {
+        return errorResponse("Forbidden: You can only upload videos to your own courses", 403);
+      }
 
       const MAX_VIDEO_SIZE = 500 * 1024 * 1024;
       const declaredSize = Number(
@@ -474,6 +483,9 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
 
       const existingCourse = lmsDB.getCourse(courseId);
       if (!existingCourse) return errorResponse("Course not found", 404);
+      if (!user.isAdmin && existingCourse.teacher_id !== user.userId) {
+        return errorResponse("Forbidden: You can only add lessons to your own courses", 403);
+      }
 
       const lesson = lmsDB.addLesson(existingCourse.id, {
         title,
@@ -494,6 +506,13 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
       const body = await req.json();
       const { lessonId, ...patch } = body;
       if (!lessonId) return errorResponse("Missing lessonId");
+      const existingLesson = lmsDB.getLesson?.(lessonId);
+      if (!existingLesson) return errorResponse("Lesson not found", 404);
+      const lessonCourse = lmsDB.getCourse(existingLesson.course_id);
+      if (!lessonCourse) return errorResponse("Course not found", 404);
+      if (!user.isAdmin && lessonCourse.teacher_id !== user.userId) {
+        return errorResponse("Forbidden: You can only modify your own course lessons", 403);
+      }
 
       if (patch.videoUrl && !patch.video_url) {
         patch.video_url = patch.videoUrl;
@@ -510,6 +529,13 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
       const body = await req.json();
       const { lessonId } = body;
       if (!lessonId) return errorResponse("Missing lessonId");
+      const existingLesson = lmsDB.getLesson?.(lessonId);
+      if (!existingLesson) return errorResponse("Lesson not found", 404);
+      const lessonCourse = lmsDB.getCourse(existingLesson.course_id);
+      if (!lessonCourse) return errorResponse("Course not found", 404);
+      if (!user.isAdmin && lessonCourse.teacher_id !== user.userId) {
+        return errorResponse("Forbidden: You can only delete your own course lessons", 403);
+      }
 
       const ok = lmsDB.deleteLesson(lessonId);
       return jsonResponse({ success: ok });
