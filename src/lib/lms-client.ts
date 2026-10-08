@@ -392,7 +392,7 @@ export const lmsClient = {
     }
 
     return data as { avatarUrl: string; fileName: string; size: number };
-  }
+  },
 
   // COURSE MANAGEMENT
   async createCourse(data: Partial<ClientCourse>): Promise<{ course: ClientCourse }> {
