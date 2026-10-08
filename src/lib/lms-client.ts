@@ -379,13 +379,9 @@ export const lmsClient = {
         body: JSON.stringify({ avatarUrl: uploaded.publicUrl }),
       });
 
-      // Keep the Blob URL as the durable stored value, but render it through
-      // the app-origin avatar endpoint so the browser uses one reliable path.
-      const localUser = getLocalSession();
-      const avatarUrl = localUser
-        ? `/api/lms/avatar?userId=${encodeURIComponent(localUser.id)}&v=${Date.now()}`
-        : uploaded.publicUrl;
-      return { avatarUrl, fileName: file.name, size: file.size };
+      // Public Blob URLs are immutable and can be rendered directly by the
+      // browser. Return the canonical URL stored by the profile update.
+      return { avatarUrl: uploaded.publicUrl, fileName: file.name, size: file.size };
     } catch (error) {
       if (!(error instanceof Error) || error.message !== "LOCAL_STORAGE_FALLBACK") throw error;
 
