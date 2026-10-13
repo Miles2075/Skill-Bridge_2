@@ -220,7 +220,18 @@ export function clearLocalSession() {
 }
 
 export function getLocalUserRole(user: LocalUser | null): LocalRole {
-  return user?.user_metadata?.role ?? "student";
+  if (!user) return "student";
+  if (user.user_metadata?.role) return user.user_metadata.role;
+  const email = (user.email || "").toLowerCase();
+  if (
+    email.includes("instructor") ||
+    email.includes("teacher") ||
+    email.includes("faculty") ||
+    email.includes("teach")
+  ) {
+    return "teacher";
+  }
+  return "student";
 }
 
 export function updateLocalSessionProfile(params: {

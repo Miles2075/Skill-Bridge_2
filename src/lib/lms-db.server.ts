@@ -1524,11 +1524,17 @@ class DatabaseManager {
           (c) => c.student_id === e.student_id && c.course_id === e.course_id,
         );
 
+        const studentUser = db.users.find(
+          (u) => u.id === e.student_id || u.email === e.student_email,
+        );
+        const studentAvatar = studentUser?.user_metadata?.avatar_url || null;
+
         return {
           id: e.id,
           studentId: e.student_id,
           studentName: e.student_name,
           studentEmail: e.student_email,
+          studentAvatar,
           courseId: course.id,
           courseSlug: course.slug,
           courseTitle: course.title,
@@ -1559,11 +1565,16 @@ class DatabaseManager {
       .map((s) => {
         const asg = db.assignments.find((a) => a.id === s.assignment_id);
         const course = db.courses.find((c) => c.id === s.course_id);
+        const studentUser = db.users.find(
+          (u) => u.id === s.student_id || u.email === s.student_email,
+        );
+        const studentAvatar = studentUser?.user_metadata?.avatar_url || null;
         return {
           ...s,
           assignmentTitle: asg?.title || "Assignment",
           courseTitle: course?.title || "Course",
           courseSlug: course?.slug || "",
+          studentAvatar,
         };
       });
 

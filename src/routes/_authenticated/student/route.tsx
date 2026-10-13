@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
 import { lmsClient } from "@/lib/lms-client";
 import { supabase } from "@/integrations/supabase/client";
-import { getLocalSession } from "@/lib/local-db";
+import { getLocalSession, getLocalUserRole } from "@/lib/local-db";
 
 export const Route = createFileRoute("/_authenticated/student")({
   ssr: false,
@@ -41,10 +41,9 @@ export const Route = createFileRoute("/_authenticated/student")({
     if (!user) {
       throw redirect({ to: "/auth" });
     }
-    const metaRole = user.user_metadata?.role || "student";
-    const isTeacher = metaRole === "teacher";
-    const isAdmin = metaRole === "admin";
-    if (isTeacher && !isAdmin) {
+    const metaRole = getLocalUserRole(user);
+    const isTeacher = metaRole === "teacher" || metaRole === "admin";
+    if (isTeacher) {
       throw redirect({ to: "/teach" });
     }
   },

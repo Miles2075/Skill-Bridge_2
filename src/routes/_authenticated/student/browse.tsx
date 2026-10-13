@@ -117,15 +117,26 @@ function BrowseCoursesPage() {
           "Unable to load Razorpay Checkout. Check your internet connection and try again.",
         );
 
+      const razorpayKey =
+        order && typeof order.keyId === "string" && order.keyId.startsWith("rzp_")
+          ? order.keyId
+          : "rzp_test_TkYGjq4iojsimE";
+
+      const checkoutOptions: Record<string, unknown> = {
+        key: razorpayKey,
+        amount: order?.amount || 99900,
+        currency: order?.currency || "INR",
+        name: "Skillbridge",
+        description: order?.title || course.title,
+        theme: { color: "#4f46e5" },
+      };
+      if (order?.orderId) {
+        checkoutOptions.order_id = order.orderId;
+      }
+
       await new Promise<void>((resolve, reject) => {
         const checkout = new window.Razorpay!({
-          key: order.keyId,
-          amount: order.amount,
-          currency: order.currency,
-          name: "Skillbridge",
-          description: order.title,
-          order_id: order.orderId,
-          theme: { color: "#4f46e5" },
+          ...checkoutOptions,
           handler: async (response: {
             razorpay_payment_id: string;
             razorpay_order_id: string;

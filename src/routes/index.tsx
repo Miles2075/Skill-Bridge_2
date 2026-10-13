@@ -1,7 +1,8 @@
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
+import { getLocalSession, getLocalUserRole } from "@/lib/local-db";
 import { createCourseOrder, verifyCoursePayment, getUserPurchases } from "@/lib/payments.functions";
 import {
   AlertCircle,
@@ -58,6 +59,7 @@ import { UserAvatar } from "@/components/UserAvatar";
 import { CodeLabView } from "@/components/student/CodeLabView";
 import { RecallDecksView } from "@/components/student/RecallDecksView";
 import { FocusStudioView } from "@/components/student/FocusStudioView";
+import { AnalyticsView } from "@/components/student/AnalyticsView";
 import {
   createContext,
   useCallback,
@@ -77,6 +79,22 @@ import { Textarea } from "@/components/ui/textarea";
 
 export const Route = createFileRoute("/")({
   ssr: false,
+  beforeLoad: async () => {
+    let user = getLocalSession();
+    if (!user) {
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (sessionData?.session?.user) {
+        user = getLocalSession();
+      }
+    }
+    if (user) {
+      const metaRole = getLocalUserRole(user);
+      const isTeacher = metaRole === "teacher" || metaRole === "admin";
+      if (isTeacher) {
+        throw redirect({ to: "/teach" });
+      }
+    }
+  },
   head: () => ({
     meta: [
       { title: "My Learning | Skillbridge" },
@@ -481,6 +499,13 @@ function useCommerceState(
 
   const loadOwned = useCallback(async () => {
     if (!user) return setOwned(new Set());
+    if (isTeacher) {
+      const allCourseIdentifiers = coursesList.flatMap((c) =>
+        [c.slug, c.id].filter(Boolean),
+      ) as string[];
+      setOwned(new Set(allCourseIdentifiers));
+      return;
+    }
     const localKey = `skillbridge_purchases_${user.id}`;
     let localIds: string[] = [];
     try {
@@ -498,7 +523,7 @@ function useCommerceState(
       const combined = Array.from(new Set([...dbIds, ...localIds]));
       setOwned(new Set(combined));
     }
-  }, [user, fetchPurchases]);
+  }, [user, isTeacher, coursesList, fetchPurchases]);
 
   useEffect(() => {
     loadOwned();
@@ -522,15 +547,26 @@ function useCommerceState(
         );
       }
 
-      const rzp = new window.Razorpay({
-        key: order.keyId,
-        amount: order.amount,
-        currency: order.currency,
-        order_id: order.orderId,
+      const razorpayKey =
+        order && typeof order.keyId === "string" && order.keyId.startsWith("rzp_")
+          ? order.keyId
+          : "rzp_test_TkYGjq4iojsimE";
+
+      const rzpOptions: Record<string, unknown> = {
+        key: razorpayKey,
+        amount: order?.amount || 99900,
+        currency: order?.currency || "INR",
         name: "Skillbridge",
-        description: order.title,
+        description: order?.title || course.title,
         prefill: { email: user.email },
         theme: { color: "#2563eb" },
+      };
+      if (order?.orderId) {
+        rzpOptions.order_id = order.orderId;
+      }
+
+      const rzp = new window.Razorpay({
+        ...rzpOptions,
         handler: async (r: {
           razorpay_order_id: string;
           razorpay_payment_id: string;
@@ -1748,51 +1784,19 @@ function Certificates({ onOpenCert }: { onOpenCert: (course: Course) => void }) 
 }
 
 function Analytics() {
-  const { courses, dashboardData } = useCommerce();
-  const totalLecturesDone = courses.reduce((acc, c) => acc + c.lessonsDone, 0);
+  const { courses, dashboardData, firstName } = useCommerce();
   const overallProgress =
     dashboardData?.overallProgress ??
     (courses.length > 0
       ? Math.round(courses.reduce((acc, c) => acc + c.progress, 0) / courses.length)
       : 0);
-  const activeHours = Math.round(
-    courses.reduce((acc, c) => acc + (c.progress > 0 ? c.hours : 0), 0),
-  );
 
   return (
-    <>
-      <PageTitle
-        title="Learning Analytics"
-        detail="Personal metrics across video lectures, quizzes, and project submissions."
-      />
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Stat
-          label="Lectures completed"
-          value={`${totalLecturesDone}`}
-          detail="Across enrolled courses"
-        />
-        <Stat label="Curriculum hours" value={`${activeHours}h`} detail="Enrolled syllabus" />
-        <Stat
-          label="Overall completion"
-          value={`${overallProgress}%`}
-          detail="Real database records"
-        />
-      </div>
-      <div className="mt-5 rounded-lg border border-border bg-card p-5">
-        <h2 className="text-lg font-bold">Course completion</h2>
-        <div className="mt-5 space-y-5">
-          {courses.map((course) => (
-            <div key={course.title}>
-              <div className="mb-1.5 flex justify-between text-sm">
-                <span className="font-medium">{course.title}</span>
-                <span className="font-semibold text-primary">{course.progress}%</span>
-              </div>
-              <Progress value={course.progress} thin />
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
+    <AnalyticsView
+      courses={courses}
+      overallProgress={overallProgress}
+      studentName={firstName || "Learner"}
+    />
   );
 }
 

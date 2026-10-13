@@ -86,7 +86,7 @@ export function TeacherLayout({
 
           <div className="flex items-center gap-3">
             <Link
-              to="/student"
+              to="/"
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700/80 bg-slate-800/60 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-800 hover:text-white transition-all shadow-xs"
             >
               <span>Student Learning View</span>

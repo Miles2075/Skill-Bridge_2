@@ -17,17 +17,26 @@ export function useAuth() {
   useEffect(() => {
     const sync = () => {
       const current = getLocalSession();
-      setUser(current);
+      setUser(
+        current
+          ? {
+              ...current,
+              user_metadata: { ...current.user_metadata },
+            }
+          : null,
+      );
       setRoles(current ? [getLocalUserRole(current)] : []);
       setLoading(false);
     };
 
     window.addEventListener("local_auth_changed", sync);
     window.addEventListener("storage", sync);
+    window.addEventListener("lms_data_updated", sync);
     sync();
     return () => {
       window.removeEventListener("local_auth_changed", sync);
       window.removeEventListener("storage", sync);
+      window.removeEventListener("lms_data_updated", sync);
     };
   }, []);
 

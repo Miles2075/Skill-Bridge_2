@@ -139,9 +139,18 @@ export function StudentLayout({
           </Link>
 
           {/* Portal Badge */}
-          <span className="hidden items-center rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-bold text-muted-foreground sm:inline-flex">
-            Student Portal
-          </span>
+          {isTeacher ? (
+            <Link
+              to="/teach"
+              className="hidden items-center rounded-full bg-cyan-500/10 px-2.5 py-0.5 text-[11px] font-bold text-cyan-600 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors sm:inline-flex"
+            >
+              Instructor Studio Mode →
+            </Link>
+          ) : (
+            <span className="hidden items-center rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-bold text-muted-foreground sm:inline-flex">
+              Student Learning Space
+            </span>
+          )}
 
           {/* Explore Dropdown */}
           <div className="relative hidden lg:block">
@@ -183,28 +192,34 @@ export function StudentLayout({
 
           {/* Header Actions */}
           <div className="ml-auto flex items-center gap-2">
-            {isTeacher ? (
+            {isTeacher && (
               <Link
                 to="/teach"
-                className="hidden items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary transition-colors hover:bg-primary/20 md:flex"
+                className="hidden items-center gap-1.5 rounded-full bg-cyan-500/10 px-3 py-1.5 text-xs font-bold text-cyan-600 transition-colors hover:bg-cyan-500/20 md:flex border border-cyan-500/20"
               >
                 <GraduationCap className="size-3.5" /> Instructor Studio →
               </Link>
-            ) : (
-              <Link
-                to="/student"
-                className="hidden items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1.5 text-xs font-bold text-indigo-700 transition-colors hover:bg-indigo-100 md:flex border border-indigo-200"
-              >
-                <GraduationCap className="size-3.5" /> Student Dashboard →
-              </Link>
             )}
 
-            <Link
-              to="/student"
-              className="hidden px-2.5 text-sm font-medium hover:text-primary lg:block cursor-pointer"
+            <button
+              type="button"
+              onClick={() => changeView("dashboard")}
+              className={`hidden px-2.5 text-sm font-medium transition-colors hover:text-primary lg:block cursor-pointer ${
+                view === "dashboard" ? "text-primary font-bold" : "text-foreground/80"
+              }`}
+            >
+              Dashboard
+            </button>
+
+            <button
+              type="button"
+              onClick={() => changeView("my-learning")}
+              className={`hidden px-2.5 text-sm font-medium transition-colors hover:text-primary lg:block cursor-pointer ${
+                view === "my-learning" ? "text-primary font-bold" : "text-foreground/80"
+              }`}
             >
               My learning
-            </Link>
+            </button>
 
             <Button
               variant="ghost"
@@ -304,21 +319,13 @@ export function StudentLayout({
                       >
                         <Award className="size-4 text-muted-foreground" /> Certificates
                       </button>
-                      {isTeacher ? (
+                      {isTeacher && (
                         <Link
                           to="/teach"
                           onClick={() => setAccountMenuOpen(false)}
                           className="flex w-full items-center gap-2 rounded bg-cyan-500/10 px-3 py-2 text-left text-sm font-bold text-cyan-600 hover:bg-cyan-500/20 cursor-pointer"
                         >
                           <GraduationCap className="size-4 text-cyan-600" /> Instructor Studio
-                        </Link>
-                      ) : (
-                        <Link
-                          to="/student"
-                          onClick={() => setAccountMenuOpen(false)}
-                          className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-secondary cursor-pointer"
-                        >
-                          <GraduationCap className="size-4 text-indigo-600" /> Student Dashboard
                         </Link>
                       )}
                     </div>

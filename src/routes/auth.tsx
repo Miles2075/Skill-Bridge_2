@@ -154,7 +154,7 @@ function AuthPage() {
     const cleanEmail = email.trim().toLowerCase();
 
     const getRedirectRoute = (targetRole: string) => {
-      return targetRole === "teacher" || targetRole === "admin" ? "/teach" : "/student";
+      return targetRole === "teacher" || targetRole === "admin" ? "/teach" : "/";
     };
 
     try {
@@ -328,7 +328,7 @@ function AuthPage() {
                   name: "Alex Learner",
                   role: "student",
                 });
-                window.location.href = "/student";
+                window.location.href = "/";
               }}
             >
               🎓 Demo Student

@@ -43,6 +43,7 @@ import type { StudentNavView } from "./route";
 import { CodeLabView } from "@/components/student/CodeLabView";
 import { RecallDecksView } from "@/components/student/RecallDecksView";
 import { FocusStudioView } from "@/components/student/FocusStudioView";
+import { AnalyticsView } from "@/components/student/AnalyticsView";
 import { ProfileEditor } from "@/components/ProfileEditor";
 
 import tsThumb from "@/assets/course-typescript.jpg";
@@ -1400,51 +1401,14 @@ function StudentDashboardPage() {
       {currentView === "focus" && <FocusStudioView />}
 
       {/* ------------------------------------------------------------- */}
-      {/* VIEW 5: PROGRESS ANALYTICS */}
+      {/* VIEW 5: PROGRESS ANALYTICS (RECHARTS VISUALIZATION) */}
       {/* ------------------------------------------------------------- */}
-      {currentView === "progress" && (
-        <div className="space-y-6">
-          <div className="border-b border-slate-200 pb-3">
-            <h1 className="text-xl font-extrabold text-slate-900">Course Progress & Analytics</h1>
-            <p className="text-xs text-slate-500">
-              Real completion metrics computed directly from recorded lesson completions.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-indigo-600 uppercase">
-                  Cumulative Completion
-                </span>
-                <h3 className="text-2xl font-black text-slate-900 mt-0.5">
-                  {overallProgress}% Total
-                </h3>
-              </div>
-              <div className="text-right text-xs text-slate-500">
-                <p>Enrolled: {enrolledCourses.length}</p>
-                <p>Completed: {data?.completedCoursesCount || 0}</p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              {enrolledCourses.map((c) => (
-                <div key={c.slug} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-slate-900">{c.title}</span>
-                    <span className="font-semibold text-indigo-600">{c.progress}%</span>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-full bg-indigo-600 rounded-full transition-all"
-                      style={{ width: `${c.progress}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
+      {(currentView === "progress" || (currentView as string) === "analytics") && (
+        <AnalyticsView
+          courses={enrolledCourses}
+          overallProgress={overallProgress}
+          studentName={displayName}
+        />
       )}
 
       {/* ------------------------------------------------------------- */}
