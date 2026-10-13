@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import { UserAvatar } from "@/components/UserAvatar";
 import { lmsClient } from "@/lib/lms-client";
 import { supabase } from "@/integrations/supabase/client";
 import { getLocalSession } from "@/lib/local-db";
@@ -296,9 +297,12 @@ function StudentRouteLayout() {
                 onClick={() => switchView("profile")}
                 className="flex items-center gap-2 text-left cursor-pointer group"
               >
-                <div className="grid size-8 place-items-center overflow-hidden rounded-full bg-indigo-600 text-xs font-bold uppercase text-white shadow-xs group-hover:ring-2 group-hover:ring-indigo-300 transition-all">
-                  {initials}
-                </div>
+                <UserAvatar
+                  src={user?.user_metadata?.avatar_url}
+                  name={displayName}
+                  initials={initials}
+                  className="size-8 text-xs border border-indigo-200 shadow-2xs group-hover:ring-2 group-hover:ring-indigo-300 transition-all"
+                />
                 <div className="hidden sm:flex flex-col">
                   <span className="text-xs font-semibold text-slate-800 leading-tight group-hover:text-indigo-600">
                     {displayName}
