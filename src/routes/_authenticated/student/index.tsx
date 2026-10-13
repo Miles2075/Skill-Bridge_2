@@ -282,8 +282,17 @@ function StudentDashboardPage() {
           const completedIds = new Set(
             (lessonProgress || []).filter((p) => p.completed).map((p) => p.lesson_id),
           );
+          const isPlaceholderDuration = (dur?: string) =>
+            !dur ||
+            dur === "16:20" ||
+            dur === "24:10" ||
+            dur === "31:45" ||
+            dur === "15:00" ||
+            dur === "20m";
+
           let enriched = (lessons || []).map((l) => ({
             ...l,
+            duration: isPlaceholderDuration(l.duration) ? "1:00" : l.duration,
             completed: completedIds.has(l.id),
           }));
 
@@ -304,7 +313,7 @@ function StudentDashboardPage() {
                   : course?.title || "Lecture",
               description: course?.description || "",
               video_url: vUrl,
-              duration: "15:00",
+              duration: "1:00",
               lesson_order: i + 1,
               is_required: true,
               is_preview: i === 0,
@@ -313,6 +322,30 @@ function StudentDashboardPage() {
           }
 
           setPlayerLessons(enriched);
+
+          // Probe actual video duration from media files to match real video length
+          if (typeof window !== "undefined") {
+            enriched.forEach((item, idx) => {
+              const vUrl = item.video_url || course?.video_url;
+              if (vUrl) {
+                const probe = document.createElement("video");
+                probe.preload = "metadata";
+                probe.onloadedmetadata = () => {
+                  const d = probe.duration;
+                  if (d && !isNaN(d) && isFinite(d) && d > 0) {
+                    const mins = Math.floor(d / 60);
+                    const secs = Math.floor(d % 60);
+                    const formatted = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+                    setPlayerLessons((prev) =>
+                      prev.map((l, i) => (i === idx ? { ...l, duration: formatted } : l)),
+                    );
+                  }
+                };
+                probe.src = vUrl;
+              }
+            });
+          }
+
           const firstIncompleteIdx = enriched.findIndex((l) => !l.completed);
           setActiveLessonIndex(firstIncompleteIdx >= 0 ? firstIncompleteIdx : 0);
         }
@@ -790,8 +823,11 @@ function StudentDashboardPage() {
                   <h2 className="font-bold text-sm text-slate-900">Continue Learning</h2>
                 </div>
                 <span className="text-xs text-slate-500">
-                  {currentContinueCourse.lessonsDone} of {currentContinueCourse.lessonsTotal || 3}{" "}
-                  Lessons Completed
+                  {Math.min(
+                    currentContinueCourse.lessonsDone,
+                    currentContinueCourse.lessonsTotal || 3,
+                  )}{" "}
+                  of {currentContinueCourse.lessonsTotal || 3} Lessons Completed
                 </span>
               </div>
 
@@ -1035,7 +1071,8 @@ function StudentDashboardPage() {
                       <div>
                         <div className="flex items-center justify-between text-xs mb-1.5">
                           <span className="text-slate-500">
-                            Progress ({course.lessonsDone}/{course.lessonsTotal || 3} Lessons)
+                            Progress ({Math.min(course.lessonsDone, course.lessonsTotal || 3)}/
+                            {course.lessonsTotal || 3} Lessons)
                           </span>
                           <span className="font-bold text-indigo-600">{course.progress}%</span>
                         </div>
@@ -1818,6 +1855,19 @@ function StudentDashboardPage() {
                         src={playerLessons[activeLessonIndex]?.video_url || playerCourse.videoUrl}
                         poster={playerCourse.thumbnail}
                         controls
+                        onLoadedMetadata={(e) => {
+                          const d = e.currentTarget.duration;
+                          if (d && !isNaN(d) && isFinite(d) && d > 0) {
+                            const mins = Math.floor(d / 60);
+                            const secs = Math.floor(d % 60);
+                            const formatted = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+                            setPlayerLessons((prev) =>
+                              prev.map((item, i) =>
+                                i === activeLessonIndex ? { ...item, duration: formatted } : item,
+                              ),
+                            );
+                          }
+                        }}
                         className="h-full w-full object-cover"
                       />
                     ) : (

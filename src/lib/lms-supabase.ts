@@ -139,7 +139,7 @@ export async function getMyLessonProgress(
 }
 
 export async function enrollInCourse(studentId: string, courseId: string): Promise<Enrollment> {
-  const { enrollment } = await lmsClient.enroll(courseId);
+  const { enrollment } = await lmsClient.enroll(courseId, undefined, undefined, studentId);
   return {
     id: enrollment.id,
     student_id: enrollment.student_id || studentId,

@@ -23,7 +23,6 @@ import {
   Target,
   Timer,
   User,
-  Users,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -375,8 +374,8 @@ export function StudentLayout({
             ))}
           </nav>
 
-          {/* Teacher Mode Invitation Box */}
-          {isTeacher ? (
+          {/* Teacher Mode Shortcut (Only visible for verified instructors) */}
+          {isTeacher && (
             <div className="mt-6 rounded-xl border border-primary/30 bg-primary/10 p-4">
               <div className="flex items-center gap-2 text-sm font-bold text-primary">
                 <GraduationCap className="size-4" /> Instructor Mode Active
@@ -387,18 +386,6 @@ export function StudentLayout({
               <Link to="/teach" className="mt-3 block">
                 <Button variant="chrome" size="sm" className="w-full">
                   Open Instructor Studio
-                </Button>
-              </Link>
-            </div>
-          ) : (
-            <div className="mt-6 rounded-xl border border-border bg-card p-4">
-              <div className="mb-1 text-sm font-semibold">Teach on Skillbridge</div>
-              <p className="mb-3 text-xs text-muted-foreground">
-                Share your expertise, set course pricing, and mentor students worldwide.
-              </p>
-              <Link to="/teach">
-                <Button variant="violet" className="w-full">
-                  <Users className="size-4" /> Instructor area
                 </Button>
               </Link>
             </div>

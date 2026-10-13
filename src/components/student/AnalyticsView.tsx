@@ -556,7 +556,8 @@ export function AnalyticsView({
               </div>
               <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1">
                 <span>
-                  {course.lessonsDone} of {course.lessonsTotal || 3} Lessons Done
+                  {Math.min(course.lessonsDone, course.lessonsTotal || 3)} of{" "}
+                  {course.lessonsTotal || 3} Lessons Done
                 </span>
                 <span>{course.hours} Total Hours</span>
               </div>

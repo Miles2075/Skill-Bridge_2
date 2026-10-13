@@ -832,7 +832,7 @@ const INITIAL_LESSON_PROGRESS: LessonProgress[] = [
     id: "lp_student_01",
     student_id: "00000000-0000-4000-a000-000000000001",
     course_id: "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
-    lesson_id: "lesson-react-1",
+    lesson_id: "les-react-1",
     completed: true,
     completed_at: "2026-09-11T10:00:00.000Z",
     updated_at: "2026-09-11T10:00:00.000Z",
@@ -917,6 +917,13 @@ class DatabaseManager {
     if (!db.lesson_progress) {
       db.lesson_progress = [...INITIAL_LESSON_PROGRESS];
       changed = true;
+    } else {
+      const validLessonIds = new Set(db.lessons.map((l) => l.id));
+      const filtered = db.lesson_progress.filter((p) => validLessonIds.has(p.lesson_id));
+      if (filtered.length !== db.lesson_progress.length) {
+        db.lesson_progress = filtered;
+        changed = true;
+      }
     }
     if (changed) {
       this.write();
@@ -961,7 +968,17 @@ class DatabaseManager {
 
   getCourse(idOrSlug: string): Course | null {
     const db = this.read();
-    const c = db.courses.find((x) => x.id === idOrSlug || x.slug === idOrSlug);
+    const aliasMap: Record<string, string> = {
+      "c-ts": "advanced-typescript",
+      "c-react": "react-performance",
+      "c-sys": "system-design",
+      "c-dsa": "dsa",
+    };
+    const target = aliasMap[idOrSlug] || idOrSlug;
+    const c =
+      db.courses.find((x) => x.id === target || x.slug === target) ||
+      db.courses.find((x) => x.id === idOrSlug || x.slug === idOrSlug) ||
+      db.courses[0];
     if (!c) return null;
     const videoUrls =
       c.video_urls && Array.isArray(c.video_urls)
@@ -1104,7 +1121,7 @@ class DatabaseManager {
       title: titles[i] || `${i + 1}. Module Lecture ${i + 1}`,
       description: `In-depth technical lecture module for ${course.title}.`,
       video_url: videoUrls[i] || videoUrls[0] || course.video_url || "",
-      duration: i === 0 ? "16:20" : i === 1 ? "24:10" : "31:45",
+      duration: "1:00",
       lesson_order: i + 1,
       is_required: true,
       is_preview: i === 0,
@@ -1204,6 +1221,41 @@ class DatabaseManager {
   getStudentEnrollments(studentId: string): Enrollment[] {
     const db = this.read();
     return db.enrollments.filter((e) => e.student_id === studentId);
+  }
+
+  recordPurchase(params: {
+    userId: string;
+    courseIdOrSlug: string;
+    amountInr: number;
+    razorpayOrderId?: string;
+    razorpayPaymentId?: string;
+  }): LocalPurchase {
+    const db = this.read();
+    const course = this.getCourse(params.courseIdOrSlug);
+    if (!course) throw new Error("Course not found");
+    if (!db.purchases) db.purchases = [];
+    const existing = db.purchases.find(
+      (p) => p.user_id === params.userId && p.course_id === course.id,
+    );
+    if (existing) return existing;
+    const purchase: LocalPurchase = {
+      id: `pur_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      user_id: params.userId,
+      course_id: course.id,
+      amount_inr: params.amountInr,
+      razorpay_order_id: params.razorpayOrderId,
+      razorpay_payment_id: params.razorpayPaymentId,
+      created_at: new Date().toISOString(),
+    };
+    db.purchases.push(purchase);
+    this.write();
+    return purchase;
+  }
+
+  getPurchases(userId: string): LocalPurchase[] {
+    const db = this.read();
+    if (!db.purchases) return [];
+    return db.purchases.filter((p) => p.user_id === userId);
   }
 
   getLessonProgress(studentId: string, courseId: string): LessonProgress[] {
@@ -1349,11 +1401,13 @@ class DatabaseManager {
         const lessons = db.lessons
           .filter((l) => l.course_id === course.id || l.course_id === course.slug)
           .sort((a, b) => a.lesson_order - b.lesson_order);
+        const validLessonIds = new Set(lessons.map((l) => l.id));
         const progressRecords = db.lesson_progress.filter(
           (p) =>
             p.student_id === studentId &&
             (p.course_id === course.id || p.course_id === course.slug) &&
-            p.completed,
+            p.completed &&
+            (validLessonIds.size === 0 || validLessonIds.has(p.lesson_id)),
         );
         const completedLessonIds = new Set(progressRecords.map((p) => p.lesson_id));
 
@@ -1377,6 +1431,10 @@ class DatabaseManager {
                 ? 1
                 : 3;
 
+        const lessonsDone = Math.min(completedLessonIds.size, totalLessons);
+        const progressPct =
+          totalLessons > 0 ? Math.min(100, Math.round((lessonsDone / totalLessons) * 100)) : 0;
+
         return {
           id: course.id,
           slug: course.slug,
@@ -1385,11 +1443,12 @@ class DatabaseManager {
           description: course.description,
           thumbnail: course.thumbnail,
           hours: course.hours,
-          progress: enr.completion_percentage,
-          lessonsDone: completedLessonIds.size,
+          progress: Math.max(enr.completion_percentage, progressPct),
+          lessonsDone,
           lessonsTotal: totalLessons,
           nextLesson,
-          status: enr.status,
+          status:
+            lessonsDone >= totalLessons || enr.status === "completed" ? "completed" : enr.status,
           enrolledAt: enr.enrolled_at,
           completedAt: enr.completed_at,
           certificateId: cert?.certificate_id || null,

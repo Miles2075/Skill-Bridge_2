@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BookOpen, CheckCircle2, Loader2, Users } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import { CheckoutModal } from "@/components/CheckoutModal";
 import { createCourseOrder, verifyCoursePayment } from "@/lib/payments.functions";
 import {
   enrollInCourse,
@@ -53,6 +54,7 @@ function BrowseCoursesPage() {
   const [busyCourse, setBusyCourse] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [checkoutCourse, setCheckoutCourse] = useState<Course | null>(null);
 
   const enrollmentByCourse = useMemo(
     () => new Map(enrollments.map((e) => [e.course_id, e])),
@@ -100,89 +102,45 @@ function BrowseCoursesPage() {
 
   async function handleEnroll(course: Course) {
     if (!user?.id) return;
-    setBusyCourse(course.id);
     setError(null);
     setMessage(null);
-    try {
-      if (course.price_inr <= 0) {
+    if (course.price_inr <= 0) {
+      setBusyCourse(course.id);
+      try {
         await enrollFreeCourse(course);
-        return;
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to enroll in free course.");
+      } finally {
+        setBusyCourse(null);
       }
-
-      const order = await createCourseOrder({ data: { courseId: course.id } });
-
-      const loaded = await loadRazorpayScript();
-      if (!loaded || !window.Razorpay)
-        throw new Error(
-          "Unable to load Razorpay Checkout. Check your internet connection and try again.",
-        );
-
-      const razorpayKey =
-        order && typeof order.keyId === "string" && order.keyId.startsWith("rzp_")
-          ? order.keyId
-          : "rzp_test_TkYGjq4iojsimE";
-
-      const checkoutOptions: Record<string, unknown> = {
-        key: razorpayKey,
-        amount: order?.amount || 99900,
-        currency: order?.currency || "INR",
-        name: "Skillbridge",
-        description: order?.title || course.title,
-        theme: { color: "#4f46e5" },
-      };
-      if (order?.orderId) {
-        checkoutOptions["order_id"] = order.orderId;
-      }
-
-      await new Promise<void>((resolve, reject) => {
-        const checkout = new window.Razorpay!({
-          ...checkoutOptions,
-          handler: async (response: {
-            razorpay_payment_id: string;
-            razorpay_order_id: string;
-            razorpay_signature: string;
-          }) => {
-            try {
-              await verifyCoursePayment({
-                data: {
-                  courseId: course.id,
-                  orderId: response.razorpay_order_id,
-                  paymentId: response.razorpay_payment_id,
-                  signature: response.razorpay_signature,
-                },
-              });
-              await enrollFreeCourse(course);
-              setMessage(`Payment successful. You're enrolled in ${course.title}.`);
-              resolve();
-            } catch (err) {
-              reject(err instanceof Error ? err : new Error("Payment verification failed."));
-            }
-          },
-          modal: { ondismiss: () => reject(new Error("Payment was cancelled.")) },
-        });
-        checkout.open();
-      });
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unable to complete payment.";
-      if (
-        msg.includes("No key passed") ||
-        msg.includes("key") ||
-        msg.includes("gateway") ||
-        msg.includes("Razorpay")
-      ) {
-        try {
-          await enrollFreeCourse(course);
-          setMessage(`Enrolled in ${course.title} (Demonstration Checkout). Full course unlocked!`);
-          return;
-        } catch {
-          // ignore
-        }
-      }
-      setError(msg);
-    } finally {
-      setBusyCourse(null);
+      return;
     }
+
+    setCheckoutCourse(course);
   }
+
+  const handleCheckoutSuccess = async (courseId: string) => {
+    const targetCourse = courses.find((c) => c.id === courseId || c.slug === courseId);
+    if (targetCourse) {
+      await enrollFreeCourse(targetCourse).catch(() => {});
+      setMessage(`🎉 Payment confirmed! You are now enrolled in ${targetCourse.title}.`);
+    } else {
+      setMessage("🎉 Payment confirmed! You are now enrolled.");
+    }
+    if (user?.id) {
+      try {
+        const [courseData, enrollmentData] = await Promise.all([
+          listPublishedCourses(),
+          getMyEnrollments(user.id),
+        ]);
+        setCourses(courseData);
+        setEnrollments(enrollmentData);
+      } catch {
+        // ignore
+      }
+    }
+    setCheckoutCourse(null);
+  };
 
   return (
     <div className="space-y-6">
@@ -288,6 +246,16 @@ function BrowseCoursesPage() {
           })}
         </div>
       )}
+
+      <CheckoutModal
+        isOpen={Boolean(checkoutCourse)}
+        course={checkoutCourse}
+        onClose={() => setCheckoutCourse(null)}
+        onSuccess={handleCheckoutSuccess}
+        userEmail={user?.email}
+        userId={user?.id}
+        displayName={user?.user_metadata?.["display_name"] as string | undefined}
+      />
     </div>
   );
 }

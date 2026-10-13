@@ -60,6 +60,7 @@ import { CodeLabView } from "@/components/student/CodeLabView";
 import { RecallDecksView } from "@/components/student/RecallDecksView";
 import { FocusStudioView } from "@/components/student/FocusStudioView";
 import { AnalyticsView } from "@/components/student/AnalyticsView";
+import { CheckoutModal } from "@/components/CheckoutModal";
 import {
   createContext,
   useCallback,
@@ -277,6 +278,9 @@ type Commerce = {
   isTeacher: boolean;
   buying: string | null;
   buy: (course: Course) => void;
+  checkoutCourse: Course | null;
+  setCheckoutCourse: (c: Course | null) => void;
+  handleCheckoutSuccess: (courseId: string, courseSlug: string) => Promise<void>;
   signOut: () => void;
   initials: string;
   firstName: string;
@@ -514,6 +518,18 @@ function useCommerceState(
       // ignore
     }
     try {
+      const lmsData = await lmsClient.getStudentDashboard().catch(() => null);
+      if (lmsData?.enrolledCourses) {
+        lmsData.enrolledCourses.forEach((c) => {
+          if (c.id) localIds.push(c.id);
+          if (c.slug) localIds.push(c.slug);
+        });
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
       const ids = await fetchPurchases();
       const combined = Array.from(new Set([...ids, ...localIds]));
       setOwned(new Set(combined));
@@ -529,166 +545,38 @@ function useCommerceState(
     loadOwned();
   }, [loadOwned]);
 
+  const [checkoutCourse, setCheckoutCourse] = useState<Course | null>(null);
+
+  const handleCheckoutSuccess = async (courseId: string, courseSlug: string) => {
+    const identifiers = [courseId, courseSlug].filter(Boolean);
+    setOwned((prev) => new Set([...prev, ...identifiers]));
+    if (user) {
+      const localKey = `skillbridge_purchases_${user.id}`;
+      try {
+        const localIds: string[] = JSON.parse(localStorage.getItem(localKey) ?? "[]");
+        const next = Array.from(new Set([...localIds, ...identifiers]));
+        localStorage.setItem(localKey, JSON.stringify(next));
+      } catch {
+        // ignore
+      }
+    }
+    await loadOwned();
+    await loadLmsProgress();
+    const courseObj = coursesList.find((c) => c.id === courseId || c.slug === courseSlug);
+    notify(
+      `🎉 Payment confirmed! You now have full access to ${courseObj?.title || courseSlug}.`,
+      "success",
+    );
+    setCheckoutCourse(null);
+  };
+
   const buy = async (course: Course) => {
-    if (buying !== null) return;
-    const m = meta[course.slug];
-    if (!m) return;
     if (!user) {
+      notify("Please sign in or create an account to purchase courses.", "info");
       navigate({ to: "/auth" });
       return;
     }
-    setBuying(course.slug);
-    try {
-      const order = await createOrder({ data: { courseId: m.id } });
-
-      if (!(await loadRazorpay()) || !window.Razorpay) {
-        throw new Error(
-          "Could not connect to payment gateway. Please check your internet connection.",
-        );
-      }
-
-      const razorpayKey =
-        order && typeof order.keyId === "string" && order.keyId.startsWith("rzp_")
-          ? order.keyId
-          : "rzp_test_TkYGjq4iojsimE";
-
-      const rzpOptions: Record<string, unknown> = {
-        key: razorpayKey,
-        amount: order?.amount || 99900,
-        currency: order?.currency || "INR",
-        name: "Skillbridge",
-        description: order?.title || course.title,
-        prefill: { email: user.email },
-        theme: { color: "#2563eb" },
-      };
-      if (order?.orderId) {
-        rzpOptions["order_id"] = order.orderId;
-      }
-
-      const rzp = new window.Razorpay({
-        ...rzpOptions,
-        handler: async (r: {
-          razorpay_order_id: string;
-          razorpay_payment_id: string;
-          razorpay_signature: string;
-        }) => {
-          try {
-            await verify({
-              data: {
-                courseId: m.id,
-                orderId: r.razorpay_order_id,
-                paymentId: r.razorpay_payment_id,
-                signature: r.razorpay_signature,
-              },
-            });
-
-            // A verified payment must also create the LMS enrollment.
-            // This is what makes the course appear in My Learning and unlocks its lessons.
-            const displayName =
-              (user.user_metadata?.["display_name"] as string | undefined) ||
-              user.email?.split("@")[0] ||
-              "Student Learner";
-            await lmsClient.enroll(m.id, displayName, user.email || "");
-
-            // Keep the purchase locally so the paid course remains unlocked after refresh.
-            const localKey = `skillbridge_purchases_${user.id}`;
-            try {
-              const localIds: string[] = JSON.parse(localStorage.getItem(localKey) ?? "[]");
-              if (!localIds.includes(m.id)) {
-                localIds.push(m.id);
-                localStorage.setItem(localKey, JSON.stringify(localIds));
-              }
-            } catch {
-              // ignore localStorage failures; the LMS enrollment is already persisted.
-            }
-
-            setOwned((prev) => new Set([...prev, m.id]));
-            await loadOwned();
-            await loadLmsProgress();
-            notify(`Payment confirmed! You now have full access to ${course.title}.`, "success");
-          } catch (e) {
-            console.error("Payment verification error:", e);
-            notify(
-              "Payment verification failed. Please contact support if you were debited.",
-              "error",
-            );
-          } finally {
-            setBuying(null);
-          }
-        },
-        modal: {
-          ondismiss: () => {
-            setBuying(null);
-          },
-        },
-      });
-
-      rzp.on("payment.failed", (r: unknown) => {
-        const resp = r as { error?: { description?: string } };
-        console.warn("Razorpay payment failed:", resp);
-        notify(
-          resp?.error?.description || "Your payment was not completed. You have not been charged.",
-          "error",
-        );
-        setBuying(null);
-      });
-
-      rzp.open();
-    } catch (e: unknown) {
-      console.error(e);
-      const raw = e instanceof Error ? e.message : "";
-
-      if (
-        raw.includes("No key passed") ||
-        raw.includes("key") ||
-        raw.includes("gateway") ||
-        raw.includes("Razorpay")
-      ) {
-        try {
-          const displayName =
-            (user.user_metadata?.["display_name"] as string | undefined) ||
-            user.email?.split("@")[0] ||
-            "Student Learner";
-          await lmsClient.enroll(m.id, displayName, user.email || "");
-
-          const localKey = `skillbridge_purchases_${user.id}`;
-          try {
-            const localIds: string[] = JSON.parse(localStorage.getItem(localKey) ?? "[]");
-            if (!localIds.includes(m.id)) {
-              localIds.push(m.id);
-              localStorage.setItem(localKey, JSON.stringify(localIds));
-            }
-          } catch {
-            // ignore localStorage errors
-          }
-
-          setOwned((prev) => new Set([...prev, m.id]));
-          await loadOwned();
-          await loadLmsProgress();
-          notify(
-            `Enrolled in ${course.title} (Demonstration Checkout). Full course unlocked!`,
-            "success",
-          );
-          setBuying(null);
-          return;
-        } catch (fallbackErr) {
-          console.error("Fallback enrollment error:", fallbackErr);
-        }
-      }
-
-      let friendlyMsg = "We couldn't start checkout. Please try again in a moment.";
-      if (raw.includes("already own")) {
-        friendlyMsg = "You already own this course. Enjoy learning!";
-      } else if (raw.includes("not switched on")) {
-        friendlyMsg = "Checkout is temporarily unavailable. Free previews are still active.";
-      } else if (raw.includes("connection") || raw.includes("network")) {
-        friendlyMsg = "Network error. Please check your connection and retry.";
-      } else if (raw) {
-        friendlyMsg = raw;
-      }
-      notify(friendlyMsg, "error");
-      setBuying(null);
-    }
+    setCheckoutCourse(course);
   };
 
   const signOut = async () => {
@@ -720,6 +608,9 @@ function useCommerceState(
     isTeacher,
     buying,
     buy,
+    checkoutCourse,
+    setCheckoutCourse,
+    handleCheckoutSuccess,
     signOut,
     initials,
     firstName,
@@ -846,7 +737,8 @@ function MyLearning({
                   <div className="mt-4">
                     <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                       <span>
-                        {course.lessonsDone} of {course.lessonsTotal || 3} lectures
+                        {Math.min(course.lessonsDone, course.lessonsTotal || 3)} of{" "}
+                        {course.lessonsTotal || 3} lectures
                       </span>
                       <span className="font-bold text-foreground">{course.progress}%</span>
                     </div>
@@ -1069,6 +961,16 @@ function Skillbridge() {
             <span>{toast.message}</span>
           </div>
         )}
+
+        <CheckoutModal
+          isOpen={Boolean(commerce.checkoutCourse)}
+          course={commerce.checkoutCourse}
+          onClose={() => commerce.setCheckoutCourse(null)}
+          onSuccess={commerce.handleCheckoutSuccess}
+          userEmail={commerce.user?.email}
+          userId={commerce.user?.id}
+          displayName={commerce.firstName}
+        />
       </StudentLayout>
     </CommerceContext.Provider>
   );
@@ -1093,8 +995,12 @@ function CourseCard({
   compact?: boolean;
 }) {
   const { meta, owned, buy, buying } = useCommerce();
-  const m = meta[course.slug];
-  const isOwned = !!m && owned.has(m.id);
+  const m = meta[course.slug] || (course.id ? meta[course.id] : undefined);
+  const isOwned =
+    (!!m && owned.has(m.id)) ||
+    owned.has(course.slug) ||
+    (course.id ? owned.has(course.id) : false) ||
+    course.progress > 0;
   return (
     <article className="group flex flex-col overflow-hidden rounded-lg border border-border bg-card transition-shadow hover:shadow-md">
       <button
@@ -1152,7 +1058,8 @@ function CourseCard({
         <div className="mt-4">
           <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
             <span>
-              {course.lessonsDone} of {course.lessonsTotal || 3} lectures
+              {Math.min(course.lessonsDone, course.lessonsTotal || 3)} of {course.lessonsTotal || 3}{" "}
+              lectures
             </span>
             <span className="font-semibold text-foreground">{course.progress}% complete</span>
           </div>
@@ -1315,7 +1222,8 @@ function Dashboard({
             <div className="mt-6">
               <div className="mb-1.5 flex justify-between text-xs text-muted-foreground">
                 <span>
-                  {current.lessonsDone} of {current.lessonsTotal || 3} lectures complete
+                  {Math.min(current.lessonsDone, current.lessonsTotal || 3)} of{" "}
+                  {current.lessonsTotal || 3} lectures complete
                 </span>
                 <span className="font-semibold text-foreground">{current.progress}%</span>
               </div>
@@ -1805,7 +1713,8 @@ function Certificates({ onOpenCert }: { onOpenCert: (course: Course) => void }) 
                 <span className="text-xs font-bold text-primary">{course.progress}%</span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                {course.lessonsDone} of {course.lessonsTotal || 3} lessons completed
+                {Math.min(course.lessonsDone, course.lessonsTotal || 3)} of{" "}
+                {course.lessonsTotal || 3} lessons completed
               </p>
               <div className="mt-3">
                 <Progress value={course.progress} />
@@ -1903,7 +1812,12 @@ function PlayerModal({
     !!dashboardData?.enrolledCourses?.some(
       (c) => c.slug === course.slug || (course.id && c.id === course.id),
     );
-  const isOwned = (!!m && owned.has(m.id)) || isEnrolled || isTeacher;
+  const isOwned =
+    (!!m && owned.has(m.id)) ||
+    owned.has(course.slug) ||
+    (course.id ? owned.has(course.id) : false) ||
+    isEnrolled ||
+    isTeacher;
   const isCompleted = course.progress >= 100;
   // If course is owned, enrolled, completed, or teacher, infinite replay is granted with zero locks!
   const previewMin = m?.preview ?? course.preview_minutes ?? 5;
@@ -1938,10 +1852,18 @@ function PlayerModal({
       const completedIds = new Set(
         (res.lessonProgress || []).filter((p) => p.completed).map((p) => p.lesson_id),
       );
+      const isPlaceholderDuration = (dur?: string) =>
+        !dur ||
+        dur === "16:20" ||
+        dur === "24:10" ||
+        dur === "31:45" ||
+        dur === "15:00" ||
+        dur === "20m";
+
       let mapped = (res.lessons || []).map((l) => ({
         id: l.id,
         title: l.title,
-        length: l.duration || "15:00",
+        length: isPlaceholderDuration(l.duration) ? "1:00" : l.duration,
         video_url: l.video_url || "",
         description: l.description,
         completed: completedIds.has(l.id),
@@ -1963,7 +1885,7 @@ function PlayerModal({
             cVideoUrls.length > 1
               ? `Video ${i + 1}: ${res.course?.title || course.title}`
               : res.course?.title || course.title,
-          length: "15:00",
+          length: "1:00",
           video_url: vUrl,
           description: res.course?.description || course.description || "",
           completed: false,
@@ -1971,6 +1893,30 @@ function PlayerModal({
       }
 
       setDbLessons(mapped);
+
+      // Probe actual video duration from media files to match exact video length
+      if (typeof window !== "undefined") {
+        mapped.forEach((lec, idx) => {
+          const vUrl = lec.video_url || res.course?.video_url;
+          if (vUrl) {
+            const probe = document.createElement("video");
+            probe.preload = "metadata";
+            probe.onloadedmetadata = () => {
+              const d = probe.duration;
+              if (d && !isNaN(d) && isFinite(d) && d > 0) {
+                const mins = Math.floor(d / 60);
+                const secs = Math.floor(d % 60);
+                const formatted = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+                setDbLessons((prev) =>
+                  prev.map((item, i) => (i === idx ? { ...item, length: formatted } : item)),
+                );
+              }
+            };
+            probe.src = vUrl;
+          }
+        });
+      }
+
       if (mapped.length > 0) {
         const firstIncomplete = mapped.findIndex((l) => !l.completed);
         setActive(firstIncomplete >= 0 ? firstIncomplete : 0);
@@ -2116,6 +2062,17 @@ function PlayerModal({
                 controls={!locked}
                 onTimeUpdate={onTime}
                 onSeeking={onTime}
+                onLoadedMetadata={(e) => {
+                  const d = e.currentTarget.duration;
+                  if (d && !isNaN(d) && isFinite(d) && d > 0) {
+                    const mins = Math.floor(d / 60);
+                    const secs = Math.floor(d % 60);
+                    const formatted = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+                    setDbLessons((prev) =>
+                      prev.map((item, i) => (i === active ? { ...item, length: formatted } : item)),
+                    );
+                  }
+                }}
                 className="h-full w-full object-cover"
               />
             ) : (

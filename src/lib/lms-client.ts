@@ -278,10 +278,17 @@ export const lmsClient = {
     courseIdOrSlug: string,
     studentName?: string,
     studentEmail?: string,
+    studentId?: string,
   ): Promise<{ enrollment: ClientEnrollment }> {
     return request("enroll", {
       method: "POST",
-      body: JSON.stringify({ courseId: courseIdOrSlug, studentName, studentEmail }),
+      body: JSON.stringify({
+        courseId: courseIdOrSlug,
+        studentName,
+        studentEmail,
+        studentId,
+        userId: studentId,
+      }),
     });
   },
 

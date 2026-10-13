@@ -394,18 +394,20 @@
       "completion_percentage": 0,
       "completed_at": null,
       "status": "enrolled"
+    },
+    {
+      "id": "enr_1791890288680_63xb",
+      "student_id": "test_student_user",
+      "course_id": "45c4dd4a-715b-4f7d-b508-9c7501f2a63b",
+      "student_name": "Student Learner",
+      "student_email": "test@student.com",
+      "enrolled_at": "2026-10-13T11:18:08.680Z",
+      "completion_percentage": 0,
+      "completed_at": null,
+      "status": "enrolled"
     }
   ],
   "lesson_progress": [
-    {
-      "id": "lp_student_01",
-      "student_id": "00000000-0000-4000-a000-000000000001",
-      "course_id": "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
-      "lesson_id": "lesson-react-1",
-      "completed": true,
-      "completed_at": "2026-09-11T10:00:00.000Z",
-      "updated_at": "2026-09-11T10:00:00.000Z"
-    },
     {
       "id": "prog_1791357077821_pdwn",
       "student_id": "00000000-0000-4000-a000-000000000001",
@@ -439,8 +441,8 @@
       "course_id": "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
       "lesson_id": "les-react-1",
       "completed": true,
-      "completed_at": "2026-10-07T07:20:54.272Z",
-      "updated_at": "2026-10-07T07:20:54.272Z"
+      "completed_at": "2026-10-13T10:57:33.280Z",
+      "updated_at": "2026-10-13T10:57:33.280Z"
     },
     {
       "id": "prog_1791357660345_h3b1",
@@ -448,8 +450,8 @@
       "course_id": "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
       "lesson_id": "les-react-2",
       "completed": true,
-      "completed_at": "2026-10-07T07:21:00.345Z",
-      "updated_at": "2026-10-07T07:21:00.345Z"
+      "completed_at": "2026-10-13T10:57:40.117Z",
+      "updated_at": "2026-10-13T10:57:40.117Z"
     },
     {
       "id": "prog_1791357664814_evve",
@@ -530,7 +532,12 @@
         {
           "id": 1,
           "question": "Which keyword is used inside conditional types to deduce a type variable?",
-          "options": ["deduce", "infer", "extract", "typeof"],
+          "options": [
+            "deduce",
+            "infer",
+            "extract",
+            "typeof"
+          ],
           "correct_option": 1,
           "explanation": "The 'infer' keyword introduces a type variable in the true branch of a conditional type.",
           "marks": 25
@@ -551,7 +558,12 @@
         {
           "id": 3,
           "question": "How do you make all properties of type T readonly in TypeScript?",
-          "options": ["Readonly<T>", "Immutable<T>", "const T", "Freeze<T>"],
+          "options": [
+            "Readonly<T>",
+            "Immutable<T>",
+            "const T",
+            "Freeze<T>"
+          ],
           "correct_option": 0,
           "explanation": "The built-in utility type Readonly<T> marks all properties of T as readonly.",
           "marks": 25
@@ -559,7 +571,12 @@
         {
           "id": 4,
           "question": "What is the result of 'type X = string & number'?",
-          "options": ["string", "number", "any", "never"],
+          "options": [
+            "string",
+            "number",
+            "any",
+            "never"
+          ],
           "correct_option": 3,
           "explanation": "No value can be both a string and a number simultaneously, so the intersection evaluates to 'never'.",
           "marks": 25
@@ -608,7 +625,12 @@
         {
           "id": 3,
           "question": "What hook helps preserve expensive computation results across renders?",
-          "options": ["useEffect", "useMemo", "useContext", "useId"],
+          "options": [
+            "useEffect",
+            "useMemo",
+            "useContext",
+            "useId"
+          ],
           "correct_option": 1,
           "explanation": "useMemo caches the result of an expensive calculation until dependencies change.",
           "marks": 30
@@ -798,7 +820,17 @@
       "created_at": "2026-10-06T11:53:23.279Z"
     }
   ],
-  "purchases": [],
+  "purchases": [
+    {
+      "id": "pur_1791890288679_9kc5",
+      "user_id": "test_student_user",
+      "course_id": "45c4dd4a-715b-4f7d-b508-9c7501f2a63b",
+      "amount_inr": 1299,
+      "razorpay_order_id": "order_TnNBxgdnNDqAPd",
+      "razorpay_payment_id": "pay_test_123",
+      "created_at": "2026-10-13T11:18:08.679Z"
+    }
+  ],
   "profiles": [
     {
       "id": "00000000-0000-4000-a000-000000000001",

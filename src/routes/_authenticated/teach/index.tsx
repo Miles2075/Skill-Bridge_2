@@ -572,11 +572,35 @@ function TeachDashboardPage() {
     setMsg(null);
     try {
       const uploaded = await lmsClient.uploadVideo(selectedContentCourse, file, les.id);
+      let durationStr = les.duration;
+      try {
+        const tempVideo = document.createElement("video");
+        tempVideo.preload = "metadata";
+        const d = await new Promise<number>((resolve) => {
+          tempVideo.onloadedmetadata = () => {
+            window.URL.revokeObjectURL(tempVideo.src);
+            resolve(tempVideo.duration || 60);
+          };
+          tempVideo.onerror = () => resolve(60);
+          tempVideo.src = URL.createObjectURL(file);
+        });
+        if (d && !isNaN(d) && isFinite(d) && d > 0) {
+          const mins = Math.floor(d / 60);
+          const secs = Math.floor(d % 60);
+          durationStr = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+        }
+      } catch {
+        // ignore
+      }
+
       await lmsClient.updateLesson(les.id, {
         video_url: uploaded.videoUrl,
+        duration: durationStr,
       });
       setLessons((prev) =>
-        prev.map((l) => (l.id === les.id ? { ...l, videoUrl: uploaded.videoUrl } : l)),
+        prev.map((l) =>
+          l.id === les.id ? { ...l, videoUrl: uploaded.videoUrl, duration: durationStr } : l,
+        ),
       );
       setMsg({ text: `Successfully updated video for lesson "${les.title}"!` });
       window.dispatchEvent(new CustomEvent("lms_data_updated"));
@@ -801,9 +825,32 @@ function TeachDashboardPage() {
         videoUrl = uploaded.videoUrl;
       }
 
+      let durationVal = newLessonDuration.trim();
+      if (newLessonVideoFile) {
+        try {
+          const tempVideo = document.createElement("video");
+          tempVideo.preload = "metadata";
+          const d = await new Promise<number>((resolve) => {
+            tempVideo.onloadedmetadata = () => {
+              window.URL.revokeObjectURL(tempVideo.src);
+              resolve(tempVideo.duration || 60);
+            };
+            tempVideo.onerror = () => resolve(60);
+            tempVideo.src = URL.createObjectURL(newLessonVideoFile);
+          });
+          if (d && !isNaN(d) && isFinite(d) && d > 0) {
+            const mins = Math.floor(d / 60);
+            const secs = Math.floor(d % 60);
+            durationVal = `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       const { lesson } = await lmsClient.addLesson(selectedContentCourse, {
         title: newLessonTitle.trim(),
-        duration: newLessonDuration.trim(),
+        duration: durationVal,
         videoUrl: videoUrl || undefined,
         lessonOrder: newLessonOrder > 0 ? newLessonOrder : undefined,
         isRequired: newLessonRequired,
