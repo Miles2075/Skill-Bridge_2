@@ -517,4 +517,62 @@ export const lmsClient = {
       body: JSON.stringify(data),
     });
   },
+
+  // PAYMENTS & CHECKOUT
+  async getPaymentConfig(): Promise<{ keyId: string }> {
+    return request<{ keyId: string }>("payments/config");
+  },
+
+  async createPaymentOrder(courseIdOrSlug: string): Promise<{
+    orderId: string;
+    amount: number;
+    currency: string;
+    keyId: string;
+    title: string;
+    courseId: string;
+  }> {
+    return request("payments/create-order", {
+      method: "POST",
+      body: JSON.stringify({ courseId: courseIdOrSlug }),
+    });
+  },
+
+  async verifyPayment(data: {
+    courseId: string;
+    orderId: string;
+    paymentId: string;
+    signature: string;
+    studentName?: string;
+    studentEmail?: string;
+  }): Promise<{
+    ok: boolean;
+    purchase: unknown;
+    enrollment: ClientEnrollment;
+    paymentId: string;
+    orderId: string;
+    courseId: string;
+    courseTitle: string;
+    amount: number;
+  }> {
+    return request("payments/verify", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getPurchases(userId?: string): Promise<{
+    purchases: Array<{
+      id: string;
+      user_id: string;
+      course_id: string;
+      amount_inr: number;
+      razorpay_order_id?: string;
+      razorpay_payment_id?: string;
+      created_at: string;
+    }>;
+    courseIds: string[];
+  }> {
+    const q = userId ? `?userId=${encodeURIComponent(userId)}` : "";
+    return request(`payments/purchases${q}`);
+  },
 };

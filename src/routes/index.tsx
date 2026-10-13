@@ -1,9 +1,7 @@
 import { createFileRoute, Link, useNavigate, redirect } from "@tanstack/react-router";
-import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
 import { getLocalSession, getLocalUserRole } from "@/lib/local-db";
-import { createCourseOrder, verifyCoursePayment, getUserPurchases } from "@/lib/payments.functions";
 import {
   AlertCircle,
   Award,
@@ -303,8 +301,15 @@ declare global {
 function loadRazorpay() {
   return new Promise<boolean>((resolve) => {
     if (window.Razorpay) return resolve(true);
+    const existing = document.querySelector('script[src*="checkout.razorpay.com"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve(true));
+      existing.addEventListener("error", () => resolve(false));
+      return;
+    }
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
     script.onload = () => resolve(true);
     script.onerror = () => resolve(false);
     document.body.appendChild(script);
@@ -368,10 +373,6 @@ function useCommerceState(
     window.addEventListener("lms_data_updated", loadLmsProgress);
     return () => window.removeEventListener("lms_data_updated", loadLmsProgress);
   }, [loadLmsProgress]);
-
-  const createOrder = useServerFn(createCourseOrder);
-  const verify = useServerFn(verifyCoursePayment);
-  const fetchPurchases = useServerFn(getUserPurchases);
 
   const loadCatalogCourses = useCallback(async () => {
     try {
@@ -502,47 +503,51 @@ function useCommerceState(
   }, [user]);
 
   const loadOwned = useCallback(async () => {
-    if (!user) return setOwned(new Set());
+    if (!user || !user.id) return setOwned(new Set());
     if (isTeacher) {
       const allCourseIdentifiers = coursesList.flatMap((c) =>
-        [c.slug, c.id].filter(Boolean),
-      ) as string[];
+        [c.slug, c.id].filter((x): x is string => typeof x === "string" && x.length > 0),
+      );
       setOwned(new Set(allCourseIdentifiers));
       return;
     }
     const localKey = `skillbridge_purchases_${user.id}`;
     let localIds: string[] = [];
     try {
-      localIds = JSON.parse(localStorage.getItem(localKey) ?? "[]");
+      const parsed = JSON.parse(localStorage.getItem(localKey) ?? "[]");
+      localIds = Array.isArray(parsed) ? parsed : [];
     } catch {
-      // ignore
-    }
-    try {
-      const lmsData = await lmsClient.getStudentDashboard().catch(() => null);
-      if (lmsData?.enrolledCourses) {
-        lmsData.enrolledCourses.forEach((c) => {
-          if (c.id) localIds.push(c.id);
-          if (c.slug) localIds.push(c.slug);
-        });
-      }
-    } catch {
-      // ignore
+      localIds = [];
     }
 
     try {
-      const ids = await fetchPurchases();
-      const combined = Array.from(new Set([...ids, ...localIds]));
+      const purchasesRes = await lmsClient.getPurchases(user.id).catch(() => null);
+      const courseIds = Array.isArray(purchasesRes?.courseIds) ? purchasesRes.courseIds : [];
+      const dash = await lmsClient.getStudentDashboard().catch(() => null);
+      const enrolledIdentifiers = (dash?.enrolledCourses || [])
+        .flatMap((c) => [c.id, c.slug])
+        .filter((x): x is string => typeof x === "string" && x.length > 0);
+      const combined = Array.from(new Set([...courseIds, ...enrolledIdentifiers, ...localIds]));
       setOwned(new Set(combined));
     } catch {
-      const { data } = await supabase.from("purchases").select("course_id").eq("user_id", user.id);
-      const dbIds = ((data ?? []) as { course_id: string }[]).map((p) => p.course_id);
-      const combined = Array.from(new Set([...dbIds, ...localIds]));
-      setOwned(new Set(combined));
+      try {
+        const { data } = await supabase
+          .from("purchases")
+          .select("course_id")
+          .eq("user_id", user.id);
+        const dbIds = ((data ?? []) as { course_id: string }[]).map((p) => p.course_id);
+        const combined = Array.from(new Set([...dbIds, ...localIds]));
+        setOwned(new Set(combined));
+      } catch {
+        setOwned(new Set(localIds));
+      }
     }
-  }, [user, isTeacher, coursesList, fetchPurchases]);
+  }, [user, isTeacher, coursesList]);
 
   useEffect(() => {
     loadOwned();
+    window.addEventListener("lms_data_updated", loadOwned);
+    return () => window.removeEventListener("lms_data_updated", loadOwned);
   }, [loadOwned]);
 
   const [checkoutCourse, setCheckoutCourse] = useState<Course | null>(null);
@@ -622,9 +627,11 @@ function useCommerceState(
 
 function PriceTag({ course }: { course: Course }) {
   const { meta, owned } = useCommerce();
-  const m = meta[course.slug];
+  const m = meta[course.slug] || (course.id ? meta[course.id] : undefined);
   if (!m) return null;
-  if (owned.has(m.id))
+  const isPurchased =
+    owned.has(m.id) || (course.id ? owned.has(course.id) : false) || owned.has(course.slug);
+  if (isPurchased)
     return (
       <span className="rounded bg-teal/15 px-2 py-0.5 text-[11px] font-bold text-teal">
         Purchased
@@ -943,13 +950,12 @@ function Skillbridge() {
           <div
             role="status"
             aria-live="polite"
-            className={`fixed bottom-5 right-5 z-[70] flex items-center gap-2.5 rounded-lg border px-4 py-3 text-sm font-medium shadow-2xl transition-all duration-200 animate-in fade-in slide-in-from-bottom-2 ${
-              toast.type === "error"
+            className={`fixed bottom-5 right-5 z-[70] flex items-center gap-2.5 rounded-lg border px-4 py-3 text-sm font-medium shadow-2xl transition-all duration-200 animate-in fade-in slide-in-from-bottom-2 ${toast.type === "error"
                 ? "border-destructive/40 bg-destructive text-destructive-foreground"
                 : toast.type === "info"
                   ? "border-primary/40 bg-primary text-primary-foreground"
                   : "border-border bg-foreground text-background"
-            }`}
+              }`}
           >
             {toast.type === "error" ? (
               <AlertCircle className="size-4 shrink-0 text-red-300" />
@@ -1489,13 +1495,12 @@ function Assignments({
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-foreground">{sub.assignmentTitle}</span>
                     <span
-                      className={`rounded px-2 py-0.5 text-[11px] font-bold ${
-                        sub.status === "approved"
+                      className={`rounded px-2 py-0.5 text-[11px] font-bold ${sub.status === "approved"
                           ? "bg-teal/15 text-teal"
                           : sub.status === "needs_revision"
                             ? "bg-destructive/15 text-destructive"
                             : "bg-amber-500/15 text-amber-500"
-                      }`}
+                        }`}
                     >
                       {sub.status === "approved"
                         ? `✓ Approved (${sub.score}/${sub.maxScore})`
@@ -1994,8 +1999,8 @@ function PlayerModal({
     if (!newComment.trim()) return;
     const currentTimeStr = videoRef.current
       ? `${Math.floor(videoRef.current.currentTime / 60)
-          .toString()
-          .padStart(2, "0")}:${Math.floor(videoRef.current.currentTime % 60)
+        .toString()
+        .padStart(2, "0")}:${Math.floor(videoRef.current.currentTime % 60)
           .toString()
           .padStart(2, "0")}`
       : undefined;
@@ -2196,31 +2201,28 @@ function PlayerModal({
           <div className="flex border-b border-border pb-1 gap-1 text-xs">
             <button
               onClick={() => setPlayerTab("playlist")}
-              className={`px-3 py-1.5 font-bold rounded-t-md transition-colors cursor-pointer ${
-                playerTab === "playlist"
+              className={`px-3 py-1.5 font-bold rounded-t-md transition-colors cursor-pointer ${playerTab === "playlist"
                   ? "border-b-2 border-primary text-primary"
                   : "text-muted-foreground hover:text-foreground"
-              }`}
+                }`}
             >
               Curriculum ({lectures.length})
             </button>
             <button
               onClick={() => setPlayerTab("qa")}
-              className={`px-3 py-1.5 font-bold rounded-t-md transition-colors cursor-pointer ${
-                playerTab === "qa"
+              className={`px-3 py-1.5 font-bold rounded-t-md transition-colors cursor-pointer ${playerTab === "qa"
                   ? "border-b-2 border-primary text-primary"
                   : "text-muted-foreground hover:text-foreground"
-              }`}
+                }`}
             >
               Q&A & Discussion ({lectureComments.length})
             </button>
             <button
               onClick={() => setPlayerTab("notes")}
-              className={`px-3 py-1.5 font-bold rounded-t-md transition-colors cursor-pointer ${
-                playerTab === "notes"
+              className={`px-3 py-1.5 font-bold rounded-t-md transition-colors cursor-pointer ${playerTab === "notes"
                   ? "border-b-2 border-primary text-primary"
                   : "text-muted-foreground hover:text-foreground"
-              }`}
+                }`}
             >
               My Notes
             </button>
@@ -2239,18 +2241,16 @@ function PlayerModal({
                         setLocked(false);
                       }
                     }}
-                    className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs transition-colors cursor-pointer ${
-                      index === active
+                    className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs transition-colors cursor-pointer ${index === active
                         ? "bg-primary/10 font-bold text-primary"
                         : "hover:bg-secondary text-foreground"
-                    }`}
+                      }`}
                   >
                     <span
-                      className={`grid size-4 shrink-0 place-items-center rounded-sm border ${
-                        l.completed
+                      className={`grid size-4 shrink-0 place-items-center rounded-sm border ${l.completed
                           ? "border-primary bg-primary text-primary-foreground"
                           : "border-input"
-                      }`}
+                        }`}
                     >
                       {l.completed && <Check className="size-3" />}
                     </span>
@@ -2696,11 +2696,10 @@ function QuizModal({
           <button
             key={option}
             onClick={() => setAnswers((prev) => ({ ...prev, [current]: option }))}
-            className={`flex w-full items-center gap-3 rounded-md border p-3 text-left text-sm transition-colors cursor-pointer ${
-              currentAnswer === option
+            className={`flex w-full items-center gap-3 rounded-md border p-3 text-left text-sm transition-colors cursor-pointer ${currentAnswer === option
                 ? "border-primary bg-primary/10 font-semibold text-primary"
                 : "border-border hover:bg-secondary"
-            }`}
+              }`}
           >
             <span className="grid size-7 place-items-center rounded-full border border-current text-xs font-bold">
               {String.fromCharCode(65 + index)}

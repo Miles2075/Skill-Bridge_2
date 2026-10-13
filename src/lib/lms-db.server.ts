@@ -1104,10 +1104,10 @@ class DatabaseManager {
         : course.video_url
           ? [course.video_url]
           : [
-              "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-              "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-              "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-            ];
+            "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+            "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+            "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+          ];
 
     const titles = [
       "1. Course Overview & System Architecture",
@@ -1225,23 +1225,34 @@ class DatabaseManager {
 
   recordPurchase(params: {
     userId: string;
-    courseIdOrSlug: string;
+    courseId?: string;
+    courseIdOrSlug?: string;
     amountInr: number;
     razorpayOrderId?: string;
     razorpayPaymentId?: string;
   }): LocalPurchase {
     const db = this.read();
-    const course = this.getCourse(params.courseIdOrSlug);
-    if (!course) throw new Error("Course not found");
     if (!db.purchases) db.purchases = [];
+
+    const identifier = params.courseId || params.courseIdOrSlug || "";
+    const course = identifier ? this.getCourse(identifier) : undefined;
+    const targetCourseId = course ? course.id : identifier;
+
     const existing = db.purchases.find(
-      (p) => p.user_id === params.userId && p.course_id === course.id,
+      (p) => p.user_id === params.userId && p.course_id === targetCourseId,
     );
-    if (existing) return existing;
+    if (existing) {
+      if (params.razorpayPaymentId) existing.razorpay_payment_id = params.razorpayPaymentId;
+      if (params.razorpayOrderId) existing.razorpay_order_id = params.razorpayOrderId;
+      existing.amount_inr = params.amountInr;
+      this.write();
+      return existing;
+    }
+
     const purchase: LocalPurchase = {
-      id: `pur_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: `pur_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       user_id: params.userId,
-      course_id: course.id,
+      course_id: targetCourseId,
       amount_inr: params.amountInr,
       razorpay_order_id: params.razorpayOrderId,
       razorpay_payment_id: params.razorpayPaymentId,
@@ -1256,6 +1267,15 @@ class DatabaseManager {
     const db = this.read();
     if (!db.purchases) return [];
     return db.purchases.filter((p) => p.user_id === userId);
+  }
+
+  getUserPurchases(userId?: string): LocalPurchase[] {
+    const db = this.read();
+    if (!db.purchases) return [];
+    if (userId) {
+      return db.purchases.filter((p) => p.user_id === userId);
+    }
+    return db.purchases;
   }
 
   getLessonProgress(studentId: string, courseId: string): LessonProgress[] {
@@ -1588,6 +1608,11 @@ class DatabaseManager {
         );
         const studentAvatar = studentUser?.user_metadata?.avatar_url || null;
 
+        const purchase = (db.purchases || []).find(
+          (p) => p.user_id === e.student_id && p.course_id === course.id,
+        );
+        const pricePaidInr = purchase?.amount_inr ?? (course.price_inr > 0 ? course.price_inr : 0);
+
         return {
           id: e.id,
           studentId: e.student_id,
@@ -1597,6 +1622,7 @@ class DatabaseManager {
           courseId: course.id,
           courseSlug: course.slug,
           courseTitle: course.title,
+          pricePaidInr,
           progress: e.completion_percentage,
           completedLessons: completedRequired,
           totalRequiredLessons: totalRequired,
@@ -1902,8 +1928,8 @@ class DatabaseManager {
     if (!user) {
       const role =
         cleanEmail.includes("teach") ||
-        cleanEmail.includes("instructor") ||
-        cleanEmail.includes("faculty")
+          cleanEmail.includes("instructor") ||
+          cleanEmail.includes("faculty")
           ? "teacher"
           : "student";
       const registered = this.registerUser({

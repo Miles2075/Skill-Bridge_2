@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState, useCallback } from "react";
 import {
   AlertCircle,
@@ -22,6 +22,7 @@ import {
   Loader2,
   Play,
   Printer,
+  ShoppingCart,
   Sparkles,
   Target,
   Timer,
@@ -90,6 +91,7 @@ interface QuizResultState {
 
 function StudentDashboardPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const displayName =
     (user?.user_metadata?.["display_name"] as string) || user?.email?.split("@")[0] || "Student";
   const email = user?.email || "student@example.com";
@@ -218,6 +220,10 @@ function StudentDashboardPage() {
 
   const handleQuickEnroll = async (c: ClientCourse) => {
     if (!user) return;
+    if (c.price_inr && c.price_inr > 0) {
+      navigate({ to: "/student/browse", search: { course: c.slug } });
+      return;
+    }
     try {
       const displayName =
         (user.user_metadata?.["display_name"] as string | undefined) ||
@@ -394,9 +400,8 @@ function StudentDashboardPage() {
         prev.map((l, idx) => (idx === activeLessonIndex ? { ...l, completed: true } : l)),
       );
       setFeedbackMsg({
-        text: `Lesson "${activeLesson.title}" marked complete! Progress: ${res.progress}%${
-          res.isCompleted ? " — All required lessons completed! Certificate unlocked!" : ""
-        }`,
+        text: `Lesson "${activeLesson.title}" marked complete! Progress: ${res.progress}%${res.isCompleted ? " — All required lessons completed! Certificate unlocked!" : ""
+          }`,
       });
       window.dispatchEvent(new Event("lms_data_updated"));
       await loadDashboard();
@@ -573,11 +578,10 @@ function StudentDashboardPage() {
       {/* Toast Alert */}
       {feedbackMsg && (
         <div
-          className={`flex items-center justify-between rounded-lg p-3.5 text-xs font-medium ${
-            feedbackMsg.error
+          className={`flex items-center justify-between rounded-lg p-3.5 text-xs font-medium ${feedbackMsg.error
               ? "bg-red-50 text-red-800 border border-red-200"
               : "bg-indigo-50 text-indigo-900 border border-indigo-200"
-          }`}
+            }`}
         >
           <div className="flex items-center gap-2">
             {feedbackMsg.error ? (
@@ -923,11 +927,10 @@ function StudentDashboardPage() {
 
                       {asg.submissionStatus !== "unsubmitted" ? (
                         <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            asg.submissionStatus === "approved"
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${asg.submissionStatus === "approved"
                               ? "bg-emerald-100 text-emerald-800"
                               : "bg-amber-100 text-amber-800"
-                          }`}
+                            }`}
                         >
                           {asg.submissionStatus === "approved" ? "✓ Graded" : "In Review"}
                         </span>
@@ -1021,11 +1024,10 @@ function StudentDashboardPage() {
                 <button
                   key={filter}
                   onClick={() => setCourseFilter(filter)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer ${
-                    courseFilter === filter
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer ${courseFilter === filter
                       ? "bg-indigo-600 text-white"
                       : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-                  }`}
+                    }`}
                 >
                   {filter === "all"
                     ? "All Courses"
@@ -1172,8 +1174,13 @@ function StudentDashboardPage() {
                       <p className="text-xs text-slate-500 mt-1 line-clamp-2">
                         {c.description || "Practical engineering curriculum with video lectures."}
                       </p>
-                      <div className="mt-2 text-[11px] font-semibold text-slate-600">
-                        Instructor: {c.instructor}
+                      <div className="mt-2 flex items-center justify-between text-[11px] font-semibold">
+                        <span className="text-slate-600">Instructor: {c.instructor}</span>
+                        <span className="text-indigo-600 font-bold">
+                          {c.price_inr && c.price_inr > 0
+                            ? `₹${c.price_inr.toLocaleString("en-IN")}`
+                            : "Free"}
+                        </span>
                       </div>
                     </div>
 
@@ -1181,8 +1188,17 @@ function StudentDashboardPage() {
                       onClick={() => void handleQuickEnroll(c)}
                       className="mt-4 inline-flex items-center justify-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition cursor-pointer"
                     >
-                      <Play className="size-3.5 fill-white" />
-                      <span>Enroll & Watch Video</span>
+                      {c.price_inr && c.price_inr > 0 ? (
+                        <>
+                          <ShoppingCart className="size-3.5" />
+                          <span>Buy Course (₹{c.price_inr.toLocaleString("en-IN")})</span>
+                        </>
+                      ) : (
+                        <>
+                          <Play className="size-3.5 fill-white" />
+                          <span>Enroll Free & Watch</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 ))}
@@ -1234,11 +1250,10 @@ function StudentDashboardPage() {
                       {asg.submissionStatus !== "unsubmitted" ? (
                         <div className="flex items-center gap-2">
                           <span
-                            className={`rounded-full px-3 py-1 text-xs font-bold ${
-                              asg.submissionStatus === "approved"
+                            className={`rounded-full px-3 py-1 text-xs font-bold ${asg.submissionStatus === "approved"
                                 ? "bg-emerald-100 text-emerald-800"
                                 : "bg-amber-100 text-amber-800"
-                            }`}
+                              }`}
                           >
                             {asg.submissionStatus === "approved" ? "✓ Graded" : "In Review"}
                           </span>
@@ -1329,11 +1344,10 @@ function StudentDashboardPage() {
                         <button
                           key={idx}
                           onClick={() => handleSelectAnswer(q.id, idx)}
-                          className={`w-full text-left p-3.5 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
-                            selectedAnswers[q.id] === idx
+                          className={`w-full text-left p-3.5 rounded-xl border text-xs font-medium transition-all cursor-pointer ${selectedAnswers[q.id] === idx
                               ? "border-indigo-600 bg-indigo-50/80 text-indigo-950 font-bold"
                               : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                          }`}
+                            }`}
                         >
                           <span className="mr-2 inline-block size-5 rounded-full border text-center leading-4 text-[11px]">
                             {String.fromCharCode(65 + idx)}
@@ -1739,11 +1753,10 @@ function StudentDashboardPage() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-xs">
           <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-2xl space-y-4">
             <div
-              className={`mx-auto grid size-12 place-items-center rounded-full ${
-                quizResultModal.passed
+              className={`mx-auto grid size-12 place-items-center rounded-full ${quizResultModal.passed
                   ? "bg-emerald-100 text-emerald-600"
                   : "bg-red-100 text-red-600"
-              }`}
+                }`}
             >
               {quizResultModal.passed ? (
                 <Award className="size-6" />
@@ -1982,18 +1995,16 @@ function StudentDashboardPage() {
                         <button
                           key={lesson.id}
                           onClick={() => setActiveLessonIndex(idx)}
-                          className={`flex w-full items-center gap-2.5 rounded-xl p-3 text-left text-xs transition-all cursor-pointer ${
-                            idx === activeLessonIndex
+                          className={`flex w-full items-center gap-2.5 rounded-xl p-3 text-left text-xs transition-all cursor-pointer ${idx === activeLessonIndex
                               ? "bg-indigo-50 border border-indigo-200 text-indigo-950 font-bold shadow-2xs"
                               : "hover:bg-slate-50 border border-transparent text-slate-700"
-                          }`}
+                            }`}
                         >
                           <span
-                            className={`grid size-5 shrink-0 place-items-center rounded-md border text-[11px] font-bold ${
-                              lesson.completed
+                            className={`grid size-5 shrink-0 place-items-center rounded-md border text-[11px] font-bold ${lesson.completed
                                 ? "border-emerald-500 bg-emerald-500 text-white"
                                 : "border-slate-200 bg-white text-slate-600"
-                            }`}
+                              }`}
                           >
                             {lesson.completed ? (
                               <Check className="size-3" />
