@@ -62,7 +62,7 @@ function getRazorpayCredentials() {
         const lines = fs.readFileSync(envPath, "utf-8").split("\n");
         for (const line of lines) {
           const match = line.match(/^\s*([\w.-]+)\s*=\s*(.*)?\s*$/);
-          if (match) {
+          if (match && match[1]) {
             const k = match[1].trim();
             const v = (match[2] || "").trim().replace(/^['"]|['"]$/g, "");
             if (k === "RAZORPAY_KEY_ID" && v) keyId = v;

@@ -430,7 +430,7 @@ export function RecallDecksView() {
       </div>
 
       {/* Card Study Stage */}
-      {deckCards.length === 0 ? (
+      {deckCards.length === 0 || !currentCard ? (
         <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-2xs">
           <Brain className="mx-auto size-12 text-slate-300 mb-3" />
           <h3 className="text-base font-bold text-slate-800">No cards in this deck yet</h3>

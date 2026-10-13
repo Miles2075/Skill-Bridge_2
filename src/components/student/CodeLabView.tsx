@@ -362,8 +362,9 @@ function deepClone(value, map = new WeakMap()) {
 ];
 
 export function CodeLabView() {
-  const [selectedLabId, setSelectedLabId] = useState<string>(LAB_CHALLENGES[0].id);
-  const currentLab = LAB_CHALLENGES.find((l) => l.id === selectedLabId) || LAB_CHALLENGES[0];
+  const defaultLab = LAB_CHALLENGES[0]!;
+  const [selectedLabId, setSelectedLabId] = useState<string>(defaultLab.id);
+  const currentLab: LabChallenge = LAB_CHALLENGES.find((l) => l.id === selectedLabId) || defaultLab;
 
   const [code, setCode] = useState<string>(currentLab.starterCode);
   const [completedLabs, setCompletedLabs] = useState<string[]>([]);

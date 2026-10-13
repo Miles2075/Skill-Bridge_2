@@ -69,7 +69,7 @@ function generateWeeklyProgressTimeline(courses: CourseItem[]) {
       totalCumulative += weekVal;
     });
 
-    entry.avgProgress = courses.length > 0 ? Math.round(totalCumulative / courses.length) : 0;
+    entry["avgProgress"] = courses.length > 0 ? Math.round(totalCumulative / courses.length) : 0;
     return entry;
   });
 }

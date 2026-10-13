@@ -1828,7 +1828,7 @@ class DatabaseManager {
     user.updated_at = new Date().toISOString();
     const profile = db.profiles.find((item) => item.id === userId);
     if (profile && params.displayName !== undefined)
-      profile.display_name = user.user_metadata.display_name;
+      profile.display_name = user.user_metadata.display_name || "";
     this.write();
     return user;
   }

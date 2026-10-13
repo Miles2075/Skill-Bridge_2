@@ -21,6 +21,9 @@ import {
   Users,
   X,
   Menu,
+  Code2,
+  Brain,
+  Timer,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -69,6 +72,9 @@ export type InstructorNavView =
   | "content"
   | "assignments"
   | "assessments"
+  | "codelab"
+  | "recall"
+  | "focus"
   | "students"
   | "submissions"
   | "analytics"
@@ -213,6 +219,9 @@ function TeachLayoutRoute() {
     { id: "content", label: "Course Content", icon: FolderKanban },
     { id: "assignments", label: "Assignments", icon: Layers },
     { id: "assessments", label: "Assessments", icon: Target },
+    { id: "codelab", label: "Code Lab (Sandbox)", icon: Code2 },
+    { id: "recall", label: "Recall Decks", icon: Brain },
+    { id: "focus", label: "Focus Studio", icon: Timer },
     { id: "students", label: "Students", icon: Users, badge: `${studentCount}` },
     {
       id: "submissions",

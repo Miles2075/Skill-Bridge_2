@@ -53,6 +53,9 @@ import {
   getVideoComments,
   replyToComment,
 } from "@/lib/lms-store";
+import { CodeLabView } from "@/components/student/CodeLabView";
+import { RecallDecksView } from "@/components/student/RecallDecksView";
+import { FocusStudioView } from "@/components/student/FocusStudioView";
 
 export const Route = createFileRoute("/_authenticated/teach/")({
   component: TeachDashboardPage,
@@ -65,6 +68,9 @@ type InstructorNavView =
   | "content"
   | "assignments"
   | "assessments"
+  | "codelab"
+  | "recall"
+  | "focus"
   | "students"
   | "submissions"
   | "analytics"
@@ -567,7 +573,6 @@ function TeachDashboardPage() {
     try {
       const uploaded = await lmsClient.uploadVideo(selectedContentCourse, file, les.id);
       await lmsClient.updateLesson(les.id, {
-        videoUrl: uploaded.videoUrl,
         video_url: uploaded.videoUrl,
       });
       setLessons((prev) =>
@@ -1326,8 +1331,9 @@ function TeachDashboardPage() {
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
                               e.preventDefault();
-                              if (rowNewUrls[row.id]?.trim()) {
-                                handleAddRowVideoUrl(row.id, rowNewUrls[row.id].trim());
+                              const trimmedUrl = rowNewUrls[row.id]?.trim();
+                              if (trimmedUrl) {
+                                handleAddRowVideoUrl(row.id, trimmedUrl);
                                 setRowNewUrls((prev) => ({ ...prev, [row.id]: "" }));
                               }
                             }
@@ -1340,8 +1346,9 @@ function TeachDashboardPage() {
                           variant="outline"
                           className="h-7.5 text-xs px-2.5 shrink-0"
                           onClick={() => {
-                            if (rowNewUrls[row.id]?.trim()) {
-                              handleAddRowVideoUrl(row.id, rowNewUrls[row.id].trim());
+                            const trimmedUrl = rowNewUrls[row.id]?.trim();
+                            if (trimmedUrl) {
+                              handleAddRowVideoUrl(row.id, trimmedUrl);
                               setRowNewUrls((prev) => ({ ...prev, [row.id]: "" }));
                             }
                           }}
@@ -2252,8 +2259,8 @@ function TeachDashboardPage() {
                         <div className="flex items-center gap-2.5">
                           <UserAvatar
                             src={
-                              (s as unknown as Record<string, string>).studentAvatar ||
-                              (s as unknown as Record<string, string>).avatar_url
+                              (s as unknown as Record<string, string>)["studentAvatar"] ||
+                              (s as unknown as Record<string, string>)["avatar_url"]
                             }
                             name={s.studentName}
                             className="size-8 text-xs border border-slate-200 shadow-2xs"
@@ -2377,8 +2384,8 @@ function TeachDashboardPage() {
                   <div className="flex items-start gap-3">
                     <UserAvatar
                       src={
-                        (sub as unknown as Record<string, string>).studentAvatar ||
-                        (sub as unknown as Record<string, string>).avatar_url
+                        (sub as unknown as Record<string, string>)["studentAvatar"] ||
+                        (sub as unknown as Record<string, string>)["avatar_url"]
                       }
                       name={sub.studentName}
                       className="size-10 text-xs border border-slate-200 mt-0.5"
@@ -2621,6 +2628,59 @@ function TeachDashboardPage() {
               </Button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* VIEW: CODE LAB (SANDBOX FOR INSTRUCTORS & STUDENTS) */}
+      {/* ------------------------------------------------------------- */}
+      {currentView === "codelab" && (
+        <div className="space-y-4">
+          <div className="border-b border-slate-200 pb-3">
+            <h1 className="text-xl font-extrabold text-slate-900">
+              Faculty Code Lab & Interactive Sandbox
+            </h1>
+            <p className="text-xs text-slate-500">
+              Test programming challenges, verify test runner assertions, and experiment with
+              starter code solutions.
+            </p>
+          </div>
+          <CodeLabView />
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* VIEW: SMART RECALL DECKS (FLASHCARDS) */}
+      {/* ------------------------------------------------------------- */}
+      {currentView === "recall" && (
+        <div className="space-y-4">
+          <div className="border-b border-slate-200 pb-3">
+            <h1 className="text-xl font-extrabold text-slate-900">
+              Smart Recall Decks & Flashcards
+            </h1>
+            <p className="text-xs text-slate-500">
+              Review and preview spaced-repetition recall decks across Frontend, TypeScript, and
+              System Architecture.
+            </p>
+          </div>
+          <RecallDecksView />
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* VIEW: FOCUS STUDIO & POMODORO */}
+      {/* ------------------------------------------------------------- */}
+      {currentView === "focus" && (
+        <div className="space-y-4">
+          <div className="border-b border-slate-200 pb-3">
+            <h1 className="text-xl font-extrabold text-slate-900">
+              Faculty Focus & Deep Work Studio
+            </h1>
+            <p className="text-xs text-slate-500">
+              Customizable Pomodoro timer, ambient soundscapes, and grading task lists.
+            </p>
+          </div>
+          <FocusStudioView />
         </div>
       )}
 

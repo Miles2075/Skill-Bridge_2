@@ -27,7 +27,7 @@ function parseUserContext(req: Request): UserContext {
   const cookieHeader = req.headers.get("cookie") || "";
   if (!roleStr && cookieHeader) {
     const roleMatch = cookieHeader.match(/(?:^|;\s*)skillbridge_role=([^;]+)/);
-    if (roleMatch) {
+    if (roleMatch && roleMatch[1]) {
       roleStr = decodeURIComponent(roleMatch[1]);
     }
   }
@@ -406,7 +406,10 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
 
       try {
         const writeStream = fs.createWriteStream(filePath);
-        await pipeline(Readable.fromWeb(req.body as ReadableStream<Uint8Array>), writeStream);
+        await pipeline(
+          Readable.fromWeb(req.body as unknown as Parameters<typeof Readable.fromWeb>[0]),
+          writeStream,
+        );
 
         // Verify the file was written to disk
         const writtenStat = await fs.promises.stat(filePath);

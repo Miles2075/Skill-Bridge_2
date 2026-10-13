@@ -252,13 +252,10 @@ export function updateLocalSessionProfile(params: {
     localStorage.setItem(SESSION_KEY, JSON.stringify(current));
 
     const users = readUsers();
-    const index = users.findIndex((item) => item.id === current.id);
-    if (index >= 0) {
-      users[index] = {
-        ...users[index],
-        ...current,
-        user_metadata: { ...users[index].user_metadata, ...current.user_metadata },
-      };
+    const existing = users.find((item) => item.id === current.id);
+    if (existing) {
+      existing.user_metadata = { ...existing.user_metadata, ...current.user_metadata };
+      existing.updated_at = current.updated_at;
       writeUsers(users);
     }
 

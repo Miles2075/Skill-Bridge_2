@@ -8,8 +8,8 @@ import { nitro } from "nitro/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 import tailwindcss from "@tailwindcss/vite";
 
-process.env.PORT = "3000";
-process.env.NITRO_PORT = "3000";
+process.env["PORT"] = "3000";
+process.env["NITRO_PORT"] = "3000";
 
 export default defineConfig({
   server: {
@@ -41,8 +41,8 @@ export default defineConfig({
             const webReq = new Request(url.href, {
               method: req.method,
               headers,
-              body: hasBody ? Readable.toWeb(req) : undefined,
-              duplex: "half",
+              body: hasBody ? (Readable.toWeb(req) as unknown as BodyInit) : undefined,
+              ...({ duplex: "half" } as Record<string, unknown>),
             });
             const webRes = await handleLmsApiRequest(webReq);
             if (!webRes) {
@@ -70,9 +70,8 @@ export default defineConfig({
         server.middlewares.use((req, res, next) => {
           if (!req.url?.startsWith("/uploads/videos/")) return next();
 
-          const relativeName = decodeURIComponent(
-            req.url.split("?")[0].replace(/^\/uploads\/videos\//, ""),
-          );
+          const urlPart = (req.url.split("?")[0] ?? "").replace(/^\/uploads\/videos\//, "");
+          const relativeName = decodeURIComponent(urlPart);
           if (
             !relativeName ||
             relativeName.includes("..") ||
