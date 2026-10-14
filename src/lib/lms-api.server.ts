@@ -1,3 +1,5 @@
+import postgres from "postgres";
+import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import nodePath from "node:path";
 import fs from "node:fs";
@@ -14,9 +16,43 @@ interface UserContext {
   isTeacher: boolean;
 }
 
-function parseUserContext(req: Request): UserContext {
+async function parseUserContext(req: Request): Promise<UserContext> {
   const authHeader = req.headers.get("authorization") || "";
-  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+  const token = authHeader.replace(/^Bearer\\s+/i, "").trim();
+
+  // Hosted requests must present a token verified by Supabase. Client-supplied
+  // x-user-* headers are not an authentication mechanism.
+  const supabaseUrl = process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"];
+  const supabaseAnonKey = process.env["SUPABASE_ANON_KEY"] || process.env["VITE_SUPABASE_ANON_KEY"];
+  if (process.env["VERCEL"] && supabaseUrl && supabaseAnonKey) {
+    if (!token) {
+      return { userId: null, email: null, name: null, role: "student", isAdmin: false, isTeacher: false };
+    }
+    try {
+      const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const { data, error } = await authClient.auth.getUser(token);
+      const authUser = data.user;
+      if (error || !authUser) {
+        return { userId: null, email: null, name: null, role: "student", isAdmin: false, isTeacher: false };
+      }
+      // Privileged roles must be set in app_metadata by a trusted administrator.
+      const roleValue = authUser.app_metadata?.role;
+      const role = roleValue === "admin" ? "admin" : roleValue === "teacher" ? "teacher" : "student";
+      return {
+        userId: authUser.id,
+        email: authUser.email ?? null,
+        name: String(authUser.user_metadata?.display_name || authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "Learner"),
+        role,
+        isAdmin: role === "admin",
+        isTeacher: role === "teacher" || role === "admin",
+      };
+    } catch (error) {
+      console.error("Supabase token verification failed:", error);
+      return { userId: null, email: null, name: null, role: "student", isAdmin: false, isTeacher: false };
+    }
+  }
 
   let userId = req.headers.get("x-user-id");
   let email = req.headers.get("x-user-email");
@@ -164,7 +200,7 @@ async function callRazorpayApi(endpoint: string, init: RequestInit = {}) {
   return data;
 }
 
-export async function handleLmsApiRequest(req: Request): Promise<Response | null> {
+async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response | null> {
   const url = new URL(req.url);
   if (!url.pathname.startsWith("/api/lms")) {
     return null;
@@ -172,7 +208,7 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
 
   const path = url.pathname.replace(/^\/api\/lms\/?/, "");
   const method = req.method.toUpperCase();
-  const user = parseUserContext(req);
+  const user = await parseUserContext(req);
 
   try {
     // AUTH: POST /api/lms/auth/login
@@ -1036,5 +1072,61 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
     console.error("LMS API Error:", err);
     const msg = err instanceof Error ? err.message : "Internal Server Error";
     return errorResponse(msg, 500);
+  }
+}
+
+
+const neonUrl = process.env["DATABASE_URL"];
+let neonClient: ReturnType<typeof postgres> | undefined;
+
+function getNeonClient() {
+  if (!neonUrl) throw new Error("DATABASE_URL is not configured.");
+  if (!neonClient) neonClient = postgres(neonUrl, { max: 3, idle_timeout: 20, connect_timeout: 10 });
+  return neonClient;
+}
+
+/**
+ * Neon-backed compatibility persistence for the existing LMS domain model.
+ * A transaction advisory lock serializes requests across Vercel instances so the
+ * current synchronous domain methods remain compatible while their state is durable.
+ */
+export async function handleLmsApiRequest(req: Request): Promise<Response | null> {
+  if (!process.env["DATABASE_URL"]) return handleLmsApiRequestWithLocalStore(req);
+
+  try {
+    const sql = getNeonClient();
+    await sql`
+      CREATE TABLE IF NOT EXISTS skillbridge_lms_state (
+        id smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+        state jsonb NOT NULL,
+        updated_at timestamptz NOT NULL DEFAULT now()
+      )
+    `;
+
+    return await sql.begin(async (tx) => {
+      await tx`SELECT pg_advisory_xact_lock(736284910)`;
+      const rows = await tx`SELECT state FROM skillbridge_lms_state WHERE id = 1`;
+      if (rows.length > 0) {
+        lmsDB.importSnapshot(rows[0]!.state as import("./lms-db.server").LMSDatabase);
+      } else {
+        await tx`
+          INSERT INTO skillbridge_lms_state (id, state, updated_at)
+          VALUES (1, ${JSON.stringify(lmsDB.exportSnapshot())}::jsonb, now())
+          ON CONFLICT (id) DO NOTHING
+        `;
+      }
+
+      const response = await handleLmsApiRequestWithLocalStore(req);
+      await tx`
+        INSERT INTO skillbridge_lms_state (id, state, updated_at)
+        VALUES (1, ${JSON.stringify(lmsDB.exportSnapshot())}::jsonb, now())
+        ON CONFLICT (id) DO UPDATE
+        SET state = EXCLUDED.state, updated_at = now()
+      `;
+      return response;
+    });
+  } catch (error) {
+    console.error("Neon LMS persistence error:", error);
+    return jsonResponse({ error: "The LMS database is temporarily unavailable. Check DATABASE_URL and database connectivity." }, 503);
   }
 }
