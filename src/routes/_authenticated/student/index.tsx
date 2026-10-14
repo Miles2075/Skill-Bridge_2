@@ -241,7 +241,7 @@ function StudentDashboardPage() {
         title: c.title,
         instructor: c.instructor || "Instructor",
         description: c.description || "",
-        thumbnail: c.thumbnail || "/course-typescript.jpg",
+        thumbnail: getCourseImage(c.slug),
         hours: c.hours || 10,
         progress: 0,
         lessonsDone: 0,
@@ -1206,7 +1206,7 @@ function StudentDashboardPage() {
                     <div>
                       <div className="relative h-28 w-full rounded-lg bg-slate-900 overflow-hidden mb-3">
                         <img
-                          src={c.thumbnail || "/course-typescript.jpg"}
+                          src={getCourseImage(c.slug)}
                           alt={c.title}
                           className="h-full w-full object-cover opacity-80"
                         />
