@@ -1,3 +1,5 @@
+import { createClient } from "@supabase/supabase-js";
+
 // 100% Local database and authentication client adapter.
 // Replaces remote Supabase connections with built-in local database and local storage.
 
@@ -508,9 +510,25 @@ class LocalSupabaseAuth {
   }
 }
 
-export const supabase = {
+const localSupabase = {
   auth: new LocalSupabaseAuth(),
   from<T = unknown>(tableName: string) {
     return new ClientQueryBuilder<T>(tableName);
   },
 };
+
+// Use real Supabase Auth when project environment variables are configured.
+// Local development remains compatible with the built-in local adapter otherwise.
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+
+export const supabase: any =
+  supabaseUrl && supabaseAnonKey
+    ? createClient(supabaseUrl, supabaseAnonKey, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+        },
+      })
+    : localSupabase;
