@@ -1123,7 +1123,11 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
   // Safe diagnostic endpoint: confirms database connectivity without exposing credentials.
   if (pathname === "/api/lms/health" && req.method.toUpperCase() === "GET") {
     try {
-      const rows = await getNeonClient().unsafe("SELECT current_database() AS database");
+      const sql = getNeonClient();
+      await sql.unsafe(
+        "CREATE TABLE IF NOT EXISTS skillbridge_lms_state (id smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1), state jsonb NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())",
+      );
+      const rows = await sql.unsafe("SELECT current_database() AS database");
       return jsonResponse({
         ok: true,
         database: "neon",
