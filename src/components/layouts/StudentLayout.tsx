@@ -81,7 +81,7 @@ interface StudentLayoutProps {
   children: React.ReactNode;
 }
 
-export function StudentLayout({
+function StudentLayout({
   view,
   setView,
   signedIn,
@@ -526,3 +526,6 @@ export function StudentLayout({
     </div>
   );
 }
+
+// Keep the named export explicit for route imports across dev-server rebuilds.
+export { StudentLayout };
