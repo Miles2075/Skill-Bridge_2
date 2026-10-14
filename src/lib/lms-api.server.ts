@@ -41,10 +41,12 @@ async function parseUserContext(req: Request): Promise<UserContext> {
       // Privileged roles must be set in app_metadata by a trusted administrator.
       const roleValue = authUser.app_metadata?.role;
       const role = roleValue === "admin" ? "admin" : roleValue === "teacher" ? "teacher" : "student";
+      const displayName = String(authUser.user_metadata?.display_name || authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "Learner");
+      if (authUser.email) lmsDB.syncExternalUser({ id: authUser.id, email: authUser.email, name: displayName, role });
       return {
         userId: authUser.id,
         email: authUser.email ?? null,
-        name: String(authUser.user_metadata?.display_name || authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "Learner"),
+        name: displayName,
         role,
         isAdmin: role === "admin",
         isTeacher: role === "teacher" || role === "admin",
