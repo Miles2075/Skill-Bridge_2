@@ -23,6 +23,13 @@ Required for hosted mode:
 
 Run `npm install` after pulling the changes, then `npm run dev`.
 
+### Connection checks
+
+- The LMS API uses Neon as its durable store when a database connection string is configured. In local development only, it can fall back to the local JSON store.
+- The backend accepts `DATABASE_URL` as the preferred variable, and falls back to `DATABASE_POSTGRES_URL`, `DATABASE_POSTGRES_URL_NON_POOLING`, `DATABASE_URL_UNPOOLED`, `POSTGRES_URL`, or `POSTGRES_URL_NON_POOLING` if the preferred variable is absent.
+- A connected Vercel Blob store may expose its token as `SKILLBRIDGE_READ_WRITE_TOKEN`; video uploads accept that name as well as `BLOB_READ_WRITE_TOKEN`.
+- After deploying, open `https://YOUR_DEPLOYED_DOMAIN/api/lms/health`. A healthy connection returns JSON with `ok: true` and `connected: true`. A failure returns a safe diagnostic and code without exposing the database URL.
+
 ## Vercel configuration
 
 1. Create/select the Vercel project connected to this repository.
