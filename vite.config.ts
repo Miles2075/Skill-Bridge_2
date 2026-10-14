@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
@@ -11,7 +11,15 @@ import tailwindcss from "@tailwindcss/vite";
 process.env["PORT"] = "3000";
 process.env["NITRO_PORT"] = "3000";
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // Vite exposes .env files through import.meta.env by default, but the server-only
+  // LMS handlers read process.env. Load env files into the Node process for local API routes.
+  const env = loadEnv(mode, process.cwd(), "");
+  for (const [key, value] of Object.entries(env)) {
+    if (process.env[key] === undefined) process.env[key] = value;
+  }
+
+  return {
   server: {
     host: "0.0.0.0",
     port: 3000,
@@ -181,4 +189,5 @@ export default defineConfig({
     react(),
     tsconfigPaths(),
   ],
+  };
 });
