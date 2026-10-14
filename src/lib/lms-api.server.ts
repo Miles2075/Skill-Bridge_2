@@ -286,7 +286,10 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
     }
 
     // PAYMENTS: POST /api/lms/payments/create-order (or /payment/create-order)
-    if ((path === "payments/create-order" || path === "payment/create-order") && method === "POST") {
+    if (
+      (path === "payments/create-order" || path === "payment/create-order") &&
+      method === "POST"
+    ) {
       const body = (await req.json()) as { courseId?: string; courseSlug?: string };
       const courseId = body.courseId || body.courseSlug;
       if (!courseId) return errorResponse("Missing courseId");

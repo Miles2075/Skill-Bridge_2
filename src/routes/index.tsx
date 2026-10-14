@@ -950,12 +950,13 @@ function Skillbridge() {
           <div
             role="status"
             aria-live="polite"
-            className={`fixed bottom-5 right-5 z-[70] flex items-center gap-2.5 rounded-lg border px-4 py-3 text-sm font-medium shadow-2xl transition-all duration-200 animate-in fade-in slide-in-from-bottom-2 ${toast.type === "error"
+            className={`fixed bottom-5 right-5 z-[70] flex items-center gap-2.5 rounded-lg border px-4 py-3 text-sm font-medium shadow-2xl transition-all duration-200 animate-in fade-in slide-in-from-bottom-2 ${
+              toast.type === "error"
                 ? "border-destructive/40 bg-destructive text-destructive-foreground"
                 : toast.type === "info"
                   ? "border-primary/40 bg-primary text-primary-foreground"
                   : "border-border bg-foreground text-background"
-              }`}
+            }`}
           >
             {toast.type === "error" ? (
               <AlertCircle className="size-4 shrink-0 text-red-300" />
@@ -1495,12 +1496,13 @@ function Assignments({
                   <div className="flex items-center gap-2">
                     <span className="font-bold text-foreground">{sub.assignmentTitle}</span>
                     <span
-                      className={`rounded px-2 py-0.5 text-[11px] font-bold ${sub.status === "approved"
+                      className={`rounded px-2 py-0.5 text-[11px] font-bold ${
+                        sub.status === "approved"
                           ? "bg-teal/15 text-teal"
                           : sub.status === "needs_revision"
                             ? "bg-destructive/15 text-destructive"
                             : "bg-amber-500/15 text-amber-500"
-                        }`}
+                      }`}
                     >
                       {sub.status === "approved"
                         ? `✓ Approved (${sub.score}/${sub.maxScore})`
@@ -2002,8 +2004,8 @@ function PlayerModal({
     if (!newComment.trim()) return;
     const currentTimeStr = videoRef.current
       ? `${Math.floor(videoRef.current.currentTime / 60)
-        .toString()
-        .padStart(2, "0")}:${Math.floor(videoRef.current.currentTime % 60)
+          .toString()
+          .padStart(2, "0")}:${Math.floor(videoRef.current.currentTime % 60)
           .toString()
           .padStart(2, "0")}`
       : undefined;
@@ -2211,28 +2213,31 @@ function PlayerModal({
           <div className="flex border-b border-border pb-1 gap-1 text-xs">
             <button
               onClick={() => setPlayerTab("playlist")}
-              className={`px-3 py-1.5 font-bold rounded-t-md transition-colors cursor-pointer ${playerTab === "playlist"
+              className={`px-3 py-1.5 font-bold rounded-t-md transition-colors cursor-pointer ${
+                playerTab === "playlist"
                   ? "border-b-2 border-primary text-primary"
                   : "text-muted-foreground hover:text-foreground"
-                }`}
+              }`}
             >
               Curriculum ({lectures.length})
             </button>
             <button
               onClick={() => setPlayerTab("qa")}
-              className={`px-3 py-1.5 font-bold rounded-t-md transition-colors cursor-pointer ${playerTab === "qa"
+              className={`px-3 py-1.5 font-bold rounded-t-md transition-colors cursor-pointer ${
+                playerTab === "qa"
                   ? "border-b-2 border-primary text-primary"
                   : "text-muted-foreground hover:text-foreground"
-                }`}
+              }`}
             >
               Q&A & Discussion ({lectureComments.length})
             </button>
             <button
               onClick={() => setPlayerTab("notes")}
-              className={`px-3 py-1.5 font-bold rounded-t-md transition-colors cursor-pointer ${playerTab === "notes"
+              className={`px-3 py-1.5 font-bold rounded-t-md transition-colors cursor-pointer ${
+                playerTab === "notes"
                   ? "border-b-2 border-primary text-primary"
                   : "text-muted-foreground hover:text-foreground"
-                }`}
+              }`}
             >
               My Notes
             </button>
@@ -2251,16 +2256,18 @@ function PlayerModal({
                         setLocked(false);
                       }
                     }}
-                    className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs transition-colors cursor-pointer ${index === active
+                    className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs transition-colors cursor-pointer ${
+                      index === active
                         ? "bg-primary/10 font-bold text-primary"
                         : "hover:bg-secondary text-foreground"
-                      }`}
+                    }`}
                   >
                     <span
-                      className={`grid size-4 shrink-0 place-items-center rounded-sm border ${l.completed
+                      className={`grid size-4 shrink-0 place-items-center rounded-sm border ${
+                        l.completed
                           ? "border-primary bg-primary text-primary-foreground"
                           : "border-input"
-                        }`}
+                      }`}
                     >
                       {l.completed && <Check className="size-3" />}
                     </span>
@@ -2706,10 +2713,11 @@ function QuizModal({
           <button
             key={option}
             onClick={() => setAnswers((prev) => ({ ...prev, [current]: option }))}
-            className={`flex w-full items-center gap-3 rounded-md border p-3 text-left text-sm transition-colors cursor-pointer ${currentAnswer === option
+            className={`flex w-full items-center gap-3 rounded-md border p-3 text-left text-sm transition-colors cursor-pointer ${
+              currentAnswer === option
                 ? "border-primary bg-primary/10 font-semibold text-primary"
                 : "border-border hover:bg-secondary"
-              }`}
+            }`}
           >
             <span className="grid size-7 place-items-center rounded-full border border-current text-xs font-bold">
               {String.fromCharCode(65 + index)}

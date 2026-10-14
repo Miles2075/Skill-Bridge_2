@@ -1104,10 +1104,10 @@ class DatabaseManager {
         : course.video_url
           ? [course.video_url]
           : [
-            "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-            "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-            "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-          ];
+              "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+              "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+              "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+            ];
 
     const titles = [
       "1. Course Overview & System Architecture",
@@ -1928,8 +1928,8 @@ class DatabaseManager {
     if (!user) {
       const role =
         cleanEmail.includes("teach") ||
-          cleanEmail.includes("instructor") ||
-          cleanEmail.includes("faculty")
+        cleanEmail.includes("instructor") ||
+        cleanEmail.includes("faculty")
           ? "teacher"
           : "student";
       const registered = this.registerUser({

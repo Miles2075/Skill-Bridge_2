@@ -408,8 +408,9 @@ function StudentDashboardPage() {
         prev.map((l, idx) => (idx === activeLessonIndex ? { ...l, completed: true } : l)),
       );
       setFeedbackMsg({
-        text: `Lesson "${activeLesson.title}" marked complete! Progress: ${res.progress}%${res.isCompleted ? " — All required lessons completed! Certificate unlocked!" : ""
-          }`,
+        text: `Lesson "${activeLesson.title}" marked complete! Progress: ${res.progress}%${
+          res.isCompleted ? " — All required lessons completed! Certificate unlocked!" : ""
+        }`,
       });
       window.dispatchEvent(new Event("lms_data_updated"));
       await loadDashboard(true);
@@ -586,10 +587,11 @@ function StudentDashboardPage() {
       {/* Toast Alert */}
       {feedbackMsg && (
         <div
-          className={`flex items-center justify-between rounded-lg p-3.5 text-xs font-medium ${feedbackMsg.error
+          className={`flex items-center justify-between rounded-lg p-3.5 text-xs font-medium ${
+            feedbackMsg.error
               ? "bg-red-50 text-red-800 border border-red-200"
               : "bg-indigo-50 text-indigo-900 border border-indigo-200"
-            }`}
+          }`}
         >
           <div className="flex items-center gap-2">
             {feedbackMsg.error ? (
@@ -613,10 +615,27 @@ function StudentDashboardPage() {
       {/* ------------------------------------------------------------- */}
       {currentView === "dashboard" && (
         <div className="space-y-6">
+          {/* Pending Attention Card (Requested) */}
+          <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-5 shadow-sm">
+            <h3 className="font-bold text-sm text-indigo-900 mb-3 flex items-center gap-2">
+              <Sparkles className="size-4" /> Pending Attention
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-3 bg-white rounded-xl border border-indigo-100 shadow-sm flex items-center justify-between">
+                <span className="text-xs text-slate-600">New Assignments: <strong>{upcomingAssignments.length}</strong></span>
+                <button onClick={() => switchView("assignments")} className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer">View</button>
+              </div>
+              <div className="p-3 bg-white rounded-xl border border-indigo-100 shadow-sm flex items-center justify-between">
+                <span className="text-xs text-slate-600">Courses in Progress: <strong>{enrolledCourses.filter(c => c.progress < 100).length}</strong></span>
+                <button onClick={() => switchView("my-learning")} className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer">Continue</button>
+              </div>
+            </div>
+          </div>
+          
           {/* Welcome Greeting */}
           <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-900 via-indigo-800 to-indigo-950 p-6 sm:p-8 text-white shadow-md relative overflow-hidden">
             <div className="relative z-10 max-w-2xl">
-              <div className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs font-medium text-indigo-200 backdrop-blur-md mb-3 border border-white/10">
+              <div className="inline-flex items-center gap-1.5 rounded-md bg-white/10 px-3 py-1 text-xs font-medium text-indigo-200 backdrop-blur-md mb-3 border border-white/10">
                 <Sparkles className="size-3.5 text-amber-300" />
                 <span>Verified Learner Account</span>
               </div>
@@ -724,7 +743,7 @@ function StudentDashboardPage() {
           <div className="rounded-2xl border border-indigo-200/80 bg-gradient-to-br from-indigo-50/70 via-white to-purple-50/70 p-6 shadow-2xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <div>
-                <div className="inline-flex items-center gap-1.5 rounded-full bg-indigo-600 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-2xs">
+                <div className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white shadow-2xs">
                   <Sparkles className="size-3 text-amber-300" />
                   <span>Interactive Engineering Studio</span>
                 </div>
@@ -750,7 +769,7 @@ function StudentDashboardPage() {
                     <div className="grid size-10 place-items-center rounded-lg bg-indigo-100 text-indigo-700 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
                       <Code2 className="size-5" />
                     </div>
-                    <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-100">
+                    <span className="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700 border border-indigo-100">
                       Live Sandbox
                     </span>
                   </div>
@@ -778,7 +797,7 @@ function StudentDashboardPage() {
                     <div className="grid size-10 place-items-center rounded-lg bg-purple-100 text-purple-700 group-hover:bg-purple-600 group-hover:text-white transition-colors">
                       <Brain className="size-5" />
                     </div>
-                    <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700 border border-purple-100 whitespace-nowrap">
+                    <span className="rounded-md bg-purple-50 px-2 py-0.5 text-[10px] font-bold text-purple-700 border border-purple-100 whitespace-nowrap">
                       Spaced Repetition
                     </span>
                   </div>
@@ -806,7 +825,7 @@ function StudentDashboardPage() {
                     <div className="grid size-10 place-items-center rounded-lg bg-sky-100 text-sky-700 group-hover:bg-sky-600 group-hover:text-white transition-colors">
                       <Timer className="size-5" />
                     </div>
-                    <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700 border border-sky-100 whitespace-nowrap">
+                    <span className="rounded-md bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-700 border border-sky-100 whitespace-nowrap">
                       Deep Work
                     </span>
                   </div>
@@ -935,10 +954,11 @@ function StudentDashboardPage() {
 
                       {asg.submissionStatus !== "unsubmitted" ? (
                         <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${asg.submissionStatus === "approved"
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            asg.submissionStatus === "approved"
                               ? "bg-emerald-100 text-emerald-800"
                               : "bg-amber-100 text-amber-800"
-                            }`}
+                          }`}
                         >
                           {asg.submissionStatus === "approved" ? "✓ Graded" : "In Review"}
                         </span>
@@ -1032,10 +1052,11 @@ function StudentDashboardPage() {
                 <button
                   key={filter}
                   onClick={() => setCourseFilter(filter)}
-                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer ${courseFilter === filter
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold cursor-pointer ${
+                    courseFilter === filter
                       ? "bg-indigo-600 text-white"
                       : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-50"
-                    }`}
+                  }`}
                 >
                   {filter === "all"
                     ? "All Courses"
@@ -1258,10 +1279,11 @@ function StudentDashboardPage() {
                       {asg.submissionStatus !== "unsubmitted" ? (
                         <div className="flex items-center gap-2">
                           <span
-                            className={`rounded-full px-3 py-1 text-xs font-bold ${asg.submissionStatus === "approved"
+                            className={`rounded-full px-3 py-1 text-xs font-bold ${
+                              asg.submissionStatus === "approved"
                                 ? "bg-emerald-100 text-emerald-800"
                                 : "bg-amber-100 text-amber-800"
-                              }`}
+                            }`}
                           >
                             {asg.submissionStatus === "approved" ? "✓ Graded" : "In Review"}
                           </span>
@@ -1352,10 +1374,11 @@ function StudentDashboardPage() {
                         <button
                           key={idx}
                           onClick={() => handleSelectAnswer(q.id, idx)}
-                          className={`w-full text-left p-3.5 rounded-xl border text-xs font-medium transition-all cursor-pointer ${selectedAnswers[q.id] === idx
+                          className={`w-full text-left p-3.5 rounded-xl border text-xs font-medium transition-all cursor-pointer ${
+                            selectedAnswers[q.id] === idx
                               ? "border-indigo-600 bg-indigo-50/80 text-indigo-950 font-bold"
                               : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                            }`}
+                          }`}
                         >
                           <span className="mr-2 inline-block size-5 rounded-full border text-center leading-4 text-[11px]">
                             {String.fromCharCode(65 + idx)}
@@ -1761,10 +1784,11 @@ function StudentDashboardPage() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-xs">
           <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-2xl space-y-4">
             <div
-              className={`mx-auto grid size-12 place-items-center rounded-full ${quizResultModal.passed
+              className={`mx-auto grid size-12 place-items-center rounded-full ${
+                quizResultModal.passed
                   ? "bg-emerald-100 text-emerald-600"
                   : "bg-red-100 text-red-600"
-                }`}
+              }`}
             >
               {quizResultModal.passed ? (
                 <Award className="size-6" />
@@ -2013,16 +2037,18 @@ function StudentDashboardPage() {
                         <button
                           key={lesson.id}
                           onClick={() => setActiveLessonIndex(idx)}
-                          className={`flex w-full items-center gap-2.5 rounded-xl p-3 text-left text-xs transition-all cursor-pointer ${idx === activeLessonIndex
+                          className={`flex w-full items-center gap-2.5 rounded-xl p-3 text-left text-xs transition-all cursor-pointer ${
+                            idx === activeLessonIndex
                               ? "bg-indigo-50 border border-indigo-200 text-indigo-950 font-bold shadow-2xs"
                               : "hover:bg-slate-50 border border-transparent text-slate-700"
-                            }`}
+                          }`}
                         >
                           <span
-                            className={`grid size-5 shrink-0 place-items-center rounded-md border text-[11px] font-bold ${lesson.completed
+                            className={`grid size-5 shrink-0 place-items-center rounded-md border text-[11px] font-bold ${
+                              lesson.completed
                                 ? "border-emerald-500 bg-emerald-500 text-white"
                                 : "border-slate-200 bg-white text-slate-600"
-                              }`}
+                            }`}
                           >
                             {lesson.completed ? (
                               <Check className="size-3" />

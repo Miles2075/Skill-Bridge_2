@@ -150,12 +150,12 @@ export function StudentLayout({
           {isTeacher ? (
             <Link
               to="/teach"
-              className="hidden items-center rounded-full bg-cyan-500/10 px-2.5 py-0.5 text-[11px] font-bold text-cyan-600 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors sm:inline-flex"
+              className="hidden items-center rounded-md bg-cyan-500/10 px-2.5 py-0.5 text-[11px] font-bold text-cyan-600 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors sm:inline-flex"
             >
               Instructor Studio Mode →
             </Link>
           ) : (
-            <span className="hidden items-center rounded-full bg-secondary px-2.5 py-0.5 text-[11px] font-bold text-muted-foreground sm:inline-flex">
+            <span className="hidden items-center rounded-md bg-secondary px-2.5 py-0.5 text-[11px] font-bold text-muted-foreground sm:inline-flex">
               Student Learning Space
             </span>
           )}
@@ -192,7 +192,7 @@ export function StudentLayout({
             <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
             <button
               onClick={() => changeView("courses")}
-              className="h-10 w-full rounded-full border border-input bg-secondary pl-11 pr-4 text-left text-sm text-muted-foreground hover:bg-background cursor-pointer"
+              className="h-10 w-full rounded-md border border-input bg-secondary pl-11 pr-4 text-left text-sm text-muted-foreground hover:bg-background cursor-pointer"
             >
               What do you want to learn today?
             </button>
@@ -203,7 +203,7 @@ export function StudentLayout({
             {isTeacher && (
               <Link
                 to="/teach"
-                className="hidden items-center gap-1.5 rounded-full bg-cyan-500/10 px-3 py-1.5 text-xs font-bold text-cyan-600 transition-colors hover:bg-cyan-500/20 md:flex border border-cyan-500/20"
+                className="hidden items-center gap-1.5 rounded-md bg-cyan-500/10 px-3 py-1.5 text-xs font-bold text-cyan-600 transition-colors hover:bg-cyan-500/20 md:flex border border-cyan-500/20"
               >
                 <GraduationCap className="size-3.5" /> Instructor Studio →
               </Link>
@@ -254,7 +254,7 @@ export function StudentLayout({
               <div className="relative" ref={accountRef}>
                 <button
                   onClick={() => setAccountMenuOpen((prev) => !prev)}
-                  className="rounded-full transition-transform hover:scale-105 cursor-pointer ring-2 ring-primary/20 hover:ring-primary/50 p-0.5"
+                  className="rounded-md transition-transform hover:scale-105 cursor-pointer ring-2 ring-primary/20 hover:ring-primary/50 p-0.5"
                   aria-label="Account menu"
                 >
                   <UserAvatar
@@ -512,9 +512,6 @@ export function StudentLayout({
       <footer className="mt-auto border-t border-border bg-card">
         <div className="mx-auto flex max-w-[1400px] flex-col gap-3 px-4 py-6 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <span>© 2026 Skillbridge — learn software engineering, one lesson at a time.</span>
-          <span className="flex items-center gap-2">
-            <Globe className="size-4" /> English
-          </span>
         </div>
       </footer>
       {/* Profile & PFP Customization Modal */}
