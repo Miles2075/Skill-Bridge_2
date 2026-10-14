@@ -215,6 +215,16 @@ function MyLearningPage() {
                   key={activeLesson?.id || selectedCourseId}
                   src={activeVideoUrl}
                   controls
+                  onEnded={() => {
+                    if (activeLesson && !completedLessonIds.has(activeLesson.id)) {
+                      void handleComplete(activeLesson.id);
+                    } else {
+                      const currentIdx = lessons.findIndex((l) => l.id === activeLessonId);
+                      if (currentIdx >= 0 && currentIdx < lessons.length - 1) {
+                        setActiveLessonId(lessons[currentIdx + 1]!.id);
+                      }
+                    }
+                  }}
                   className="h-full w-full object-cover"
                 />
               ) : (

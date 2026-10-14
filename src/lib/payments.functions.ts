@@ -26,8 +26,14 @@ const STATIC_COURSES: Record<string, { title: string; price: number }> = {
   "react-performance": { title: "React Performance & Architecture", price: 1499 },
   "system-design": { title: "System Design Fundamentals", price: 999 },
   dsa: { title: "Data Structures & Algorithms", price: 799 },
-  "45c4dd4a-715b-4f7d-b508-9c7501f2a63b": { title: "Advanced TypeScript & Design Patterns", price: 1299 },
-  "0f1f297a-5fd3-4266-b6e7-e88f90939b1a": { title: "React Performance & Architecture", price: 1499 },
+  "45c4dd4a-715b-4f7d-b508-9c7501f2a63b": {
+    title: "Advanced TypeScript & Design Patterns",
+    price: 1299,
+  },
+  "0f1f297a-5fd3-4266-b6e7-e88f90939b1a": {
+    title: "React Performance & Architecture",
+    price: 1499,
+  },
   "ed458579-67a4-41bc-b426-ff10ce69551e": { title: "System Design Fundamentals", price: 999 },
   "1ac4b07c-8a19-4f77-a712-9bb1a665bc7e": { title: "Data Structures & Algorithms", price: 799 },
 };
@@ -149,7 +155,9 @@ export async function verifyCoursePayment(opts: {
 export async function getUserPurchases(opts?: { data?: { userId?: string } }): Promise<string[]> {
   try {
     const userId = opts?.data?.userId;
-    const url = userId ? `/api/lms/payment/purchases?userId=${encodeURIComponent(userId)}` : "/api/lms/payment/purchases";
+    const url = userId
+      ? `/api/lms/payment/purchases?userId=${encodeURIComponent(userId)}`
+      : "/api/lms/payment/purchases";
     const res = await fetch(url);
     if (res.ok) {
       const json = (await res.json()) as { purchases?: Array<{ course_id: string }> };

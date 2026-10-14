@@ -468,9 +468,12 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
         user.userId ||
         body.studentId ||
         body.userId ||
-        (body.studentEmail ? `usr_${Buffer.from(String(body.studentEmail)).toString("hex").slice(0, 16)}` : null);
+        (body.studentEmail
+          ? `usr_${Buffer.from(String(body.studentEmail)).toString("hex").slice(0, 16)}`
+          : null);
 
-      if (!studentId) return errorResponse("Unauthorized: Missing user authentication or studentId", 401);
+      if (!studentId)
+        return errorResponse("Unauthorized: Missing user authentication or studentId", 401);
 
       const studentName =
         user.name ||
@@ -478,12 +481,7 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
         (body.studentEmail ? String(body.studentEmail).split("@")[0] : "Student Learner");
       const studentEmail = user.email || body.studentEmail || "student@skillbridge.edu";
 
-      const enrollment = lmsDB.enrollStudent(
-        studentId,
-        courseId,
-        studentName,
-        studentEmail,
-      );
+      const enrollment = lmsDB.enrollStudent(studentId, courseId, studentName, studentEmail);
       return jsonResponse({ enrollment });
     }
 
@@ -519,7 +517,11 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
             }),
           });
           if (rzpRes.ok) {
-            const rzpData = (await rzpRes.json()) as { id: string; amount: number; currency?: string };
+            const rzpData = (await rzpRes.json()) as {
+              id: string;
+              amount: number;
+              currency?: string;
+            };
             return jsonResponse({
               orderId: rzpData.id,
               amount: rzpData.amount,
@@ -557,7 +559,9 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
         user.userId ||
         body.userId ||
         body.studentId ||
-        (body.userEmail ? `usr_${Buffer.from(String(body.userEmail)).toString("hex").slice(0, 16)}` : "guest_student");
+        (body.userEmail
+          ? `usr_${Buffer.from(String(body.userEmail)).toString("hex").slice(0, 16)}`
+          : "guest_student");
 
       const studentName = user.name || body.userName || body.displayName || "Student Learner";
       const studentEmail = user.email || body.userEmail || "student@skillbridge.edu";

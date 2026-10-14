@@ -29,11 +29,9 @@ export function ProfileModal({
               <UserCheck className="size-4" />
             </span>
             <div>
-              <h2 className="text-base font-bold text-foreground">
-                Edit Profile & Profile Picture
-              </h2>
+              <h2 className="text-base font-bold text-foreground">Profile & Theme Settings</h2>
               <p className="text-xs text-muted-foreground">
-                Customize how your profile picture appears to teachers and students.
+                Customize your display name, avatar photo, and app appearance (Light/Dark mode).
               </p>
             </div>
           </div>

@@ -103,7 +103,10 @@ export function CheckoutModal({
     }
     try {
       const globalCur: string[] = JSON.parse(localStorage.getItem("skillbridge_purchases") ?? "[]");
-      localStorage.setItem("skillbridge_purchases", JSON.stringify(Array.from(new Set([...globalCur, ...ids]))));
+      localStorage.setItem(
+        "skillbridge_purchases",
+        JSON.stringify(Array.from(new Set([...globalCur, ...ids]))),
+      );
     } catch {
       // ignore
     }
@@ -488,7 +491,8 @@ export function CheckoutModal({
                 </span>
               </div>
               <p className="text-[11px] text-slate-600">
-                Opens the official Razorpay checkout interface. Supports Netbanking, Wallets, and international cards.
+                Opens the official Razorpay checkout interface. Supports Netbanking, Wallets, and
+                international cards.
               </p>
             </div>
           )}

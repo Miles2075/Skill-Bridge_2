@@ -118,8 +118,25 @@ function RootComponent() {
 
   useEffect(() => {
     try {
-      const theme = localStorage.getItem("skillbridge-theme");
-      document.documentElement.classList.toggle("dark", theme === "dark");
+      const getIsDark = () => {
+        const theme = localStorage.getItem("skillbridge-theme");
+        if (theme === "dark") return true;
+        if (theme === "light") return false;
+        if (theme === "system") {
+          return window.matchMedia("(prefers-color-scheme: dark)").matches;
+        }
+        return false;
+      };
+      document.documentElement.classList.toggle("dark", getIsDark());
+
+      const media = window.matchMedia("(prefers-color-scheme: dark)");
+      const handleSystemChange = () => {
+        if (localStorage.getItem("skillbridge-theme") === "system") {
+          document.documentElement.classList.toggle("dark", media.matches);
+        }
+      };
+      media.addEventListener("change", handleSystemChange);
+      return () => media.removeEventListener("change", handleSystemChange);
     } catch {
       // ignore localStorage theme errors
     }

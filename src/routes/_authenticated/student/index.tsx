@@ -197,26 +197,29 @@ function StudentDashboardPage() {
   const [markingLesson, setMarkingLesson] = useState(false);
   const [availableCourses, setAvailableCourses] = useState<ClientCourse[]>([]);
 
-  const loadDashboard = useCallback(async () => {
-    if (!user) return;
-    try {
-      setLoading(true);
-      const [res, catalog] = await Promise.all([
-        lmsClient.getStudentDashboard(),
-        lmsClient.getCourses().catch(() => ({ courses: [] })),
-      ]);
-      setData(res);
-      const enrolledIds = new Set((res?.enrolledCourses || []).flatMap((c) => [c.id, c.slug]));
-      const unEnrolled = (catalog?.courses || []).filter(
-        (c) => c.status === "published" && !enrolledIds.has(c.id) && !enrolledIds.has(c.slug),
-      );
-      setAvailableCourses(unEnrolled);
-    } catch (err: unknown) {
-      console.error("Failed to load student dashboard:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
+  const loadDashboard = useCallback(
+    async (silent = false) => {
+      if (!user) return;
+      try {
+        if (!silent && !data) setLoading(true);
+        const [res, catalog] = await Promise.all([
+          lmsClient.getStudentDashboard(),
+          lmsClient.getCourses().catch(() => ({ courses: [] })),
+        ]);
+        setData(res);
+        const enrolledIds = new Set((res?.enrolledCourses || []).flatMap((c) => [c.id, c.slug]));
+        const unEnrolled = (catalog?.courses || []).filter(
+          (c) => c.status === "published" && !enrolledIds.has(c.id) && !enrolledIds.has(c.slug),
+        );
+        setAvailableCourses(unEnrolled);
+      } catch (err: unknown) {
+        console.error("Failed to load student dashboard:", err);
+      } finally {
+        if (!silent) setLoading(false);
+      }
+    },
+    [user, data],
+  );
 
   const handleQuickEnroll = async (c: ClientCourse) => {
     if (!user) return;
@@ -273,8 +276,10 @@ function StudentDashboardPage() {
       return;
     }
     let mounted = true;
-    const fetchLessons = async () => {
-      setLoadingLessons(true);
+    const fetchLessons = async (isInitial = false) => {
+      if (isInitial) {
+        setLoadingLessons(true);
+      }
       try {
         const { course, lessons, lessonProgress } = await lmsClient.getCourse(playerCourseSlug);
         if (mounted) {
@@ -353,7 +358,10 @@ function StudentDashboardPage() {
           }
 
           const firstIncompleteIdx = enriched.findIndex((l) => !l.completed);
-          setActiveLessonIndex(firstIncompleteIdx >= 0 ? firstIncompleteIdx : 0);
+          setActiveLessonIndex((prev) => {
+            if (prev >= 0 && prev < enriched.length) return prev;
+            return firstIncompleteIdx >= 0 ? firstIncompleteIdx : 0;
+          });
         }
       } catch (err) {
         console.error("Failed to fetch course lessons:", err);
@@ -362,10 +370,10 @@ function StudentDashboardPage() {
       }
     };
 
-    fetchLessons();
+    fetchLessons(true);
 
     const handleUpdate = () => {
-      fetchLessons();
+      fetchLessons(false);
     };
     window.addEventListener("lms_data_updated", handleUpdate);
 
@@ -404,7 +412,7 @@ function StudentDashboardPage() {
           }`,
       });
       window.dispatchEvent(new Event("lms_data_updated"));
-      await loadDashboard();
+      await loadDashboard(true);
 
       // If there is a next lesson, advance to it
       if (activeLessonIndex < playerLessons.length - 1) {
@@ -1879,6 +1887,16 @@ function StudentDashboardPage() {
                                 i === activeLessonIndex ? { ...item, duration: formatted } : item,
                               ),
                             );
+                          }
+                        }}
+                        onEnded={() => {
+                          if (
+                            playerLessons[activeLessonIndex] &&
+                            !playerLessons[activeLessonIndex].completed
+                          ) {
+                            void handleMarkLessonComplete();
+                          } else if (activeLessonIndex < playerLessons.length - 1) {
+                            setActiveLessonIndex((prev) => prev + 1);
                           }
                         }}
                         className="h-full w-full object-cover"

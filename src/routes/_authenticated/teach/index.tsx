@@ -31,6 +31,7 @@ import {
   Trash2,
   X,
   Video,
+  Image as ImageIcon,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/use-auth";
@@ -77,6 +78,33 @@ type InstructorNavView =
   | "profile"
   | "settings";
 
+export const PRESET_THUMBNAILS = [
+  {
+    label: "TypeScript & JS",
+    url: "https://images.unsplash.com/photo-1516116211223-4c7141326c65?w=800&auto=format&fit=crop&q=80",
+  },
+  {
+    label: "React & Frontend",
+    url: "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=800&auto=format&fit=crop&q=80",
+  },
+  {
+    label: "System Design & Cloud",
+    url: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800&auto=format&fit=crop&q=80",
+  },
+  {
+    label: "Data Structures & Algos",
+    url: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=800&auto=format&fit=crop&q=80",
+  },
+  {
+    label: "AI & Neural Networks",
+    url: "https://images.unsplash.com/photo-1677442136019-21780efad99a?w=800&auto=format&fit=crop&q=80",
+  },
+  {
+    label: "Mobile & DevOps",
+    url: "https://images.unsplash.com/photo-1512941937669-90a1b58e7e9c?w=800&auto=format&fit=crop&q=80",
+  },
+];
+
 type CourseRow = {
   id: string;
   slug: string;
@@ -86,6 +114,7 @@ type CourseRow = {
   preview_minutes: number;
   video_url: string;
   video_urls?: string[];
+  thumbnail?: string;
   hours?: number;
   status?: "published" | "draft" | "review";
 };
@@ -98,6 +127,7 @@ const DEFAULT_COURSES: CourseRow[] = [
     teacher_id: null,
     price_inr: 1299,
     preview_minutes: 5,
+    thumbnail: PRESET_THUMBNAILS[0].url,
     video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
     video_urls: [
       "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
@@ -112,6 +142,7 @@ const DEFAULT_COURSES: CourseRow[] = [
     teacher_id: null,
     price_inr: 1499,
     preview_minutes: 5,
+    thumbnail: PRESET_THUMBNAILS[1].url,
     video_url:
       "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
     video_urls: [
@@ -127,6 +158,7 @@ const DEFAULT_COURSES: CourseRow[] = [
     teacher_id: null,
     price_inr: 999,
     preview_minutes: 5,
+    thumbnail: PRESET_THUMBNAILS[2].url,
     video_url:
       "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
     video_urls: [
@@ -142,6 +174,7 @@ const DEFAULT_COURSES: CourseRow[] = [
     teacher_id: null,
     price_inr: 799,
     preview_minutes: 5,
+    thumbnail: PRESET_THUMBNAILS[3].url,
     video_url:
       "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
     video_urls: [
@@ -157,6 +190,7 @@ const DEFAULT_COURSES: CourseRow[] = [
     teacher_id: "8d95e694-3d47-422e-a017-86a1a0ee1251",
     price_inr: 999,
     preview_minutes: 5,
+    thumbnail: PRESET_THUMBNAILS[0].url,
     video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
     video_urls: [
       "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
@@ -314,6 +348,22 @@ function TeachDashboardPage() {
   const [isUploadingCourseVideo, setIsUploadingCourseVideo] = useState(false);
   const [uploadProgressText, setUploadProgressText] = useState<string | null>(null);
   const [newStatus, setNewStatus] = useState<"published" | "draft">("published");
+  const [newThumbnail, setNewThumbnail] = useState<string>(PRESET_THUMBNAILS[0].url);
+
+  const handleThumbnailFileChange = (file: File, onSuccess: (dataUrl: string) => void) => {
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setMsg({ text: "Image file is too large (max 10MB)", isError: true });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        onSuccess(reader.result);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Per-row additional URL input state in Courses management table
   const [rowNewUrls, setRowNewUrls] = useState<Record<string, string>>({});
@@ -356,6 +406,7 @@ function TeachDashboardPage() {
         setRows(
           (data.courses as CourseRow[]).map((c) => ({
             ...c,
+            thumbnail: c.thumbnail || PRESET_THUMBNAILS[0].url,
             video_urls:
               c.video_urls && Array.isArray(c.video_urls) && c.video_urls.length > 0
                 ? c.video_urls
@@ -628,6 +679,7 @@ function TeachDashboardPage() {
         preview_minutes: row.preview_minutes,
         video_url: primaryVideoUrl,
         video_urls: videoUrls,
+        thumbnail: row.thumbnail || PRESET_THUMBNAILS[0].url,
         hours: row.hours,
         status: row.status,
       });
@@ -639,6 +691,7 @@ function TeachDashboardPage() {
           price_inr: row.price_inr,
           preview_minutes: row.preview_minutes,
           video_url: primaryVideoUrl,
+          thumbnail: row.thumbnail || PRESET_THUMBNAILS[0].url,
         })
         .eq("id", row.id)
         .then(undefined, () => {});
@@ -677,6 +730,7 @@ function TeachDashboardPage() {
         slug: newSlug.trim().toLowerCase().replace(/\s+/g, "-"),
         price_inr: newPrice,
         preview_minutes: newPreview,
+        thumbnail: newThumbnail.trim() || PRESET_THUMBNAILS[0].url,
         video_url: initialUrls[0] || "",
         video_urls: initialUrls,
         hours: newHours,
@@ -701,6 +755,7 @@ function TeachDashboardPage() {
           const updated = await lmsClient.updateCourse(createdCourse.id, {
             video_url: allUrls[0] || "",
             video_urls: allUrls,
+            thumbnail: createdCourse.thumbnail || newThumbnail,
           });
           createdCourse = updated.course as unknown as CourseRow;
         } catch (uploadErr) {
@@ -721,6 +776,7 @@ function TeachDashboardPage() {
         "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
       ]);
       setNewUrlInput("");
+      setNewThumbnail(PRESET_THUMBNAILS[0].url);
       setMsg({
         text: `Course "${createdCourse.title}" successfully created with ${createdCourse.video_urls?.length || 1} video(s)!`,
       });
@@ -1192,29 +1248,38 @@ function TeachDashboardPage() {
                 className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="font-bold text-teal-700 uppercase font-mono">
-                        {row.slug}
-                      </span>
-                      <span className="text-slate-300">·</span>
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          row.status === "draft"
-                            ? "bg-amber-100 text-amber-800"
-                            : "bg-emerald-100 text-emerald-800"
-                        }`}
-                      >
-                        {row.status === "draft" ? "Draft Mode" : "Published Live"}
-                      </span>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <img
+                      src={row.thumbnail || PRESET_THUMBNAILS[0].url}
+                      alt={row.title}
+                      className="size-14 sm:w-20 sm:h-12 rounded-lg object-cover border border-slate-200 shadow-2xs shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="font-bold text-teal-700 uppercase font-mono">
+                          {row.slug}
+                        </span>
+                        <span className="text-slate-300">·</span>
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            row.status === "draft"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-emerald-100 text-emerald-800"
+                          }`}
+                        >
+                          {row.status === "draft" ? "Draft Mode" : "Published Live"}
+                        </span>
+                      </div>
+                      <h3 className="text-base font-bold text-slate-900 mt-0.5 truncate">
+                        {row.title}
+                      </h3>
                     </div>
-                    <h3 className="text-base font-bold text-slate-900 mt-1">{row.title}</h3>
                   </div>
 
                   <Button
                     size="sm"
                     onClick={() => saveCourse(row)}
-                    className="self-start bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold gap-1.5 cursor-pointer"
+                    className="self-start sm:self-center bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold gap-1.5 cursor-pointer shrink-0"
                   >
                     <Save className="size-3.5" /> Save Changes
                   </Button>
@@ -1282,6 +1347,71 @@ function TeachDashboardPage() {
                       <option value="published">Published</option>
                       <option value="draft">Draft Mode</option>
                     </select>
+                  </div>
+                </div>
+
+                {/* Course Cover Thumbnail Option */}
+                <div className="mt-3 pt-3 border-t border-slate-100 space-y-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <label className="font-semibold text-slate-700 flex items-center gap-1.5">
+                      <ImageIcon className="size-3.5 text-teal-600" />
+                      <span>Course Cover Thumbnail</span>
+                    </label>
+                    <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-teal-700 hover:text-teal-800 cursor-pointer">
+                      <Upload className="size-3" />
+                      <span>Upload Custom Cover</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            handleThumbnailFileChange(file, (dataUrl) =>
+                              updateRow(row.id, { thumbnail: dataUrl }),
+                            );
+                          }
+                          e.target.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1">
+                      Presets:
+                    </span>
+                    {PRESET_THUMBNAILS.map((p) => {
+                      const isSelected = row.thumbnail === p.url;
+                      return (
+                        <button
+                          key={`p_${row.id}_${p.url}`}
+                          type="button"
+                          onClick={() => updateRow(row.id, { thumbnail: p.url })}
+                          className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-medium transition-all cursor-pointer ${
+                            isSelected
+                              ? "border-teal-600 bg-teal-50 text-teal-800 font-bold shadow-2xs"
+                              : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                          }`}
+                        >
+                          <img
+                            src={p.url}
+                            alt={p.label}
+                            className="size-3.5 rounded object-cover shrink-0"
+                          />
+                          <span>{p.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <Input
+                      placeholder="Or enter custom image URL (https://...)"
+                      value={row.thumbnail || ""}
+                      onChange={(e) => updateRow(row.id, { thumbnail: e.target.value })}
+                      className="text-xs font-mono h-7.5"
+                    />
                   </div>
                 </div>
 
@@ -1491,6 +1621,97 @@ function TeachDashboardPage() {
                   onChange={(e) => setNewHours(Number(e.target.value))}
                   className="text-xs"
                 />
+              </div>
+            </div>
+
+            {/* Course Thumbnail Upload & Preset Selection */}
+            <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <label className="font-bold text-slate-800 text-xs flex items-center gap-1.5">
+                    <ImageIcon className="size-4 text-teal-600" />
+                    <span>Course Cover Thumbnail</span>
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Upload a custom thumbnail photo, select a tech preset cover, or paste an image
+                    URL.
+                  </p>
+                </div>
+
+                <label className="inline-flex items-center gap-1.5 rounded-lg bg-teal-50 border border-teal-200 px-3 py-1.5 text-xs font-semibold text-teal-700 hover:bg-teal-100 cursor-pointer transition-colors shrink-0">
+                  <Upload className="size-3.5" />
+                  <span>Upload Image File</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        handleThumbnailFileChange(file, setNewThumbnail);
+                      }
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+
+              {/* Live Preview and Controls */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+                <div className="relative h-28 w-full rounded-xl overflow-hidden border border-slate-200 bg-slate-900 group shrink-0">
+                  <img
+                    src={newThumbnail || PRESET_THUMBNAILS[0].url}
+                    alt="Course Thumbnail Preview"
+                    className="h-full w-full object-cover opacity-85"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent flex flex-col justify-end p-2.5">
+                    <span className="text-[10px] font-bold text-teal-300 uppercase tracking-wider">
+                      Live Cover Preview
+                    </span>
+                    <p className="text-xs font-bold text-white truncate">
+                      {newTitle || "Course Title Preview"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="sm:col-span-2 space-y-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Quick Preset Covers:
+                  </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    {PRESET_THUMBNAILS.map((p) => {
+                      const isSelected = newThumbnail === p.url;
+                      return (
+                        <button
+                          key={`new_p_${p.url}`}
+                          type="button"
+                          onClick={() => setNewThumbnail(p.url)}
+                          className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] text-left transition-all cursor-pointer truncate ${
+                            isSelected
+                              ? "border-teal-600 bg-teal-50 text-teal-800 font-bold shadow-2xs"
+                              : "border-slate-200 bg-slate-50/50 text-slate-600 hover:bg-slate-100"
+                          }`}
+                        >
+                          <img
+                            src={p.url}
+                            alt={p.label}
+                            className="size-3.5 rounded object-cover shrink-0"
+                          />
+                          <span className="truncate">{p.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="pt-1">
+                    <Input
+                      placeholder="Or paste custom image URL (https://...)"
+                      value={newThumbnail}
+                      onChange={(e) => setNewThumbnail(e.target.value)}
+                      className="text-xs font-mono h-7.5"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
 

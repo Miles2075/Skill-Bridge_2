@@ -19,6 +19,7 @@ import {
   Menu,
   NotebookPen,
   Search,
+  Settings,
   ShoppingCart,
   Target,
   Timer,
@@ -42,7 +43,8 @@ export type StudentView =
   | "focus"
   | "notes"
   | "certificates"
-  | "analytics";
+  | "analytics"
+  | "settings";
 
 const STUDENT_NAV_ITEMS: { id: StudentView; label: string; icon: LucideIcon }[] = [
   { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -108,6 +110,13 @@ export function StudentLayout({
   }, [accountMenuOpen]);
 
   const changeView = (next: StudentView) => {
+    if (next === "settings") {
+      setProfileModalOpen(true);
+      setMobileOpen(false);
+      setExploreOpen(false);
+      setAccountMenuOpen(false);
+      return;
+    }
     setView(next);
     setMobileOpen(false);
     setExploreOpen(false);
@@ -283,7 +292,7 @@ export function StudentLayout({
                           }}
                           className="flex w-full items-center gap-2 rounded bg-primary/10 px-3 py-2 text-left text-xs font-bold text-primary hover:bg-primary/20 cursor-pointer my-1"
                         >
-                          <Camera className="size-3.5 text-primary" /> Edit Profile & Avatar
+                          <Camera className="size-3.5 text-primary" /> Profile & Theme Settings
                         </button>
                       )}
 
@@ -356,7 +365,7 @@ export function StudentLayout({
       {/* Main Layout Container */}
       <div className="mx-auto flex max-w-[1400px] flex-1 gap-8 px-4 py-6 sm:px-6 w-full">
         {/* Desktop Sidebar Navigation */}
-        <aside className="hidden w-60 shrink-0 lg:block">
+        <aside className="hidden w-60 shrink-0 lg:block sticky top-20 h-[calc(100vh-5rem)] overflow-y-auto">
           <nav className="space-y-0.5">
             {STUDENT_NAV_ITEMS.map(({ id, label, icon: Icon }) => (
               <button
@@ -392,13 +401,22 @@ export function StudentLayout({
           )}
 
           {signedIn && (
-            <Button
-              variant="ghost"
-              className="mt-3 w-full justify-start text-muted-foreground hover:text-destructive"
-              onClick={signOut}
-            >
-              <LogOut className="size-4" /> Sign out
-            </Button>
+            <div className="mt-4 border-t border-border pt-3 space-y-1">
+              <button
+                onClick={() => changeView("settings")}
+                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium text-foreground/80 hover:bg-secondary cursor-pointer"
+              >
+                <Settings className="size-4 shrink-0 text-primary" />
+                <span>Settings & Theme</span>
+              </button>
+              <button
+                onClick={signOut}
+                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium text-destructive hover:bg-destructive/10 cursor-pointer"
+              >
+                <LogOut className="size-4 shrink-0" />
+                <span>Sign out</span>
+              </button>
+            </div>
           )}
         </aside>
 
@@ -409,55 +427,79 @@ export function StudentLayout({
             onClick={() => setMobileOpen(false)}
           >
             <aside
-              className="h-full w-72 overflow-y-auto bg-card p-5 shadow-2xl"
+              className="h-full w-72 overflow-y-auto bg-card p-5 shadow-2xl flex flex-col justify-between"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="mb-6 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="grid size-8 place-items-center rounded bg-primary font-extrabold text-primary-foreground">
-                    S
-                  </span>
-                  <span className="text-lg font-extrabold tracking-tight">skillbridge</span>
+              <div>
+                <div className="mb-6 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="grid size-8 place-items-center rounded bg-primary font-extrabold text-primary-foreground">
+                      S
+                    </span>
+                    <span className="text-lg font-extrabold tracking-tight">skillbridge</span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setMobileOpen(false)}
+                    aria-label="Close menu"
+                  >
+                    <X />
+                  </Button>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setMobileOpen(false)}
-                  aria-label="Close menu"
-                >
-                  <X />
-                </Button>
+
+                {isTeacher && (
+                  <div className="mb-4 rounded-lg border border-primary/30 bg-primary/10 p-3">
+                    <div className="flex items-center gap-2 text-xs font-bold text-primary">
+                      <GraduationCap className="size-4" /> Instructor Mode
+                    </div>
+                    <Link to="/teach" className="mt-2 block">
+                      <Button variant="chrome" size="sm" className="w-full text-xs">
+                        Open Instructor Studio →
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+
+                <nav className="space-y-1">
+                  {STUDENT_NAV_ITEMS.map(({ id, label, icon: Icon }) => (
+                    <button
+                      key={id}
+                      onClick={() => changeView(id)}
+                      className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm ${
+                        view === id
+                          ? "bg-primary/10 font-bold text-primary"
+                          : "text-foreground hover:bg-secondary"
+                      }`}
+                    >
+                      <Icon className="size-4 shrink-0" />
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </nav>
               </div>
 
-              {isTeacher && (
-                <div className="mb-4 rounded-lg border border-primary/30 bg-primary/10 p-3">
-                  <div className="flex items-center gap-2 text-xs font-bold text-primary">
-                    <GraduationCap className="size-4" /> Instructor Mode
-                  </div>
-                  <Link to="/teach" className="mt-2 block">
-                    <Button variant="chrome" size="sm" className="w-full text-xs">
-                      Open Instructor Studio →
-                    </Button>
-                  </Link>
+              {signedIn && (
+                <div className="mt-6 border-t border-border pt-4 space-y-1">
+                  <button
+                    onClick={() => changeView("settings")}
+                    className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-medium text-foreground hover:bg-secondary cursor-pointer"
+                  >
+                    <Settings className="size-4 shrink-0 text-primary" />
+                    <span>Settings & Theme</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setMobileOpen(false);
+                      signOut();
+                    }}
+                    className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm font-semibold text-destructive hover:bg-destructive/10 cursor-pointer"
+                  >
+                    <LogOut className="size-4 shrink-0" />
+                    <span>Sign out</span>
+                  </button>
                 </div>
               )}
-
-              <nav className="space-y-1">
-                {STUDENT_NAV_ITEMS.map(({ id, label, icon: Icon }) => (
-                  <button
-                    key={id}
-                    onClick={() => changeView(id)}
-                    className={`flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm ${
-                      view === id
-                        ? "bg-primary/10 font-bold text-primary"
-                        : "text-foreground hover:bg-secondary"
-                    }`}
-                  >
-                    <Icon className="size-4 shrink-0" />
-                    <span>{label}</span>
-                  </button>
-                ))}
-              </nav>
             </aside>
           </div>
         )}

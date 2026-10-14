@@ -1924,7 +1924,10 @@ function PlayerModal({
 
       if (mapped.length > 0) {
         const firstIncomplete = mapped.findIndex((l) => !l.completed);
-        setActive(firstIncomplete >= 0 ? firstIncomplete : 0);
+        setActive((prev) => {
+          if (prev >= 0 && prev < mapped.length) return prev;
+          return firstIncomplete >= 0 ? firstIncomplete : 0;
+        });
       } else {
         setActive(0);
       }
@@ -2076,6 +2079,13 @@ function PlayerModal({
                     setDbLessons((prev) =>
                       prev.map((item, i) => (i === active ? { ...item, length: formatted } : item)),
                     );
+                  }
+                }}
+                onEnded={() => {
+                  if (currentLecture && !currentLecture.completed) {
+                    void markComplete();
+                  } else if (active < lectures.length - 1) {
+                    setActive((prev) => prev + 1);
                   }
                 }}
                 className="h-full w-full object-cover"

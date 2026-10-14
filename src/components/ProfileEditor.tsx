@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { lmsClient } from "@/lib/lms-client";
 import { updateLocalSessionProfile, type LocalUser } from "@/lib/local-db";
 import { UserAvatar } from "@/components/UserAvatar";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 const AVATAR_PRESETS = [
   {
@@ -330,6 +331,21 @@ export function ProfileEditor({
               </button>
             );
           })}
+        </div>
+      </div>
+
+      {/* Appearance & Theme Preference Section */}
+      <div className={`rounded-xl border ${styles.border} ${styles.bg} p-4 space-y-2`}>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h4 className="text-xs font-bold text-foreground uppercase tracking-wider">
+              Appearance & Theme Mode
+            </h4>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Select your preferred color theme (Light, Dark, or System mode).
+            </p>
+          </div>
+          <ThemeToggle />
         </div>
       </div>
 
