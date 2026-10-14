@@ -165,14 +165,7 @@ function getRazorpayServerCredentials() {
     keySecret = temp;
   }
 
-  // Fallback to active valid test credentials
-  if (!keyId || !keyId.startsWith("rzp_")) {
-    keyId = "rzp_test_TnICy1Q3uPGthY";
-  }
-  if (!keySecret) {
-    keySecret = "jlKjnbdVBMybl8sFyN57D2v3";
-  }
-
+  // Never ship fallback payment credentials. Configure secrets in the server environment.
   return { keyId, keySecret };
 }
 
