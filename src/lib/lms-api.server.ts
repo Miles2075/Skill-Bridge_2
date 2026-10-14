@@ -19,7 +19,7 @@ interface UserContext {
 
 async function parseUserContext(req: Request): Promise<UserContext> {
   const authHeader = req.headers.get("authorization") || "";
-  const token = authHeader.replace(/^Bearer\\s+/i, "").trim();
+  const token = authHeader.replace(/^Bearer\s+/i, "").trim();
 
   // Hosted requests must present a token verified by Supabase. Client-supplied
   // x-user-* headers are not an authentication mechanism.
@@ -799,12 +799,13 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       };
 
       try {
-        if (process.env["BLOB_READ_WRITE_TOKEN"]) {
+        const blobToken = process.env["BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
+        if (blobToken) {
           const blob = await put("courses/" + course.id + "/videos/" + uniqueName, req.body, {
             access: "public",
             addRandomSuffix: false,
             contentType: contentTypeByExtension[extension] || "application/octet-stream",
-            token: process.env["BLOB_READ_WRITE_TOKEN"],
+            token: blobToken,
           });
           publicVideoUrl = blob.url;
         } else {
@@ -1082,12 +1083,31 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 }
 
 
-const neonUrl = process.env["DATABASE_URL"];
+function getNeonConnectionString(): string | undefined {
+  const candidates = [
+    process.env["DATABASE_URL"],
+    process.env["DATABASE_POSTGRES_URL"],
+    process.env["DATABASE_POSTGRES_URL_NON_POOLING"],
+    process.env["DATABASE_URL_UNPOOLED"],
+    process.env["POSTGRES_URL"],
+    process.env["POSTGRES_URL_NON_POOLING"],
+  ];
+  return candidates
+    .map((value) => value?.trim())
+    .find((value) => Boolean(value) && !value!.includes("[SENSITIVE]"));
+}
+
 let neonClient: ReturnType<typeof postgres> | undefined;
+let neonClientUrl: string | undefined;
 
 function getNeonClient() {
-  if (!neonUrl) throw new Error("DATABASE_URL is not configured.");
-  if (!neonClient) neonClient = postgres(neonUrl, { max: 3, idle_timeout: 20, connect_timeout: 10 });
+  const url = getNeonConnectionString();
+  if (!url) throw new Error("Neon PostgreSQL is not configured. Set DATABASE_URL in the Vercel environment.");
+  if (!neonClient || neonClientUrl !== url) {
+    if (neonClient) void neonClient.end({ timeout: 1 }).catch(() => {});
+    neonClient = postgres(url, { max: 3, idle_timeout: 20, connect_timeout: 10 });
+    neonClientUrl = url;
+  }
   return neonClient;
 }
 
@@ -1097,8 +1117,43 @@ function getNeonClient() {
  * current synchronous domain methods remain compatible while their state is durable.
  */
 export async function handleLmsApiRequest(req: Request): Promise<Response | null> {
-  if (!new URL(req.url).pathname.startsWith("/api/lms")) return null;
-  if (!process.env["DATABASE_URL"]) return handleLmsApiRequestWithLocalStore(req);
+  const pathname = new URL(req.url).pathname;
+  if (!pathname.startsWith("/api/lms")) return null;
+
+  // Safe diagnostic endpoint: confirms database connectivity without exposing credentials.
+  if (pathname === "/api/lms/health" && req.method.toUpperCase() === "GET") {
+    try {
+      const rows = await getNeonClient().unsafe("SELECT current_database() AS database");
+      return jsonResponse({
+        ok: true,
+        database: "neon",
+        connected: true,
+        databaseName: rows[0]?.["database"] ?? null,
+      });
+    } catch (error) {
+      const err = error as { code?: string };
+      console.error("Neon health check failed:", error);
+      return jsonResponse({
+        ok: false,
+        database: "neon",
+        connected: false,
+        error: getNeonConnectionString()
+          ? "Neon connection failed. Check the connection string, network access, and database permissions."
+          : "No database connection string found. Configure DATABASE_URL in Vercel.",
+        code: err.code || "DATABASE_CONNECTION_FAILED",
+      }, 503);
+    }
+  }
+
+  if (!getNeonConnectionString()) {
+    // Local file-backed mode is useful for local development, but is not durable on Vercel.
+    if (process.env["VERCEL"]) {
+      return jsonResponse({
+        error: "Neon PostgreSQL is not configured. Add DATABASE_URL to the Vercel project and redeploy.",
+      }, 503);
+    }
+    return handleLmsApiRequestWithLocalStore(req);
+  }
 
   try {
     const sql = getNeonClient();
