@@ -842,6 +842,16 @@ const INITIAL_LESSON_PROGRESS: LessonProgress[] = [
 class DatabaseManager {
   private db: LMSDatabase | null = null;
 
+  /** Export/replace the current state for the PostgreSQL compatibility store. */
+  exportSnapshot(): LMSDatabase {
+    return JSON.parse(JSON.stringify(this.read())) as LMSDatabase;
+  }
+
+  importSnapshot(snapshot: LMSDatabase): void {
+    this.db = snapshot;
+    this.ensureSchemaIntegrity(this.db);
+  }
+
   private ensureDirectory() {
     if (!fs.existsSync(DB_DIR)) {
       fs.mkdirSync(DB_DIR, { recursive: true });
@@ -932,6 +942,9 @@ class DatabaseManager {
 
   private write() {
     if (!this.db) return;
+    // In deployed environments the request wrapper persists the snapshot to Neon.
+    // Vercel's filesystem is ephemeral, so never treat it as the durable source of truth.
+    if (process.env["VERCEL"] && process.env["DATABASE_URL"]) return;
     this.ensureDirectory();
     const tempFile = `${DB_FILE}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 6)}`;
     fs.writeFileSync(tempFile, JSON.stringify(this.db, null, 2), "utf-8");
