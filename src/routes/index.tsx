@@ -413,7 +413,8 @@ function useCommerceState(
           reviews: course.reviews || "0",
           learners: course.learners || "0",
           category: course.category || "Development",
-          image: course.thumbnail || imageForSlug(course.slug),
+          // Prefer bundled assets for built-in courses; API thumbnails may be legacy root-relative paths.
+          image: imageForSlug(course.slug),
           bestseller: course.bestseller,
           video_url: course.video_url || "",
           video_urls:
