@@ -1104,6 +1104,7 @@ function getNeonClient() {
  * current synchronous domain methods remain compatible while their state is durable.
  */
 export async function handleLmsApiRequest(req: Request): Promise<Response | null> {
+  if (!new URL(req.url).pathname.startsWith("/api/lms")) return null;
   if (!process.env["DATABASE_URL"]) return handleLmsApiRequestWithLocalStore(req);
 
   try {
