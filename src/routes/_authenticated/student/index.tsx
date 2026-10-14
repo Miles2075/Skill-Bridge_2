@@ -622,16 +622,31 @@ function StudentDashboardPage() {
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="p-3 bg-white rounded-xl border border-indigo-100 shadow-sm flex items-center justify-between">
-                <span className="text-xs text-slate-600">New Assignments: <strong>{upcomingAssignments.length}</strong></span>
-                <button onClick={() => switchView("assignments")} className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer">View</button>
+                <span className="text-xs text-slate-600">
+                  New Assignments: <strong>{upcomingAssignments.length}</strong>
+                </span>
+                <button
+                  onClick={() => switchView("assignments")}
+                  className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                >
+                  View
+                </button>
               </div>
               <div className="p-3 bg-white rounded-xl border border-indigo-100 shadow-sm flex items-center justify-between">
-                <span className="text-xs text-slate-600">Courses in Progress: <strong>{enrolledCourses.filter(c => c.progress < 100).length}</strong></span>
-                <button onClick={() => switchView("my-learning")} className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer">Continue</button>
+                <span className="text-xs text-slate-600">
+                  Courses in Progress:{" "}
+                  <strong>{enrolledCourses.filter((c) => c.progress < 100).length}</strong>
+                </span>
+                <button
+                  onClick={() => switchView("my-learning")}
+                  className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                >
+                  Continue
+                </button>
               </div>
             </div>
           </div>
-          
+
           {/* Welcome Greeting */}
           <div className="rounded-2xl border border-indigo-100 bg-gradient-to-r from-indigo-900 via-indigo-800 to-indigo-950 p-6 sm:p-8 text-white shadow-md relative overflow-hidden">
             <div className="relative z-10 max-w-2xl">
@@ -1784,7 +1799,7 @@ function StudentDashboardPage() {
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4 backdrop-blur-xs">
           <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-2xl space-y-4">
             <div
-              className={`mx-auto grid size-12 place-items-center rounded-full ${
+              className={`mx-auto grid size-12 place-items-center rounded-xl ${
                 quizResultModal.passed
                   ? "bg-emerald-100 text-emerald-600"
                   : "bg-red-100 text-red-600"
@@ -1829,7 +1844,7 @@ function StudentDashboardPage() {
               <X className="size-4" />
             </button>
 
-            <div className="mx-auto grid size-14 place-items-center rounded-full bg-amber-500 text-white shadow-md mb-4">
+            <div className="mx-auto grid size-14 place-items-center rounded-xl bg-amber-500 text-white shadow-md mb-4">
               <Award className="size-8" />
             </div>
 
