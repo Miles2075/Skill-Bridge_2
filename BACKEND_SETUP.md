@@ -11,7 +11,7 @@ This branch keeps the existing LMS API contract and UI while adding hosted persi
 
 ## Local environment
 
-Copy `.env.example` to `.env` and set real values. Do not commit `.env`.
+Copy `.env.example` to `.env.local` (or `.env`) and set real values. Do not commit either file. The Vite config loads local env files into the Node process so the server-only LMS API can read `DATABASE_URL`.
 
 Required for hosted mode:
 - `VITE_SUPABASE_URL`: Supabase project URL (client).
