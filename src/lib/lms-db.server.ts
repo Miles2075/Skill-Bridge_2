@@ -951,6 +951,41 @@ class DatabaseManager {
     fs.renameSync(tempFile, DB_FILE);
   }
 
+  syncExternalUser(params: { id: string; email: string; name: string; role: "student" | "teacher" | "admin" }): void {
+    const db = this.read();
+    const email = params.email.trim().toLowerCase();
+    let user = db.users.find((item) => item.id === params.id);
+    const now = new Date().toISOString();
+    if (!user) {
+      const salt = crypto.randomBytes(16).toString("hex");
+      user = {
+        id: params.id,
+        email,
+        password_hash: hashPassword(crypto.randomBytes(32).toString("hex"), salt),
+        salt,
+        created_at: now,
+        updated_at: now,
+        user_metadata: { display_name: params.name || email.split("@")[0] || "Learner", role: params.role, email },
+      };
+      db.users.push(user);
+    } else {
+      user.email = email || user.email;
+      user.user_metadata = { ...user.user_metadata, display_name: params.name || user.user_metadata.display_name, role: params.role, email };
+      user.updated_at = now;
+    }
+    if (!db.user_roles.some((item) => item.user_id === params.id && item.role === params.role)) {
+      db.user_roles.push({ id: crypto.randomUUID(), user_id: params.id, role: params.role, created_at: now });
+    }
+    const profile = db.profiles.find((item) => item.id === params.id);
+    if (!profile) {
+      db.profiles.push({ id: params.id, display_name: params.name || email.split("@")[0] || "Learner", email, created_at: now });
+    } else {
+      profile.email = email || profile.email;
+      if (params.name) profile.display_name = params.name;
+    }
+    this.write();
+  }
+
   // COURSES
   getAllCourses(): Course[] {
     const db = this.read();
