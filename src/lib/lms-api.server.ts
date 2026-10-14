@@ -25,7 +25,7 @@ async function parseUserContext(req: Request): Promise<UserContext> {
   // x-user-* headers are not an authentication mechanism.
   const supabaseUrl = process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"];
   const supabaseAnonKey = process.env["SUPABASE_ANON_KEY"] || process.env["VITE_SUPABASE_ANON_KEY"];
-  if (process.env["VERCEL"] && supabaseUrl && supabaseAnonKey) {
+  if (supabaseUrl && supabaseAnonKey) {
     if (!token) {
       return { userId: null, email: null, name: null, role: "student", isAdmin: false, isTeacher: false };
     }
