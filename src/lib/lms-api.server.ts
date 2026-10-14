@@ -1,3 +1,4 @@
+import { put } from "@vercel/blob";
 import postgres from "postgres";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
@@ -794,33 +795,43 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
           .slice(0, 80) || "video";
       const uniqueName = `${course.id}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}-${safeBase}${extension}`;
 
-      const uploadDir = nodePath.resolve(process.cwd(), "public", "uploads", "videos");
-      fs.mkdirSync(uploadDir, { recursive: true });
-      const filePath = nodePath.join(uploadDir, uniqueName);
+      let publicVideoUrl: string;
+      const contentTypeByExtension: Record<string, string> = {
+        ".mp4": "video/mp4",
+        ".webm": "video/webm",
+        ".mov": "video/quicktime",
+        ".m4v": "video/x-m4v",
+      };
 
       try {
-        const writeStream = fs.createWriteStream(filePath);
-        await pipeline(
-          Readable.fromWeb(req.body as unknown as Parameters<typeof Readable.fromWeb>[0]),
-          writeStream,
-        );
-
-        // Verify the file was written to disk
-        const writtenStat = await fs.promises.stat(filePath);
-        if (declaredSize > 0 && writtenStat.size === 0) {
-          await fs.promises.rm(filePath, { force: true }).catch(() => {});
-          return errorResponse("Video upload failed: 0 bytes written to disk.", 500);
+        if (process.env["BLOB_READ_WRITE_TOKEN"]) {
+          const blob = await put("courses/" + course.id + "/videos/" + uniqueName, req.body, {
+            access: "public",
+            addRandomSuffix: false,
+            contentType: contentTypeByExtension[extension] || "application/octet-stream",
+            token: process.env["BLOB_READ_WRITE_TOKEN"],
+          });
+          publicVideoUrl = blob.url;
+        } else {
+          const uploadDir = nodePath.resolve(process.cwd(), "public", "uploads", "videos");
+          fs.mkdirSync(uploadDir, { recursive: true });
+          const filePath = nodePath.join(uploadDir, uniqueName);
+          const writeStream = fs.createWriteStream(filePath);
+          await pipeline(Readable.fromWeb(req.body as unknown as Parameters<typeof Readable.fromWeb>[0]), writeStream);
+          const writtenStat = await fs.promises.stat(filePath);
+          if (declaredSize > 0 && writtenStat.size === 0) {
+            await fs.promises.rm(filePath, { force: true }).catch(() => {});
+            return errorResponse("Video upload failed: 0 bytes written to disk.", 500);
+          }
+          publicVideoUrl = "/uploads/videos/" + uniqueName;
         }
       } catch (err) {
-        await fs.promises.rm(filePath, { force: true }).catch(() => {});
         if (req.signal?.aborted) {
           console.warn("Video upload request was aborted by the client.");
           return errorResponse("Video upload was cancelled before completion.", 499);
         }
         throw err;
       }
-
-      const publicVideoUrl = `/uploads/videos/${uniqueName}`;
 
       const lessonId = url.searchParams.get("lessonId");
       if (lessonId) {
