@@ -629,9 +629,8 @@ function TeachDashboardPage() {
         : targetRow.video_url
           ? [targetRow.video_url]
           : [];
-    if (!currentUrls.includes(trimmed)) {
-      currentUrls.push(trimmed);
-    }
+    const isNewVideoUrl = !currentUrls.includes(trimmed);
+    if (isNewVideoUrl) currentUrls.push(trimmed);
     updateRow(rowId, {
       video_urls: currentUrls,
       video_url: targetRow.video_url || currentUrls[0] || "",
@@ -641,7 +640,16 @@ function TeachDashboardPage() {
         video_urls: currentUrls,
         video_url: targetRow.video_url || currentUrls[0] || "",
       });
-      setMsg({ text: "Added video stream URL to course!" });
+      if (isNewVideoUrl) {
+        await lmsClient.addLesson(rowId, {
+          title: titleFromVideoUrl(trimmed, currentUrls.length - 1),
+          description: "",
+          videoUrl: trimmed,
+          isRequired: true,
+          isPreview: false,
+        });
+      }
+      setMsg({ text: "Added video URL and saved its curriculum title. Rename it in Course Content if needed." });
       window.dispatchEvent(new CustomEvent("lms_data_updated"));
     } catch (err) {
       console.warn("Failed to update course video urls:", err);
@@ -920,7 +928,6 @@ function TeachDashboardPage() {
       setNewVideoTitles([]);
       setNewVideoUrl("");
       setNewVideoUrls([]);
-      setNewVideoTitles([]);
       setNewUrlInput("");
       setNewThumbnail(PRESET_THUMBNAILS[0].url);
       setNewThumbnailFile(null);
@@ -2185,8 +2192,61 @@ function TeachDashboardPage() {
                         <span className="grid size-6 shrink-0 place-items-center rounded bg-slate-100 font-bold text-xs text-slate-600">
                           {idx + 1}
                         </span>
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-slate-900 truncate">{les.title}</p>
+                        <div className="min-w-0 flex-1">
+                          {editingLessonId === les.id ? (
+                            <div className="flex items-center gap-1.5">
+                              <Input
+                                value={editingLessonTitle}
+                                onChange={(e) => setEditingLessonTitle(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    void handleSaveLessonTitle(les);
+                                  }
+                                  if (e.key === "Escape") {
+                                    setEditingLessonId(null);
+                                    setEditingLessonTitle("");
+                                  }
+                                }}
+                                className="h-8 text-xs"
+                                aria-label="Video lesson title"
+                                autoFocus
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveLessonTitle(les)}
+                                className="rounded-md p-1.5 text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+                                title="Save video title"
+                              >
+                                <Save className="size-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingLessonId(null);
+                                  setEditingLessonTitle("");
+                                }}
+                                className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 cursor-pointer"
+                                title="Cancel title edit"
+                              >
+                                <X className="size-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 min-w-0">
+                              <p className="text-xs font-bold text-slate-900 truncate">{les.title}</p>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingLessonId(les.id);
+                                  setEditingLessonTitle(les.title);
+                                }}
+                                className="shrink-0 text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                              >
+                                Rename
+                              </button>
+                            </div>
+                          )}
                           <p className="text-[11px] text-slate-500 font-mono mt-0.5">
                             Duration: {les.duration}
                             {les.videoUrl ? (
