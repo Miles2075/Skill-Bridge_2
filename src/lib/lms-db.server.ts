@@ -990,25 +990,29 @@ class DatabaseManager {
   getAllCourses(): Course[] {
     const db = this.read();
     return db.courses.map((c) => {
-      const videoUrls =
+      let videoUrls =
         c.video_urls && Array.isArray(c.video_urls)
-          ? c.video_urls.filter(Boolean)
+          ? c.video_urls.filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
           : c.video_url
             ? [c.video_url]
             : [];
+      // Older course creation inserted a sample video even when the teacher
+      // uploaded none. Once a real Blob upload exists, hide those starter assets.
+      if (videoUrls.some((url) => url.includes(".blob.vercel-storage.com"))) {
+        videoUrls = videoUrls.filter(
+          (url) => !url.includes("commondatastorage.googleapis.com/gtv-videos-bucket/sample/"),
+        );
+      }
+      videoUrls = videoUrls.filter((url, index, urls) => urls.indexOf(url) === index);
       const courseLessons = db.lessons.filter(
         (l) => l.course_id === c.id || l.course_id === c.slug,
       );
-      const lessonsCount =
-        courseLessons.length > 0
-          ? courseLessons.length
-          : videoUrls.length > 0
-            ? videoUrls.length
-            : 3;
+      const lessonsCount = courseLessons.length > 0 ? courseLessons.length : videoUrls.length;
+      const primaryVideoUrl = videoUrls.includes(c.video_url || "") ? c.video_url || "" : videoUrls[0] || "";
       return {
         ...c,
         video_urls: videoUrls,
-        video_url: c.video_url || videoUrls[0] || "",
+        video_url: primaryVideoUrl,
         lessons_count: lessonsCount,
       };
     });
@@ -1028,19 +1032,25 @@ class DatabaseManager {
       db.courses.find((x) => x.id === idOrSlug || x.slug === idOrSlug) ||
       db.courses[0];
     if (!c) return null;
-    const videoUrls =
+    let videoUrls =
       c.video_urls && Array.isArray(c.video_urls)
-        ? c.video_urls.filter(Boolean)
+        ? c.video_urls.filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
         : c.video_url
           ? [c.video_url]
           : [];
+    if (videoUrls.some((url) => url.includes(".blob.vercel-storage.com"))) {
+      videoUrls = videoUrls.filter(
+        (url) => !url.includes("commondatastorage.googleapis.com/gtv-videos-bucket/sample/"),
+      );
+    }
+    videoUrls = videoUrls.filter((url, index, urls) => urls.indexOf(url) === index);
     const courseLessons = db.lessons.filter((l) => l.course_id === c.id || l.course_id === c.slug);
-    const lessonsCount =
-      courseLessons.length > 0 ? courseLessons.length : videoUrls.length > 0 ? videoUrls.length : 3;
+    const lessonsCount = courseLessons.length > 0 ? courseLessons.length : videoUrls.length;
+    const primaryVideoUrl = videoUrls.includes(c.video_url || "") ? c.video_url || "" : videoUrls[0] || "";
     return {
       ...c,
       video_urls: videoUrls,
-      video_url: c.video_url || videoUrls[0] || "",
+      video_url: primaryVideoUrl,
       lessons_count: lessonsCount,
     };
   }
@@ -1145,30 +1155,23 @@ class DatabaseManager {
       return directLessons;
     }
 
-    // Always provide 3 curriculum lectures if no individual lesson rows were saved yet
+    // When teachers upload course-level videos without explicit lesson rows,
+    // render exactly one curriculum item per real video URL. Never invent lessons.
     const videoUrls =
-      course.video_urls && Array.isArray(course.video_urls) && course.video_urls.length > 0
-        ? course.video_urls
+      course.video_urls && Array.isArray(course.video_urls)
+        ? course.video_urls.filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
         : course.video_url
           ? [course.video_url]
-          : [
-              "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-              "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-              "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-            ];
+          : [];
+    const distinctVideoUrls = videoUrls.filter((url, index, urls) => urls.indexOf(url) === index);
+    if (distinctVideoUrls.length === 0) return [];
 
-    const titles = [
-      "1. Course Overview & System Architecture",
-      "2. Core Concepts & In-Depth Walkthrough",
-      "3. Production Patterns & Capstone Review",
-    ];
-
-    return Array.from({ length: Math.max(3, videoUrls.length) }).map((_, i) => ({
-      id: `les_${course.slug}_${i + 1}`,
+    return distinctVideoUrls.map((videoUrl, i) => ({
+      id: `les_${course.slug}_video_${i + 1}`,
       course_id: course.id,
-      title: titles[i] || `${i + 1}. Module Lecture ${i + 1}`,
-      description: `In-depth technical lecture module for ${course.title}.`,
-      video_url: videoUrls[i] || videoUrls[0] || course.video_url || "",
+      title: distinctVideoUrls.length === 1 ? course.title : `Video ${i + 1}: ${course.title}`,
+      description: course.description || "",
+      video_url: videoUrl,
       duration: "1:00",
       lesson_order: i + 1,
       is_required: true,
