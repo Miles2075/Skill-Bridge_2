@@ -504,8 +504,8 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       // Enrollments and payment records must only be changed by the dedicated,
       // validated LMS endpoints. Otherwise the generic data adapter could bypass
       // the payment verification performed during checkout.
-      if (["enrollments", "purchases"].includes(tableName) && action !== "select") {
-        return errorResponse("Enrollment and purchase records can only be changed through validated LMS endpoints.", 403);
+      if (["enrollments", "purchases", "course_reviews"].includes(tableName) && action !== "select") {
+        return errorResponse("Enrollment, purchase, and review records can only be changed through validated LMS endpoints.", 403);
       }
 
       if (tableName === "purchases") {
@@ -538,6 +538,52 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const purchases = lmsDB.getUserPurchases(user.userId);
       const courseIds = Array.from(new Set(purchases.map((purchase) => purchase.course_id)));
       return jsonResponse({ purchases, courseIds });
+    }
+
+    // GET /api/lms/course-reviews?courseId=...
+    // Public summary/reviews, plus the current user's saved review when signed in.
+    if (path === "course-reviews" && method === "GET") {
+      const courseId = url.searchParams.get("courseId") || "";
+      if (!courseId) return errorResponse("Missing courseId.", 400);
+      const summary = lmsDB.getCourseReviewSummary(courseId);
+      if (!summary) return errorResponse("Course not found.", 404);
+      const own = user.userId ? lmsDB.getUserCourseReview(user.userId, courseId) : null;
+      return jsonResponse({
+        ...summary,
+        myReview: own
+          ? { rating: own.rating, reviewText: own.review_text, updatedAt: own.updated_at }
+          : null,
+      });
+    }
+
+    // POST /api/lms/course-reviews
+    // A student must have a real enrollment or purchase; identity comes from auth context.
+    if (path === "course-reviews" && method === "POST") {
+      if (!user.userId) return errorResponse("Sign in to submit a course review.", 401);
+      const body = await req.json().catch(() => ({}));
+      const courseId = typeof body.courseId === "string" ? body.courseId : "";
+      const rating = Number(body.rating);
+      const reviewText = typeof body.reviewText === "string" ? body.reviewText : "";
+      if (!courseId) return errorResponse("Missing courseId.", 400);
+      try {
+        lmsDB.saveCourseReview({
+          courseIdOrSlug: courseId,
+          studentId: user.userId,
+          studentName: user.name || user.email?.split("@")[0] || "Student",
+          rating,
+          reviewText,
+        });
+        const summary = lmsDB.getCourseReviewSummary(courseId);
+        const own = lmsDB.getUserCourseReview(user.userId, courseId);
+        if (!summary || !own) return errorResponse("Review saved, but could not reload it.", 500);
+        return jsonResponse({
+          ok: true,
+          ...summary,
+          myReview: { rating: own.rating, reviewText: own.review_text, updatedAt: own.updated_at },
+        });
+      } catch (error) {
+        return errorResponse(error instanceof Error ? error.message : "Could not save review.", 400);
+      }
     }
 
     // GET /api/lms/courses
@@ -901,9 +947,10 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         hours: Number(body.hours) || 10,
         level: body.level || "Intermediate",
         category: body.category || "Development",
-        rating: 5.0,
-        reviews: "1",
+        rating: 0,
+        reviews: "0",
         learners: "0",
+        bestseller: false,
       });
 
       return jsonResponse({ course: created });
