@@ -1204,52 +1204,29 @@ function TeachDashboardPage() {
       {/* VIEW 1: DASHBOARD (PRIMARY INSTRUCTOR OPERATIONS DESK) */}
       {/* ------------------------------------------------------------- */}
       {currentView === "dashboard" && (
-        <div className="space-y-6">
-          {/* Executive Header Banner */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="space-y-4">
+          {/* Compact dashboard header */}
+          <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-teal-700">
-                Faculty Operations Hub
-              </span>
-              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
-                Welcome, {displayName}
-              </h1>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Manage curriculum assets, evaluate student project submissions, and monitor revenue
-                velocity.
+              <h1 className="text-xl font-bold text-slate-900">Welcome, {displayName}</h1>
+              <p className="text-xs text-slate-500 mt-1">
+                Your courses, learners, and reviews at a glance.
               </p>
             </div>
-
-            {/* Quick Actions Bar */}
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => switchView("create-course")}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-teal-700 px-3 py-2 text-xs font-bold text-white hover:bg-teal-800 transition-colors cursor-pointer"
-              >
-                <PlusCircle className="size-3.5" />
-                <span>Create Course</span>
-              </button>
-              <button
-                onClick={() => switchView("assignments")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
-              >
-                <Layers className="size-3.5 text-teal-700" />
-                <span>Create Assignment</span>
-              </button>
-              <button
-                onClick={() => switchView("submissions")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50/70 px-3 py-2 text-xs font-bold text-teal-800 hover:bg-teal-100 transition-colors cursor-pointer"
-              >
-                <span>Review Submissions ({pendingAssignments})</span>
-              </button>
-            </div>
+            <button
+              onClick={() => switchView("create-course")}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800 transition-colors cursor-pointer"
+            >
+              <PlusCircle className="size-3.5" />
+              <span>Create Course</span>
+            </button>
           </div>
 
           {/* Operational Metrics Cards */}
-          <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-3.5">
               <span className="text-xs font-medium text-slate-500">Total Courses</span>
-              <p className="mt-1 text-2xl font-bold text-slate-900">{rows.length}</p>
+              <p className="mt-1 text-xl font-bold text-slate-900">{rows.length}</p>
               <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
                 <span className="text-emerald-700 font-semibold">{publishedCount} Published</span>
                 <span>·</span>
@@ -1280,34 +1257,35 @@ function TeachDashboardPage() {
               <p className="mt-1 text-2xl font-bold text-slate-900">
                 ₹{totalRevenue.toLocaleString("en-IN")}
               </p>
-              <span className="text-[11px] text-emerald-700 font-medium">+18.4% this cycle</span>
+              <span className="text-[11px] text-slate-500 font-medium">Recorded tuition</span>
             </div>
           </div>
 
           {/* Review Queue Spotlight & Quick Grading */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs space-y-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <ClipboardCheck className="size-4 text-teal-700" />
                 <h3 className="font-bold text-sm text-slate-900">
-                  Submissions Requiring Faculty Evaluation
+                  Needs review
                 </h3>
               </div>
               <button
                 onClick={() => switchView("submissions")}
                 className="text-xs font-semibold text-teal-700 hover:underline cursor-pointer"
               >
-                Open Full Workbench ({submissions.length})
+                View all
               </button>
             </div>
 
             <div className="divide-y divide-slate-100">
               {submissions
                 .filter((s) => s.status === "pending")
+                .slice(0, 3)
                 .map((sub) => (
                   <div
                     key={sub.id}
-                    className="py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                    className="py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
                   >
                     <div>
                       <div className="flex items-center gap-2 text-xs">
@@ -1354,7 +1332,7 @@ function TeachDashboardPage() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <Users className="size-4 text-teal-700" />
-                <h3 className="font-bold text-sm text-slate-900">Recent Student Cohort Activity</h3>
+                <h3 className="font-bold text-sm text-slate-900">Recent students</h3>
               </div>
               <button
                 onClick={() => switchView("students")}
