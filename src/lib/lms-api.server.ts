@@ -684,28 +684,31 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
     // POST /api/lms/enroll
     if (path === "enroll" && method === "POST") {
+      if (!user.userId) return errorResponse("Please sign in before enrolling.", 401);
       const body = await req.json().catch(() => ({}));
-      const courseId = body.courseId || body.courseSlug;
-      if (!courseId) return errorResponse("Missing courseId");
+      const requestedCourseId = typeof body.courseId === "string"
+        ? body.courseId
+        : typeof body.courseSlug === "string"
+          ? body.courseSlug
+          : "";
+      if (!requestedCourseId) return errorResponse("Missing courseId");
 
-      const studentId =
-        user.userId ||
-        body.studentId ||
-        body.userId ||
-        (body.studentEmail
-          ? `usr_${Buffer.from(String(body.studentEmail)).toString("hex").slice(0, 16)}`
-          : null);
+      const course = lmsDB.getCourse(requestedCourseId);
+      if (!course || course.status !== "published") {
+        return errorResponse("Course not found or not published.", 404);
+      }
 
-      if (!studentId)
-        return errorResponse("Unauthorized: Missing user authentication or studentId", 401);
+      // Paid courses are unlocked only by the verified payment endpoint.
+      const existingPurchase = lmsDB.getPurchases(user.userId).some(
+        (purchase) => purchase.course_id === course.id,
+      );
+      if (course.price_inr > 0 && !existingPurchase) {
+        return errorResponse("Payment required before enrolling in this course.", 402);
+      }
 
-      const studentName =
-        user.name ||
-        body.studentName ||
-        (body.studentEmail ? String(body.studentEmail).split("@")[0] : "Student Learner");
-      const studentEmail = user.email || body.studentEmail || "student@skillbridge.edu";
-
-      const enrollment = lmsDB.enrollStudent(studentId, courseId, studentName, studentEmail);
+      const studentName = user.name || String(body.studentName || user.email?.split("@")[0] || "Student Learner");
+      const studentEmail = user.email || String(body.studentEmail || "");
+      const enrollment = lmsDB.enrollStudent(user.userId, course.id, studentName, studentEmail);
       return jsonResponse({ enrollment });
     }
 
