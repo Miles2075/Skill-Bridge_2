@@ -644,13 +644,11 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
     }
 
     // PAYMENTS: GET /api/lms/payments/purchases (or /payment/purchases)
+    // Purchase history is private to the currently authenticated user.
     if ((path === "payments/purchases" || path === "payment/purchases") && method === "GET") {
-      const targetUserId = user.userId || url.searchParams.get("userId") || "";
-      if (!targetUserId) {
-        return jsonResponse({ purchases: [], courseIds: [] });
-      }
-      const purchases = lmsDB.getUserPurchases(targetUserId);
-      const courseIds = Array.from(new Set(purchases.map((p) => p.course_id)));
+      if (!user.userId) return errorResponse("Please sign in to view your purchases.", 401);
+      const purchases = lmsDB.getUserPurchases(user.userId);
+      const courseIds = Array.from(new Set(purchases.map((purchase) => purchase.course_id)));
       return jsonResponse({ purchases, courseIds });
     }
 
