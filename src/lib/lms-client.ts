@@ -329,6 +329,12 @@ export const lmsClient = {
   },
 
   // PROFILE
+  async getProfile(): Promise<{
+    user: { id: string; email: string; user_metadata: Record<string, unknown>; created_at?: string; updated_at?: string };
+  }> {
+    return request("profile");
+  },
+
   async updateProfile(data: {
     displayName?: string;
     avatarUrl?: string | null;
@@ -373,6 +379,46 @@ export const lmsClient = {
       method: "DELETE",
       body: JSON.stringify({ id }),
     });
+  },
+
+  // THUMBNAIL UPLOADS
+  async uploadThumbnail(
+    courseId: string,
+    file: File,
+  ): Promise<{ thumbnailUrl: string; fileName: string; size: number }> {
+    if (!file) throw new Error("Choose an image file first.");
+    const allowedExtensions = new Set(["jpg", "jpeg", "png", "webp", "avif", "gif"]);
+    const extension = file.name.includes(".") ? file.name.split(".").pop()!.toLowerCase() : "";
+    if (!allowedExtensions.has(extension)) {
+      throw new Error("Unsupported image format. Use JPG, PNG, WebP, AVIF, or GIF.");
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error("Thumbnail is too large. Maximum file size is 10 MB.");
+    }
+
+    const authHeaders = await getAuthHeaders();
+    const authToken = authHeaders.Authorization?.replace(/^Bearer\\s+/i, "") || "";
+    if (!authToken) throw new Error("Your session could not be verified. Sign in again before uploading.");
+
+    const safeFileName = file.name
+      .normalize("NFKD")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 120) || `thumbnail.${extension}`;
+    const pathname = `courses/${courseId}/thumbnails/${safeFileName}`;
+    const blob = await upload(pathname, file, {
+      access: "public",
+      contentType: file.type || "image/jpeg",
+      handleUploadUrl: "/api/lms/upload-thumbnail-token",
+      clientPayload: JSON.stringify({
+        courseId,
+        originalName: file.name,
+        authToken,
+      }),
+      multipart: file.size > 5 * 1024 * 1024,
+    });
+
+    return { thumbnailUrl: blob.url, fileName: file.name, size: file.size };
   },
 
   // VIDEO UPLOADS
