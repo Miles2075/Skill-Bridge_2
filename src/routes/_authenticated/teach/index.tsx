@@ -1922,8 +1922,8 @@ function TeachDashboardPage() {
                     </span>
                   </label>
                   <p className="text-[11px] text-slate-500">
-                    Select one or multiple video files to upload for this course (MP4, WebM, MOV,
-                    max 500 MB each).
+                    Select one or multiple video files (MP4, WebM, MOV, max 500 MB each). Set each
+                    curriculum title below before publishing; you can rename it later.
                   </p>
                 </div>
                 <label className="inline-flex items-center gap-1.5 rounded-lg bg-teal-50 border border-teal-200 px-3 py-1.5 text-xs font-semibold text-teal-700 hover:bg-teal-100 cursor-pointer transition-colors shrink-0">
