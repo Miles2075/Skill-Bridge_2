@@ -1116,7 +1116,9 @@ class DatabaseManager {
     const db = this.read();
     const course = db.courses.find((item) => item.id === courseIdOrSlug || item.slug === courseIdOrSlug);
     if (!course) return null;
-    const reviews = db.course_reviews.filter((review) => review.course_id === course.id);
+    const reviews = db.course_reviews
+      .filter((review) => review.course_id === course.id)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
     const rating = reviews.length
       ? Math.round((reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length) * 10) / 10
       : 0;
