@@ -1562,11 +1562,6 @@ function TeachDashboardPage() {
                               : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                           }`}
                         >
-                          <img
-                            src={p.url}
-                            alt={p.label}
-                            className="size-3.5 rounded object-cover shrink-0"
-                          />
                           <span>{p.label}</span>
                         </button>
                       );
@@ -1872,11 +1867,6 @@ function TeachDashboardPage() {
                               : "border-slate-200 bg-slate-50/50 text-slate-600 hover:bg-slate-100"
                           }`}
                         >
-                          <img
-                            src={p.url}
-                            alt={p.label}
-                            className="size-3.5 rounded object-cover shrink-0"
-                          />
                           <span className="truncate">{p.label}</span>
                         </button>
                       );
