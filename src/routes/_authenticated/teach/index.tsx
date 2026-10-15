@@ -209,6 +209,22 @@ interface LessonItem {
   isPreview: boolean;
 }
 
+function titleFromVideoFileName(fileName: string): string {
+  const base = fileName.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "";
+  const readable = base.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  return readable || "Untitled video";
+}
+
+function titleFromVideoUrl(url: string, index = 0): string {
+  try {
+    const fileName = decodeURIComponent(new URL(url).pathname.split("/").pop() || "");
+    const title = titleFromVideoFileName(fileName);
+    return title && title !== "Untitled video" ? title : `Video ${index + 1}`;
+  } catch {
+    return `Video ${index + 1}`;
+  }
+}
+
 const DEFAULT_LESSONS: LessonItem[] = [
   {
     id: "les-1",
@@ -323,6 +339,8 @@ function TeachDashboardPage() {
   const [selectedCourseFilter, setSelectedCourseFilter] = useState("all");
   const [submissionFilter, setSubmissionFilter] = useState<"all" | "pending" | "approved">("all");
   const [selectedContentCourse, setSelectedContentCourse] = useState("advanced-typescript");
+  const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
+  const [editingLessonTitle, setEditingLessonTitle] = useState("");
 
   // Grading modal state
   const [gradingSub, setGradingSub] = useState<AssignmentSubmission | null>(null);
@@ -336,14 +354,11 @@ function TeachDashboardPage() {
   const [newPrice, setNewPrice] = useState(999);
   const [newPreview, setNewPreview] = useState(5);
   const [newHours, setNewHours] = useState(16);
-  const [newVideoUrl, setNewVideoUrl] = useState(
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-  );
+  const [newVideoUrl, setNewVideoUrl] = useState("");
   const [newVideoFile, setNewVideoFile] = useState<File | null>(null);
   const [newVideoFiles, setNewVideoFiles] = useState<File[]>([]);
-  const [newVideoUrls, setNewVideoUrls] = useState<string[]>([
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-  ]);
+  const [newVideoTitles, setNewVideoTitles] = useState<string[]>([]);
+  const [newVideoUrls, setNewVideoUrls] = useState<string[]>([]);
   const [newUrlInput, setNewUrlInput] = useState("");
   const [isUploadingCourseVideo, setIsUploadingCourseVideo] = useState(false);
   const [uploadProgressText, setUploadProgressText] = useState<string | null>(null);
@@ -552,6 +567,7 @@ function TeachDashboardPage() {
             ? [row.video_url]
             : [];
 
+      const uploadedItems: Array<{ url: string; title: string }> = [];
       for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i]!;
         setUploadProgressText(`Uploading ${i + 1} of ${fileList.length}: ${file.name}…`);
@@ -559,6 +575,19 @@ function TeachDashboardPage() {
         if (!currentUrls.includes(uploaded.videoUrl)) {
           currentUrls = [...currentUrls, uploaded.videoUrl];
         }
+        uploadedItems.push({ url: uploaded.videoUrl, title: titleFromVideoFileName(file.name) });
+      }
+
+      // Save a named lesson for every upload. The title comes from the filename
+      // by default and can be renamed in the Curriculum Lesson Sequence below.
+      for (const item of uploadedItems) {
+        await lmsClient.addLesson(row.id, {
+          title: item.title,
+          description: "",
+          videoUrl: item.url,
+          isRequired: true,
+          isPreview: false,
+        });
       }
 
       // Keep every uploaded stream, but point the primary player at the most
@@ -791,8 +820,10 @@ function TeachDashboardPage() {
     try {
       const thumbnailFileToUpload = newThumbnailFile;
       const filesToUpload = [...newVideoFiles];
+      const fileTitles = [...newVideoTitles];
       if (newVideoFile && !filesToUpload.includes(newVideoFile)) {
         filesToUpload.push(newVideoFile);
+        fileTitles.push(titleFromVideoFileName(newVideoFile.name));
       }
       setIsUploadingCourseVideo(filesToUpload.length > 0);
 
@@ -842,6 +873,14 @@ function TeachDashboardPage() {
             );
             const uploaded = await lmsClient.uploadVideo(createdCourse.id, file);
             uploadedUrls.push(uploaded.videoUrl);
+            await lmsClient.addLesson(createdCourse.id, {
+              title: fileTitles[i]?.trim() || titleFromVideoFileName(file.name),
+              description: "",
+              videoUrl: uploaded.videoUrl,
+              lessonOrder: i + 1,
+              isRequired: true,
+              isPreview: i === 0,
+            });
           }
           const allUrls = [...uploadedUrls, ...initialUrls];
           const updated = await lmsClient.updateCourse(createdCourse.id, {
@@ -859,14 +898,29 @@ function TeachDashboardPage() {
         }
       }
 
+      // External video URLs also become named curriculum lessons so students
+      // see a real title rather than the course title or a generic placeholder.
+      for (let i = 0; i < initialUrls.length; i++) {
+        const url = initialUrls[i]!;
+        await lmsClient.addLesson(createdCourse.id, {
+          title: titleFromVideoUrl(url, i),
+          description: "",
+          videoUrl: url,
+          lessonOrder: filesToUpload.length + i + 1,
+          isRequired: true,
+          isPreview: filesToUpload.length === 0 && i === 0,
+        });
+      }
+
       setRows((prev) => [createdCourse, ...prev]);
       setNewTitle("");
       setNewSlug("");
       setNewVideoFile(null);
       setNewVideoFiles([]);
-      setNewVideoUrls([
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-      ]);
+      setNewVideoTitles([]);
+      setNewVideoUrl("");
+      setNewVideoUrls([]);
+      setNewVideoTitles([]);
       setNewUrlInput("");
       setNewThumbnail(PRESET_THUMBNAILS[0].url);
       setNewThumbnailFile(null);
@@ -1030,6 +1084,29 @@ function TeachDashboardPage() {
       });
     } finally {
       setIsUploadingVideo(false);
+    }
+  };
+
+  const handleSaveLessonTitle = async (lesson: LessonItem) => {
+    const title = editingLessonTitle.trim();
+    if (!title) {
+      setMsg({ text: "Enter a lesson title before saving.", isError: true });
+      return;
+    }
+    try {
+      const { lesson: updatedLesson } = await lmsClient.updateLesson(lesson.id, { title });
+      setLessons((prev) =>
+        prev.map((item) => item.id === lesson.id ? { ...item, title: updatedLesson.title } : item),
+      );
+      setEditingLessonId(null);
+      setEditingLessonTitle("");
+      setMsg({ text: `Saved video title: "${updatedLesson.title}"` });
+      window.dispatchEvent(new CustomEvent("lms_data_updated"));
+    } catch (err: unknown) {
+      setMsg({
+        text: err instanceof Error ? err.message : "Could not save the video title.",
+        isError: true,
+      });
     }
   };
 
@@ -1847,6 +1924,10 @@ function TeachDashboardPage() {
                       const files = Array.from(e.target.files || []);
                       if (files.length > 0) {
                         setNewVideoFiles((prev) => [...prev, ...files]);
+                        setNewVideoTitles((prev) => [
+                          ...prev,
+                          ...files.map((file) => titleFromVideoFileName(file.name)),
+                        ]);
                         if (!newVideoFile) setNewVideoFile(files[0] ?? null);
                       }
                       e.target.value = "";
@@ -1861,29 +1942,45 @@ function TeachDashboardPage() {
                   {newVideoFiles.map((f, idx) => (
                     <div
                       key={`new_v_file_${idx}_${f.name}`}
-                      className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs"
+                      className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs"
                     >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="font-bold text-slate-500 text-[10px] shrink-0">
-                          #{idx + 1}
-                        </span>
-                        <Video className="size-3.5 text-teal-600 shrink-0" />
-                        <span className="font-mono text-[11px] text-slate-800 truncate">
-                          {f.name}
-                        </span>
-                        <span className="text-[10px] text-slate-500 shrink-0">
-                          ({(f.size / (1024 * 1024)).toFixed(1)} MB)
-                        </span>
-                        {idx === 0 && (
-                          <span className="rounded bg-teal-100 px-1.5 py-0.5 text-[9px] font-bold text-teal-700 uppercase shrink-0">
-                            Primary
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-bold text-slate-500 text-[10px] shrink-0">
+                            #{idx + 1}
                           </span>
-                        )}
+                          <Video className="size-3.5 text-teal-600 shrink-0" />
+                          <span className="font-mono text-[11px] text-slate-800 truncate">
+                            {f.name}
+                          </span>
+                          <span className="text-[10px] text-slate-500 shrink-0">
+                            ({(f.size / (1024 * 1024)).toFixed(1)} MB)
+                          </span>
+                          {idx === 0 && (
+                            <span className="rounded bg-teal-100 px-1.5 py-0.5 text-[9px] font-bold text-teal-700 uppercase shrink-0">
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                        <Input
+                          value={newVideoTitles[idx] ?? titleFromVideoFileName(f.name)}
+                          onChange={(e) =>
+                            setNewVideoTitles((prev) => {
+                              const next = [...prev];
+                              next[idx] = e.target.value;
+                              return next;
+                            })
+                          }
+                          placeholder="Enter the title students will see"
+                          className="h-8 text-xs"
+                          aria-label={`Title for video ${idx + 1}`}
+                        />
                       </div>
                       <button
                         type="button"
                         onClick={() => {
                           setNewVideoFiles((prev) => prev.filter((_, i) => i !== idx));
+                          setNewVideoTitles((prev) => prev.filter((_, i) => i !== idx));
                           if (newVideoFile === f) {
                             setNewVideoFile(newVideoFiles.filter((_, i) => i !== idx)[0] ?? null);
                           }
