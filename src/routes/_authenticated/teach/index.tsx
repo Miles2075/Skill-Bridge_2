@@ -507,6 +507,23 @@ function TeachDashboardPage() {
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   };
 
+  // Save cover changes immediately. Previously the preview changed locally,
+  // but the thumbnail reached Neon only if the separate course-save action ran.
+  const handleRowThumbnailChange = async (rowId: string, thumbnail: string) => {
+    updateRow(rowId, { thumbnail });
+    setMsg(null);
+    try {
+      await lmsClient.updateCourse(rowId, { thumbnail });
+      setMsg({ text: "Course cover saved and available to students." });
+      window.dispatchEvent(new CustomEvent("lms_data_updated"));
+    } catch (err) {
+      setMsg({
+        text: err instanceof Error ? err.message : "Could not save course cover.",
+        isError: true,
+      });
+    }
+  };
+
   const handleUploadRowVideos = async (row: CourseRow, files: FileList | File[] | File) => {
     const fileList = files instanceof File ? [files] : Array.from(files);
     if (fileList.length === 0) return;
@@ -1410,9 +1427,9 @@ function TeachDashboardPage() {
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            handleThumbnailFileChange(file, (dataUrl) =>
-                              updateRow(row.id, { thumbnail: dataUrl }),
-                            );
+                            handleThumbnailFileChange(file, (dataUrl) => {
+                              void handleRowThumbnailChange(row.id, dataUrl);
+                            });
                           }
                           e.target.value = "";
                         }}
@@ -1430,7 +1447,7 @@ function TeachDashboardPage() {
                         <button
                           key={`p_${row.id}_${p.url}`}
                           type="button"
-                          onClick={() => updateRow(row.id, { thumbnail: p.url })}
+                          onClick={() => void handleRowThumbnailChange(row.id, p.url)}
                           className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-medium transition-all cursor-pointer ${
                             isSelected
                               ? "border-teal-600 bg-teal-50 text-teal-800 font-bold shadow-2xs"
