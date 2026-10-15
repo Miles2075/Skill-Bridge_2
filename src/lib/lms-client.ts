@@ -109,6 +109,24 @@ export interface ClientLesson {
   completed?: boolean;
 }
 
+export interface ClientCourseReview {
+  id: string;
+  studentName: string;
+  rating: number;
+  reviewText: string;
+  createdAt: string;
+}
+
+export interface ClientCourseReviewSummary {
+  courseId: string;
+  rating: number;
+  reviewCount: number;
+  learners: number;
+  bestseller: boolean;
+  reviews: ClientCourseReview[];
+  myReview: { rating: number; reviewText: string; updatedAt: string } | null;
+}
+
 export interface ClientEnrollment {
   id: string;
   student_id: string;
@@ -273,6 +291,23 @@ export const lmsClient = {
     lessonProgress: Array<{ lesson_id: string; completed: boolean; completed_at: string | null }>;
   }> {
     return request(`course?idOrSlug=${encodeURIComponent(idOrSlug)}`);
+  },
+
+  async getCourseReviews(courseIdOrSlug: string): Promise<ClientCourseReviewSummary> {
+    return request<ClientCourseReviewSummary>(
+      `course-reviews?courseId=${encodeURIComponent(courseIdOrSlug)}`,
+    );
+  },
+
+  async saveCourseReview(data: {
+    courseId: string;
+    rating: number;
+    reviewText: string;
+  }): Promise<ClientCourseReviewSummary & { ok: true }> {
+    return request<ClientCourseReviewSummary & { ok: true }>("course-reviews", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
   },
 
   async enroll(
