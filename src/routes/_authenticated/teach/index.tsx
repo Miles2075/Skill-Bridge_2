@@ -1503,7 +1503,7 @@ function TeachDashboardPage() {
                       onChange={(e) => updateRow(row.id, { thumbnail: e.target.value })}
                       onBlur={(e) => {
                         const value = e.currentTarget.value.trim();
-                        if (value && value !== row.thumbnail) void handleRowThumbnailChange(row.id, value);
+                        if (value) void handleRowThumbnailChange(row.id, value);
                       }}
                       className="text-xs font-mono h-7.5"
                     />
