@@ -22,6 +22,31 @@ async function parseUserContext(req: Request): Promise<UserContext> {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "").trim();
 
+  // Validate signed-in SkillBridge demo/local sessions before the hosted Supabase
+  // branch. Demo instructor accounts use server-issued LMS sessions, not Supabase JWTs.
+  if (token) {
+    const localSession = lmsDB.validateSession(token);
+    if (localSession) {
+      const role = localSession.roles.includes("admin")
+        ? "admin"
+        : localSession.roles.includes("teacher")
+          ? "teacher"
+          : "student";
+      return {
+        userId: localSession.user.id,
+        email: localSession.user.email ?? null,
+        name: String(
+          localSession.user.user_metadata?.display_name ||
+            localSession.user.email?.split("@")[0] ||
+            "Instructor",
+        ),
+        role,
+        isAdmin: role === "admin",
+        isTeacher: role === "teacher" || role === "admin",
+      };
+    }
+  }
+
   // Hosted requests must present a token verified by Supabase. Client-supplied
   // x-user-* headers are not an authentication mechanism.
   const supabaseUrl = process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"];
