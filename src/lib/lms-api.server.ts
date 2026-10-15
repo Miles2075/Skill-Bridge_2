@@ -712,119 +712,234 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
     }
 
     // POST /api/lms/payment/create-order
+    // Create an actual Razorpay order; never return simulated order IDs.
     if (path === "payment/create-order" && method === "POST") {
+      if (!user.userId) return errorResponse("Please sign in before purchasing a course.", 401);
       const body = await req.json().catch(() => ({}));
-      const courseId = body.courseId || body.courseSlug;
-      if (!courseId) return errorResponse("Missing courseId");
+      const requestedCourseId = typeof body.courseId === "string" ? body.courseId : "";
+      if (!requestedCourseId) return errorResponse("Missing courseId");
 
-      const course = lmsDB.getCourse(courseId);
-      const courseTitle = course?.title || "Skillbridge Engineering Course";
-      const priceInr = course?.price_inr && course.price_inr > 0 ? course.price_inr : 999;
-      const amountPaise = priceInr * 100;
+      const course = lmsDB.getCourse(requestedCourseId);
+      if (!course) return errorResponse("Course not found.", 404);
+      if (course.status !== "published") return errorResponse("This course is not available for purchase.", 409);
+      if (!Number.isFinite(course.price_inr) || course.price_inr <= 0) {
+        return errorResponse("This course does not require a paid checkout.", 400);
+      }
 
       const keyId = process.env["RAZORPAY_KEY_ID"]?.trim() || "";
       const keySecret = process.env["RAZORPAY_KEY_SECRET"]?.trim() || "";
-
-      // If valid Razorpay key is configured, try creating a live order
-      if (keyId && keySecret && keyId.startsWith("rzp_") && !keyId.includes("TkYGjq4iojsimE")) {
-        try {
-          const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
-          const rzpRes = await fetch("https://api.razorpay.com/v1/orders", {
-            method: "POST",
-            headers: {
-              Authorization: `Basic ${auth}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              amount: amountPaise,
-              currency: "INR",
-              receipt: `rcpt_${Date.now()}`.slice(0, 40),
-              notes: { course_id: courseId, title: courseTitle },
-            }),
-          });
-          if (rzpRes.ok) {
-            const rzpData = (await rzpRes.json()) as {
-              id: string;
-              amount: number;
-              currency?: string;
-            };
-            return jsonResponse({
-              orderId: rzpData.id,
-              amount: rzpData.amount,
-              currency: rzpData.currency || "INR",
-              keyId,
-              title: courseTitle,
-              isLive: true,
-            });
-          }
-        } catch (err) {
-          console.warn("Live Razorpay order creation failed, using sandbox order:", err);
-        }
+      if (!/^rzp_(test|live)_/.test(keyId) || !keySecret) {
+        return errorResponse(
+          "Razorpay is not configured for this deployment. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to the Vercel environment, then redeploy.",
+          503,
+        );
       }
 
-      // Fast, guaranteed test/sandbox order ID
-      const orderId = `order_sim_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const amountPaise = Math.round(course.price_inr * 100);
+      const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+      let razorpayOrder: {
+        id?: string;
+        amount?: number;
+        currency?: string;
+        notes?: Record<string, string>;
+      };
+      try {
+        const orderResponse = await fetch("https://api.razorpay.com/v1/orders", {
+          method: "POST",
+          headers: {
+            Authorization: `Basic ${auth}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            amount: amountPaise,
+            currency: "INR",
+            receipt: `sb_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`.slice(0, 40),
+            notes: {
+              course_id: course.id,
+              course_slug: course.slug,
+              student_id: user.userId,
+            },
+          }),
+        });
+        if (!orderResponse.ok) {
+          const detail = await orderResponse.text().catch(() => "");
+          console.error("Razorpay order API rejected request:", orderResponse.status, detail.slice(0, 500));
+          return errorResponse(
+            "Razorpay could not create the order. Check that the test/live API keys in Vercel match.",
+            502,
+          );
+        }
+        razorpayOrder = await orderResponse.json() as typeof razorpayOrder;
+      } catch (error) {
+        console.error("Razorpay order creation request failed:", error);
+        return errorResponse("Could not reach Razorpay to create the payment order.", 502);
+      }
+
+      if (!razorpayOrder.id || razorpayOrder.amount !== amountPaise) {
+        return errorResponse("Razorpay returned an invalid order. No payment has been taken.", 502);
+      }
+
       return jsonResponse({
-        orderId,
-        amount: amountPaise,
-        currency: "INR",
-        keyId: keyId || "rzp_test_sandbox",
-        title: courseTitle,
-        isLive: false,
+        orderId: razorpayOrder.id,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency || "INR",
+        keyId,
+        title: course.title,
+        isLive: true,
+        isTest: keyId.startsWith("rzp_test_"),
       });
     }
 
     // POST /api/lms/payment/verify
+    // Verify the HMAC signature and confirm a captured payment directly with Razorpay.
     if (path === "payment/verify" && method === "POST") {
+      if (!user.userId) return errorResponse("Please sign in again to verify your payment.", 401);
       const body = await req.json().catch(() => ({}));
-      const courseId = body.courseId || body.courseSlug;
-      if (!courseId) return errorResponse("Missing courseId");
-
-      const course = lmsDB.getCourse(courseId);
-      const studentId =
-        user.userId ||
-        body.userId ||
-        body.studentId ||
-        (body.userEmail
-          ? `usr_${Buffer.from(String(body.userEmail)).toString("hex").slice(0, 16)}`
-          : "guest_student");
-
-      const studentName = user.name || body.userName || body.displayName || "Student Learner";
-      const studentEmail = user.email || body.userEmail || "student@skillbridge.edu";
-      const priceInr = course?.price_inr && course.price_inr > 0 ? course.price_inr : 999;
-
-      // 1. Record purchase in LMS database
-      let purchase = null;
-      try {
-        purchase = lmsDB.recordPurchase({
-          userId: studentId,
-          courseIdOrSlug: courseId,
-          amountInr: priceInr,
-          razorpayOrderId: body.orderId || `order_${Date.now()}`,
-          razorpayPaymentId: body.paymentId || `pay_${Date.now()}`,
-        });
-      } catch (err) {
-        console.warn("Failed recording purchase in DB:", err);
+      const requestedCourseId = typeof body.courseId === "string" ? body.courseId : "";
+      const orderId = typeof body.orderId === "string" ? body.orderId : "";
+      const paymentId = typeof body.paymentId === "string" ? body.paymentId : "";
+      const signature = typeof body.signature === "string" ? body.signature.trim() : "";
+      if (!requestedCourseId || !orderId || !paymentId || !signature) {
+        return errorResponse("Missing course, order, payment, or signature details.", 400);
       }
 
-      // 2. Guarantee student is enrolled
-      let enrollment = null;
-      try {
-        enrollment = lmsDB.enrollStudent(studentId, courseId, studentName, studentEmail);
-      } catch (err) {
-        console.warn("Enrollment registration warning:", err);
+      const course = lmsDB.getCourse(requestedCourseId);
+      if (!course || course.status !== "published") return errorResponse("Course not found or not published.", 404);
+      if (!Number.isFinite(course.price_inr) || course.price_inr <= 0) {
+        return errorResponse("This course is not a paid course.", 400);
       }
+
+      const keyId = process.env["RAZORPAY_KEY_ID"]?.trim() || "";
+      const keySecret = process.env["RAZORPAY_KEY_SECRET"]?.trim() || "";
+      if (!/^rzp_(test|live)_/.test(keyId) || !keySecret) {
+        return errorResponse("Razorpay is not configured for this deployment.", 503);
+      }
+
+      // Razorpay Checkout signs order_id|payment_id using the API key secret.
+      const expectedSignature = crypto
+        .createHmac("sha256", keySecret)
+        .update(`${orderId}|${paymentId}`)
+        .digest("hex");
+      if (!/^[a-f0-9]{64}$/i.test(signature)) {
+        return errorResponse("Invalid Razorpay payment signature.", 400);
+      }
+      const expectedBytes = Buffer.from(expectedSignature, "hex");
+      const suppliedBytes = Buffer.from(signature, "hex");
+      if (expectedBytes.length !== suppliedBytes.length || !crypto.timingSafeEqual(expectedBytes, suppliedBytes)) {
+        return errorResponse("Razorpay signature verification failed. The course has not been unlocked.", 400);
+      }
+
+      const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+      const razorpayHeaders = { Authorization: `Basic ${auth}`, "Content-Type": "application/json" };
+      const expectedAmount = Math.round(course.price_inr * 100);
+
+      let razorpayOrder: {
+        id?: string;
+        amount?: number;
+        currency?: string;
+        notes?: Record<string, string>;
+      };
+      try {
+        const orderResponse = await fetch(
+          `https://api.razorpay.com/v1/orders/${encodeURIComponent(orderId)}`,
+          { headers: razorpayHeaders },
+        );
+        if (!orderResponse.ok) return errorResponse("Could not confirm this Razorpay order.", 502);
+        razorpayOrder = await orderResponse.json() as typeof razorpayOrder;
+      } catch (error) {
+        console.error("Razorpay order verification request failed:", error);
+        return errorResponse("Could not reach Razorpay to verify the order.", 502);
+      }
+
+      if (
+        razorpayOrder.id !== orderId ||
+        razorpayOrder.amount !== expectedAmount ||
+        razorpayOrder.currency !== "INR" ||
+        razorpayOrder.notes?.["course_id"] !== course.id ||
+        razorpayOrder.notes?.["student_id"] !== user.userId
+      ) {
+        return errorResponse("This payment order does not match your account, course, or course price.", 403);
+      }
+
+      let razorpayPayment: {
+        id?: string;
+        order_id?: string;
+        amount?: number;
+        currency?: string;
+        status?: string;
+      };
+      try {
+        const paymentResponse = await fetch(
+          `https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`,
+          { headers: razorpayHeaders },
+        );
+        if (!paymentResponse.ok) return errorResponse("Could not confirm the Razorpay payment.", 502);
+        razorpayPayment = await paymentResponse.json() as typeof razorpayPayment;
+      } catch (error) {
+        console.error("Razorpay payment verification request failed:", error);
+        return errorResponse("Could not reach Razorpay to verify the payment.", 502);
+      }
+
+      if (
+        razorpayPayment.id !== paymentId ||
+        razorpayPayment.order_id !== orderId ||
+        razorpayPayment.amount !== expectedAmount ||
+        razorpayPayment.currency !== "INR"
+      ) {
+        return errorResponse("The Razorpay payment details do not match this course order.", 400);
+      }
+
+      if (razorpayPayment.status === "authorized") {
+        try {
+          const captureResponse = await fetch(
+            `https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}/capture`,
+            {
+              method: "POST",
+              headers: razorpayHeaders,
+              body: JSON.stringify({ amount: expectedAmount, currency: "INR" }),
+            },
+          );
+          if (!captureResponse.ok) {
+            const detail = await captureResponse.text().catch(() => "");
+            console.error("Razorpay capture failed:", captureResponse.status, detail.slice(0, 500));
+            return errorResponse("Payment was authorized but could not be captured. Course access has not been granted.", 402);
+          }
+          razorpayPayment = await captureResponse.json() as typeof razorpayPayment;
+        } catch (error) {
+          console.error("Razorpay capture request failed:", error);
+          return errorResponse("Payment capture could not be confirmed. Course access has not been granted.", 502);
+        }
+      }
+
+      if (razorpayPayment.status !== "captured") {
+        return errorResponse("Payment is not captured yet. The course has not been unlocked.", 402);
+      }
+
+      // Trust only the authenticated session identity, never a user ID sent in the request body.
+      const studentId = user.userId;
+      const studentName = user.name || String(body.userName || user.email?.split("@")[0] || "Student Learner");
+      const studentEmail = user.email || String(body.userEmail || "");
+      const purchase = lmsDB.recordPurchase({
+        userId: studentId,
+        courseIdOrSlug: course.id,
+        amountInr: course.price_inr,
+        razorpayOrderId: orderId,
+        razorpayPaymentId: paymentId,
+      });
+      const enrollment = lmsDB.enrollStudent(studentId, course.id, studentName, studentEmail);
 
       return jsonResponse({
         ok: true,
-        orderId: body.orderId || `order_${Date.now()}`,
-        paymentId: body.paymentId || `pay_${Date.now()}`,
-        amount: priceInr,
-        courseId: course?.id || courseId,
-        title: course?.title || "Skillbridge Course",
+        orderId,
+        paymentId,
+        amount: course.price_inr,
+        courseId: course.id,
+        title: course.title,
         enrolled: true,
         enrollment,
         purchase,
+        isLive: keyId.startsWith("rzp_live_"),
+        isTest: keyId.startsWith("rzp_test_"),
       });
     }
 
