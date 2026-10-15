@@ -1970,7 +1970,6 @@ class DatabaseManager {
     email: string,
     password: string,
   ): { user: LocalUser; session: LocalSession; roles: string[] } | null {
-    const db = this.read();
     const cleanEmail = email.trim().toLowerCase();
     const user = this.findUserByEmail(cleanEmail);
     // Login must only authenticate an existing account. Signup is handled by
