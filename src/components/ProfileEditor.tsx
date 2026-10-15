@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Loader2, Save, Upload, Link as LinkIcon, Trash2, Camera, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -83,6 +83,11 @@ export function ProfileEditor({
 }) {
   const [name, setName] = useState(user.user_metadata?.display_name || "");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user.user_metadata?.avatar_url || null);
+
+  useEffect(() => {
+    setName(user.user_metadata?.display_name || "");
+    setAvatarUrl(user.user_metadata?.avatar_url || null);
+  }, [user.id, user.user_metadata?.display_name, user.user_metadata?.avatar_url]);
   const [customUrlInput, setCustomUrlInput] = useState("");
   const [showUrlField, setShowUrlField] = useState(false);
   const [saving, setSaving] = useState(false);
