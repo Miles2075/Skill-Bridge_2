@@ -936,8 +936,10 @@ function TeachDashboardPage() {
       setNewUrlInput("");
       setNewThumbnail(PRESET_THUMBNAILS[0].url);
       setNewThumbnailFile(null);
+      const savedVideoCount =
+        createdCourse.video_urls?.length ?? (createdCourse.video_url ? 1 : 0);
       setMsg({
-        text: `Course "${createdCourse.title}" successfully created with ${createdCourse.video_urls?.length || 1} video(s)!`,
+        text: `Course "${createdCourse.title}" successfully created with ${savedVideoCount} video(s)!`,
       });
       window.dispatchEvent(new CustomEvent("lms_data_updated"));
       switchView("courses");
