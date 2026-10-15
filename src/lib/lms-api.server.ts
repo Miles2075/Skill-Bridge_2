@@ -1318,10 +1318,21 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
         // PostgreSQL JSONB should normally be decoded to an object, but older
         // rows/deployments may return a JSON-serialized string. Normalize both
         // formats before importing so schema integrity checks can mutate it.
-        const persistedState = rows[0]!.state;
-        const snapshot = typeof persistedState === "string"
-          ? JSON.parse(persistedState)
-          : persistedState;
+        let snapshot: unknown = rows[0]!.state;
+        // Some earlier deployments stored the JSONB snapshot as a JSON string,
+        // and some drivers/legacy rows can expose that string more than once.
+        // Decode repeatedly until it is an object, rather than importing a string
+        // (which prevents every mutation from being persisted).
+        for (let depth = 0; typeof snapshot === "string" && depth < 3; depth += 1) {
+          try {
+            snapshot = JSON.parse(snapshot);
+          } catch {
+            break;
+          }
+        }
+        if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+          throw new Error("Neon LMS state is not a valid database snapshot.");
+        }
         lmsDB.importSnapshot(snapshot as import("./lms-db.server").LMSDatabase);
       } else {
         await tx`
