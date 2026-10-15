@@ -181,6 +181,10 @@ export function getLocalSession(): LocalUser | null {
             display_name: displayName,
             email: u.email || "student@skillbridge.edu",
             role,
+            // Preserve profile pictures when hydrating from a Supabase-shaped session.
+            ...(typeof u.user_metadata?.avatar_url === "string"
+              ? { avatar_url: u.user_metadata.avatar_url }
+              : {}),
           },
           created_at: u.created_at || new Date().toISOString(),
           updated_at: u.updated_at || new Date().toISOString(),
