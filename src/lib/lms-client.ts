@@ -333,10 +333,24 @@ export const lmsClient = {
     displayName?: string;
     avatarUrl?: string | null;
   }): Promise<{ user: { id: string; email: string; user_metadata: Record<string, unknown> } }> {
-    return request("profile", {
+    // Persist the profile in the LMS database and, when this is a Supabase
+    // account, mirror it into Supabase Auth metadata so it survives a fresh login.
+    const result = await request<{ user: { id: string; email: string; user_metadata: Record<string, unknown> } }>("profile", {
       method: "PATCH",
       body: JSON.stringify(data),
     });
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData.session) {
+      const metadata: Record<string, unknown> = {};
+      if (data.displayName !== undefined) metadata.display_name = data.displayName;
+      if (data.avatarUrl !== undefined) metadata.avatar_url = data.avatarUrl;
+      const { error } = await supabase.auth.updateUser({ data: metadata });
+      if (error) {
+        throw new Error(`Profile saved to SkillBridge, but login profile sync failed: ${error.message}`);
+      }
+    }
+    return result;
   },
 
   // COURSE MANAGEMENT
