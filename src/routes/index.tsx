@@ -349,7 +349,7 @@ function useCommerceState(
               ...c,
               progress: enr.progress,
               lessonsDone: enr.lessonsDone,
-              lessonsTotal: enr.lessonsTotal || c.lessonsTotal ?? 0,
+              lessonsTotal: enr.lessonsTotal ?? c.lessonsTotal ?? 0,
               nextLesson: enr.nextLesson,
               certificateId: enr.certificateId || undefined,
             };
@@ -451,7 +451,7 @@ function useCommerceState(
               ...c,
               progress: existing.progress,
               lessonsDone: existing.lessonsDone,
-              lessonsTotal: c.lessonsTotal || existing.lessonsTotal ?? 0,
+              lessonsTotal: c.lessonsTotal ?? existing.lessonsTotal ?? 0,
               nextLesson: existing.nextLesson,
               certificateId: existing.certificateId,
             };
