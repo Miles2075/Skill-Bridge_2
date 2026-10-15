@@ -560,6 +560,9 @@ function TeachDashboardPage() {
     setUploadingRowId(row.id);
     setMsg(null);
     try {
+      // Materialize any older URL-only course videos before appending new ones,
+      // preserving their existing curriculum order and names.
+      await lmsClient.getCourse(row.id).catch(() => null);
       let currentUrls =
         row.video_urls && Array.isArray(row.video_urls)
           ? [...row.video_urls]
@@ -623,6 +626,8 @@ function TeachDashboardPage() {
     if (!trimmed) return;
     const targetRow = rows.find((r) => r.id === rowId);
     if (!targetRow) return;
+    // Keep existing URL-only assets as real lessons before adding another video.
+    await lmsClient.getCourse(rowId).catch(() => null);
     const currentUrls =
       targetRow.video_urls && Array.isArray(targetRow.video_urls)
         ? [...targetRow.video_urls]
