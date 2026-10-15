@@ -883,10 +883,8 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         : body.video_url
           ? [body.video_url]
           : [];
-      const primaryVideoUrl =
-        body.video_url ||
-        videoUrls[0] ||
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+      // Do not seed a placeholder video when the teacher has not uploaded one.
+      const primaryVideoUrl = body.video_url || videoUrls[0] || "";
 
       const created = lmsDB.createCourse({
         title: body.title,
@@ -899,7 +897,7 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         price_inr: Number(body.price_inr) || 999,
         preview_minutes: Number(body.preview_minutes) || 3,
         video_url: primaryVideoUrl,
-        video_urls: videoUrls.length > 0 ? videoUrls : [primaryVideoUrl],
+        video_urls: videoUrls,
         hours: Number(body.hours) || 10,
         level: body.level || "Intermediate",
         category: body.category || "Development",
@@ -968,9 +966,17 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         const updatedLesson = lmsDB.updateLesson(lessonId, { video_url: videoUrl });
         if (!updatedLesson) return errorResponse("Could not save video to the lesson.", 500);
       } else {
-        const currentUrls = course.video_urls && Array.isArray(course.video_urls)
-          ? [...course.video_urls]
+        let currentUrls = course.video_urls && Array.isArray(course.video_urls)
+          ? [...course.video_urls].filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
           : course.video_url ? [course.video_url] : [];
+
+        // If this course has real Blob uploads, remove the old sample URLs
+        // that earlier versions inserted automatically during course creation.
+        if (videoUrl.includes(".blob.vercel-storage.com")) {
+          currentUrls = currentUrls.filter(
+            (url) => !url.includes("commondatastorage.googleapis.com/gtv-videos-bucket/sample/"),
+          );
+        }
         if (!currentUrls.includes(videoUrl)) currentUrls.push(videoUrl);
         lmsDB.updateCourse(course.id, { video_url: videoUrl, video_urls: currentUrls });
       }
