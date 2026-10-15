@@ -136,7 +136,9 @@ function MyLearningPage() {
   );
   const selectedCourse = selectedCourseId ? courses[selectedCourseId] : undefined;
   const activeLesson = lessons.find((l) => l.id === activeLessonId) || lessons[0];
-  const activeVideoUrl = activeLesson?.video_url || selectedCourse?.video_url;
+  // Course-level uploads update the primary stream URL. Prefer it over
+  // stale seeded lesson URLs so students see the instructor's latest upload.
+  const activeVideoUrl = selectedCourse?.video_url || activeLesson?.video_url;
 
   return (
     <div className="space-y-6">
@@ -167,6 +169,14 @@ function MyLearningPage() {
                 onClick={() => setSelectedCourseId(enrollment.course_id)}
                 className={`w-full rounded-xl border p-4 text-left transition cursor-pointer ${active ? "border-indigo-200 bg-indigo-50" : "border-slate-200 bg-white hover:bg-slate-50"}`}
               >
+                {course?.thumbnail ? (
+                  <img
+                    src={course.thumbnail}
+                    alt={`${course.title} course cover`}
+                    className="mb-3 h-24 w-full rounded-lg object-cover"
+                    loading="lazy"
+                  />
+                ) : null}
                 <div className="font-semibold text-slate-900">{course?.title || "Course"}</div>
                 <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
                   <span>{enrollment.status === "completed" ? "Completed" : "In progress"}</span>
