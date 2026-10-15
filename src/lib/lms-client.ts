@@ -2,7 +2,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { upload } from "@vercel/blob/client";
 import { getLocalSession } from "@/lib/local-db";
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
+export async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
