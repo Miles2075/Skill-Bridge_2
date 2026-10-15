@@ -234,6 +234,74 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
   // Vercel Blob client uploads exchange a small token request with this route;
   // the video bytes themselves go directly from the browser to Blob, avoiding
   // Vercel Functions' 4.5 MB request-body limit.
+  if (path === "upload-thumbnail-token" && method === "POST") {
+    const blobToken = process.env["BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
+    if (!blobToken) return errorResponse("Vercel Blob is not configured. Add BLOB_READ_WRITE_TOKEN in Vercel.", 503);
+
+    let body: HandleUploadBody;
+    try {
+      body = await req.json() as HandleUploadBody;
+    } catch {
+      return errorResponse("Invalid Blob upload token request.", 400);
+    }
+
+    try {
+      const result = await handleUpload({
+        body,
+        request: req,
+        token: blobToken,
+        onBeforeGenerateToken: async (pathname, clientPayload) => {
+          let payload: { courseId?: unknown; originalName?: unknown; authToken?: unknown };
+          try {
+            payload = JSON.parse(clientPayload || "{}");
+          } catch {
+            throw new Error("Invalid thumbnail upload metadata.");
+          }
+
+          const courseId = typeof payload.courseId === "string" ? payload.courseId : "";
+          const originalName = typeof payload.originalName === "string" ? payload.originalName : "";
+          const authToken = typeof payload.authToken === "string" ? payload.authToken : "";
+          if (!courseId || !originalName || !authToken) throw new Error("Sign in again before uploading a thumbnail.");
+
+          const authHeaders = new Headers(req.headers);
+          authHeaders.set("authorization", `Bearer ${authToken}`);
+          const authRequest = new Request(req.url, { method: "GET", headers: authHeaders });
+          const uploadUser = await parseUserContext(authRequest);
+          if (!uploadUser.isTeacher || !uploadUser.userId) throw new Error("Forbidden: Instructor role required.");
+
+          const course = lmsDB.getCourse(courseId);
+          if (!course) throw new Error("Course not found.");
+
+          const segments = pathname.split("/");
+          if (segments.length !== 4 || segments[0] !== "courses" || segments[1] !== courseId || segments[2] !== "thumbnails" || segments[3].includes("..")) {
+            throw new Error("Invalid thumbnail upload path.");
+          }
+          const extension = segments[3].slice(segments[3].lastIndexOf(".")).toLowerCase();
+          const allowedExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"]);
+          if (!allowedExtensions.has(extension)) throw new Error("Unsupported image format. Use JPG, PNG, WebP, AVIF, or GIF.");
+
+          return {
+            allowedContentTypes: ["image/jpeg", "image/png", "image/webp", "image/avif", "image/gif"],
+            maximumSizeInBytes: 10 * 1024 * 1024,
+            addRandomSuffix: true,
+            tokenPayload: JSON.stringify({
+              courseId,
+              originalName,
+              userId: uploadUser.userId,
+            }),
+          };
+        },
+        onUploadCompleted: async () => {
+          // The client persists the resulting public URL as the course thumbnail.
+        },
+      });
+      return jsonResponse(result);
+    } catch (error) {
+      console.error("Vercel Blob thumbnail upload token error:", error);
+      return errorResponse(error instanceof Error ? error.message : "Could not prepare thumbnail upload.", 400);
+    }
+  }
+
   if (path === "upload-video-token" && method === "POST") {
     const blobToken = process.env["BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
     if (!blobToken) return errorResponse("Vercel Blob is not configured. Add BLOB_READ_WRITE_TOKEN in Vercel.", 503);
@@ -359,6 +427,22 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         user: res.user,
         session: res.session,
         roles: res.roles,
+      });
+    }
+
+    // AUTH: GET /api/lms/profile
+    if (path === "profile" && method === "GET") {
+      if (!user.userId) return errorResponse("Unauthorized", 401);
+      const profileUser = lmsDB.findUserById(user.userId);
+      if (!profileUser) return errorResponse("User not found.", 404);
+      return jsonResponse({
+        user: {
+          id: profileUser.id,
+          email: profileUser.email,
+          user_metadata: profileUser.user_metadata,
+          created_at: profileUser.created_at,
+          updated_at: profileUser.updated_at,
+        },
       });
     }
 
