@@ -1147,27 +1147,24 @@ class DatabaseManager {
     const db = this.read();
     const course = this.getCourse(courseIdOrSlug);
     if (!course) return [];
+
     const directLessons = db.lessons
-      .filter((l) => l.course_id === course.id || l.course_id === course.slug)
+      .filter((lesson) => lesson.course_id === course.id || lesson.course_id === course.slug)
       .sort((a, b) => a.lesson_order - b.lesson_order);
 
-    if (directLessons.length > 0) {
-      return directLessons;
-    }
-
-    // Migrate older course-level video URL lists into persistent lesson rows.
-    // This preserves a readable video filename as the initial lesson title and
-    // gives instructors a real lesson record whose title can be renamed and saved.
-    const videoUrls =
-      course.video_urls && Array.isArray(course.video_urls)
-        ? course.video_urls.filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
+    let videoUrls =
+      course.video_urls && Array.isArray(course.video_urls) && course.video_urls.length > 0
+        ? [...course.video_urls]
         : course.video_url
           ? [course.video_url]
           : [];
-    const distinctVideoUrls = videoUrls
+    if (course.video_url && !videoUrls.includes(course.video_url)) {
+      videoUrls.unshift(course.video_url);
+    }
+    videoUrls = videoUrls
+      .filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
       .filter((url) => !url.includes("commondatastorage.googleapis.com/gtv-videos-bucket/sample/"))
       .filter((url, index, urls) => urls.indexOf(url) === index);
-    if (distinctVideoUrls.length === 0) return [];
 
     const titleFromUrl = (videoUrl: string, index: number) => {
       try {
@@ -1184,23 +1181,32 @@ class DatabaseManager {
       }
     };
 
-    const migratedLessons: CourseLesson[] = distinctVideoUrls.map((videoUrl, i) => ({
-      id: `les_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      course_id: course.id,
-      title: titleFromUrl(videoUrl, i),
-      description: course.description || "",
-      video_url: videoUrl,
-      duration: "1:00",
-      lesson_order: i + 1,
-      is_required: true,
-      is_preview: i === 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }));
+    // Reconcile course-level video assets with lesson rows. Existing lesson titles
+    // are left untouched; any uploaded asset that lacks a lesson becomes a
+    // persistent lesson with a readable filename-derived title.
+    const lessonVideoUrls = new Set(directLessons.map((lesson) => lesson.video_url).filter(Boolean));
+    const missingVideoUrls = videoUrls.filter((videoUrl) => !lessonVideoUrls.has(videoUrl));
+    if (missingVideoUrls.length > 0) {
+      const nextOrder = directLessons.reduce((max, lesson) => Math.max(max, lesson.lesson_order || 0), 0);
+      const addedLessons: CourseLesson[] = missingVideoUrls.map((videoUrl, index) => ({
+        id: `les_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        course_id: course.id,
+        title: titleFromUrl(videoUrl, nextOrder + index),
+        description: course.description || "",
+        video_url: videoUrl,
+        duration: "1:00",
+        lesson_order: nextOrder + index + 1,
+        is_required: true,
+        is_preview: directLessons.length === 0 && index === 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }));
+      db.lessons.push(...addedLessons);
+      this.write();
+      return [...directLessons, ...addedLessons].sort((a, b) => a.lesson_order - b.lesson_order);
+    }
 
-    db.lessons.push(...migratedLessons);
-    this.write();
-    return migratedLessons;
+    return directLessons;
   }
 
   addLesson(
