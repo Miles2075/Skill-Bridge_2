@@ -349,6 +349,7 @@ function TeachDashboardPage() {
   const [uploadProgressText, setUploadProgressText] = useState<string | null>(null);
   const [newStatus, setNewStatus] = useState<"published" | "draft">("published");
   const [newThumbnail, setNewThumbnail] = useState<string>(PRESET_THUMBNAILS[0].url);
+  const [newThumbnailFile, setNewThumbnailFile] = useState<File | null>(null);
 
   const handleThumbnailFileChange = (file: File, onSuccess: (dataUrl: string) => void) => {
     if (!file) return;
@@ -510,15 +511,29 @@ function TeachDashboardPage() {
   // Save cover changes immediately. Previously the preview changed locally,
   // but the thumbnail reached Neon only if the separate course-save action ran.
   const handleRowThumbnailChange = async (rowId: string, thumbnail: string) => {
-    updateRow(rowId, { thumbnail });
     setMsg(null);
     try {
-      await lmsClient.updateCourse(rowId, { thumbnail });
+      const { course } = await lmsClient.updateCourse(rowId, { thumbnail });
+      updateRow(rowId, { thumbnail: course.thumbnail || thumbnail });
       setMsg({ text: "Course cover saved and available to students." });
       window.dispatchEvent(new CustomEvent("lms_data_updated"));
     } catch (err) {
       setMsg({
         text: err instanceof Error ? err.message : "Could not save course cover.",
+        isError: true,
+      });
+    }
+  };
+
+  const handleRowThumbnailUpload = async (rowId: string, file: File) => {
+    if (!file) return;
+    setMsg(null);
+    try {
+      const { thumbnailUrl } = await lmsClient.uploadThumbnail(rowId, file);
+      await handleRowThumbnailChange(rowId, thumbnailUrl);
+    } catch (err) {
+      setMsg({
+        text: err instanceof Error ? err.message : "Could not upload course cover.",
         isError: true,
       });
     }
@@ -774,6 +789,7 @@ function TeachDashboardPage() {
     }
 
     try {
+      const thumbnailFileToUpload = newThumbnailFile;
       const filesToUpload = [...newVideoFiles];
       if (newVideoFile && !filesToUpload.includes(newVideoFile)) {
         filesToUpload.push(newVideoFile);
@@ -790,7 +806,9 @@ function TeachDashboardPage() {
         slug: newSlug.trim().toLowerCase().replace(/\s+/g, "-"),
         price_inr: newPrice,
         preview_minutes: newPreview,
-        thumbnail: newThumbnail.trim() || PRESET_THUMBNAILS[0].url,
+        thumbnail: thumbnailFileToUpload
+          ? PRESET_THUMBNAILS[0].url
+          : newThumbnail.trim() || PRESET_THUMBNAILS[0].url,
         video_url: initialUrls[0] || "",
         video_urls: initialUrls,
         hours: newHours,
@@ -799,6 +817,20 @@ function TeachDashboardPage() {
       });
 
       let createdCourse = course as unknown as CourseRow;
+
+      if (thumbnailFileToUpload) {
+        try {
+          setUploadProgressText(`Uploading course thumbnail: ${thumbnailFileToUpload.name}…`);
+          const { thumbnailUrl } = await lmsClient.uploadThumbnail(createdCourse.id, thumbnailFileToUpload);
+          const updated = await lmsClient.updateCourse(createdCourse.id, { thumbnail: thumbnailUrl });
+          createdCourse = updated.course as unknown as CourseRow;
+        } catch (thumbnailErr) {
+          await lmsClient.deleteCourse(createdCourse.id).catch(() => {});
+          throw new Error(
+            `Course thumbnail upload failed: ${thumbnailErr instanceof Error ? thumbnailErr.message : "Upload error"}`,
+          );
+        }
+      }
 
       if (filesToUpload.length > 0) {
         try {
@@ -815,7 +847,7 @@ function TeachDashboardPage() {
           const updated = await lmsClient.updateCourse(createdCourse.id, {
             video_url: allUrls[0] || "",
             video_urls: allUrls,
-            thumbnail: createdCourse.thumbnail || newThumbnail,
+            thumbnail: createdCourse.thumbnail || PRESET_THUMBNAILS[0].url,
           });
           createdCourse = updated.course as unknown as CourseRow;
         } catch (uploadErr) {
@@ -837,6 +869,7 @@ function TeachDashboardPage() {
       ]);
       setNewUrlInput("");
       setNewThumbnail(PRESET_THUMBNAILS[0].url);
+      setNewThumbnailFile(null);
       setMsg({
         text: `Course "${createdCourse.title}" successfully created with ${createdCourse.video_urls?.length || 1} video(s)!`,
       });
@@ -1427,9 +1460,7 @@ function TeachDashboardPage() {
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            handleThumbnailFileChange(file, (dataUrl) => {
-                              void handleRowThumbnailChange(row.id, dataUrl);
-                            });
+                            void handleRowThumbnailUpload(row.id, file);
                           }
                           e.target.value = "";
                         }}
@@ -1470,6 +1501,10 @@ function TeachDashboardPage() {
                       placeholder="Or enter custom image URL (https://...)"
                       value={row.thumbnail || ""}
                       onChange={(e) => updateRow(row.id, { thumbnail: e.target.value })}
+                      onBlur={(e) => {
+                        const value = e.currentTarget.value.trim();
+                        if (value && value !== row.thumbnail) void handleRowThumbnailChange(row.id, value);
+                      }}
                       className="text-xs font-mono h-7.5"
                     />
                   </div>
@@ -1708,7 +1743,10 @@ function TeachDashboardPage() {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        handleThumbnailFileChange(file, setNewThumbnail);
+                        handleThumbnailFileChange(file, (dataUrl) => {
+                          setNewThumbnail(dataUrl);
+                          setNewThumbnailFile(file);
+                        });
                       }
                       e.target.value = "";
                     }}
@@ -1745,7 +1783,10 @@ function TeachDashboardPage() {
                         <button
                           key={`new_p_${p.url}`}
                           type="button"
-                          onClick={() => setNewThumbnail(p.url)}
+                          onClick={() => {
+                            setNewThumbnail(p.url);
+                            setNewThumbnailFile(null);
+                          }}
                           className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] text-left transition-all cursor-pointer truncate ${
                             isSelected
                               ? "border-teal-600 bg-teal-50 text-teal-800 font-bold shadow-2xs"
@@ -1767,7 +1808,10 @@ function TeachDashboardPage() {
                     <Input
                       placeholder="Or paste custom image URL (https://...)"
                       value={newThumbnail}
-                      onChange={(e) => setNewThumbnail(e.target.value)}
+                      onChange={(e) => {
+                        setNewThumbnail(e.target.value);
+                        setNewThumbnailFile(null);
+                      }}
                       className="text-xs font-mono h-7.5"
                     />
                   </div>
