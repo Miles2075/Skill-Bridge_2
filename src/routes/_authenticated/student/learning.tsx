@@ -201,7 +201,7 @@ function MyLearningPage() {
             <div className="mt-2 text-sm text-slate-500">
               {selectedEnrollment?.completion_percentage ?? 0}% complete ·{" "}
               {progress.filter((item) => item.completed).length}/
-              {lessons.filter((lesson) => lesson.required).length || lessons.length || 3} required
+              {lessons.filter((lesson) => lesson.required).length || lessons.length || 0} required
               lessons
             </div>
           </div>
