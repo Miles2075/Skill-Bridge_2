@@ -41,6 +41,17 @@ export interface CourseLesson {
   updated_at: string;
 }
 
+export interface CourseReview {
+  id: string;
+  course_id: string;
+  student_id: string;
+  student_name: string;
+  rating: number;
+  review_text: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Enrollment {
   id: string;
   student_id: string;
@@ -199,6 +210,7 @@ export interface LocalProfile {
 export interface LMSDatabase {
   courses: Course[];
   lessons: CourseLesson[];
+  course_reviews: CourseReview[];
   enrollments: Enrollment[];
   lesson_progress: LessonProgress[];
   assignments: Assignment[];
@@ -881,6 +893,7 @@ class DatabaseManager {
     this.db = {
       courses: INITIAL_COURSES,
       lessons: INITIAL_LESSONS,
+      course_reviews: [],
       enrollments: INITIAL_ENROLLMENTS,
       lesson_progress: INITIAL_LESSON_PROGRESS,
       assignments: INITIAL_ASSIGNMENTS,
@@ -918,6 +931,10 @@ class DatabaseManager {
     }
     if (!db.profiles || db.profiles.length === 0) {
       db.profiles = [...INITIAL_PROFILES];
+      changed = true;
+    }
+    if (!db.course_reviews) {
+      db.course_reviews = [];
       changed = true;
     }
     if (!db.enrollments) {
@@ -1009,8 +1026,19 @@ class DatabaseManager {
       );
       const lessonsCount = courseLessons.length > 0 ? courseLessons.length : videoUrls.length;
       const primaryVideoUrl = videoUrls.includes(c.video_url || "") ? c.video_url || "" : videoUrls[0] || "";
+      const courseReviews = db.course_reviews.filter((review) => review.course_id === c.id);
+      const rating = courseReviews.length
+        ? Math.round((courseReviews.reduce((sum, review) => sum + review.rating, 0) / courseReviews.length) * 10) / 10
+        : 0;
+      const enrollmentCount = db.enrollments.filter(
+        (enrollment) => enrollment.course_id === c.id || enrollment.course_id === c.slug,
+      ).length;
       return {
         ...c,
+        rating,
+        reviews: String(courseReviews.length),
+        learners: String(enrollmentCount),
+        bestseller: enrollmentCount >= 10,
         video_urls: videoUrls,
         video_url: primaryVideoUrl,
         lessons_count: lessonsCount,
@@ -1047,12 +1075,134 @@ class DatabaseManager {
     const courseLessons = db.lessons.filter((l) => l.course_id === c.id || l.course_id === c.slug);
     const lessonsCount = courseLessons.length > 0 ? courseLessons.length : videoUrls.length;
     const primaryVideoUrl = videoUrls.includes(c.video_url || "") ? c.video_url || "" : videoUrls[0] || "";
+    const courseReviews = db.course_reviews.filter((review) => review.course_id === c.id);
+    const rating = courseReviews.length
+      ? Math.round((courseReviews.reduce((sum, review) => sum + review.rating, 0) / courseReviews.length) * 10) / 10
+      : 0;
+    const enrollmentCount = db.enrollments.filter(
+      (enrollment) => enrollment.course_id === c.id || enrollment.course_id === c.slug,
+    ).length;
     return {
       ...c,
+      rating,
+      reviews: String(courseReviews.length),
+      learners: String(enrollmentCount),
+      bestseller: enrollmentCount >= 10,
       video_urls: videoUrls,
       video_url: primaryVideoUrl,
       lessons_count: lessonsCount,
     };
+  }
+
+  getCourseReviews(courseIdOrSlug: string): CourseReview[] {
+    const db = this.read();
+    const course = db.courses.find((item) => item.id === courseIdOrSlug || item.slug === courseIdOrSlug);
+    if (!course) return [];
+    return db.course_reviews
+      .filter((review) => review.course_id === course.id)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
+  getUserCourseReview(studentId: string, courseIdOrSlug: string): CourseReview | null {
+    const db = this.read();
+    const course = db.courses.find((item) => item.id === courseIdOrSlug || item.slug === courseIdOrSlug);
+    if (!course) return null;
+    return db.course_reviews.find(
+      (review) => review.course_id === course.id && review.student_id === studentId,
+    ) || null;
+  }
+
+  getCourseReviewSummary(courseIdOrSlug: string) {
+    const db = this.read();
+    const course = db.courses.find((item) => item.id === courseIdOrSlug || item.slug === courseIdOrSlug);
+    if (!course) return null;
+    const reviews = db.course_reviews.filter((review) => review.course_id === course.id);
+    const rating = reviews.length
+      ? Math.round((reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length) * 10) / 10
+      : 0;
+    const learners = db.enrollments.filter(
+      (enrollment) => enrollment.course_id === course.id || enrollment.course_id === course.slug,
+    ).length;
+    return {
+      courseId: course.id,
+      rating,
+      reviewCount: reviews.length,
+      learners,
+      // Display Bestseller only after ten real enrolments, not from a manually seeded flag.
+      bestseller: learners >= 10,
+      reviews: reviews.slice(0, 20).map((review) => ({
+        id: review.id,
+        studentName: review.student_name,
+        rating: review.rating,
+        reviewText: review.review_text,
+        createdAt: review.created_at,
+      })),
+    };
+  }
+
+  saveCourseReview(params: {
+    courseIdOrSlug: string;
+    studentId: string;
+    studentName: string;
+    rating: number;
+    reviewText: string;
+  }): CourseReview {
+    const db = this.read();
+    const course = db.courses.find(
+      (item) => item.id === params.courseIdOrSlug || item.slug === params.courseIdOrSlug,
+    );
+    if (!course || course.status !== "published") throw new Error("Published course not found.");
+    const rating = Number(params.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      throw new Error("Choose a rating from 1 to 5 stars.");
+    }
+    const reviewText = String(params.reviewText || "").trim().slice(0, 1200);
+    if (reviewText.length < 5) throw new Error("Write at least 5 characters for your review.");
+
+    const hasEnrollment = db.enrollments.some(
+      (enrollment) =>
+        enrollment.student_id === params.studentId &&
+        (enrollment.course_id === course.id || enrollment.course_id === course.slug),
+    );
+    const hasPurchase = db.purchases.some(
+      (purchase) =>
+        purchase.user_id === params.studentId &&
+        (purchase.course_id === course.id || purchase.course_id === course.slug),
+    );
+    if (!hasEnrollment && !hasPurchase) {
+      throw new Error("Only students enrolled in this course can submit a review.");
+    }
+
+    const existing = db.course_reviews.find(
+      (review) => review.course_id === course.id && review.student_id === params.studentId,
+    );
+    const now = new Date().toISOString();
+    const profile = db.profiles.find((item) => item.id === params.studentId);
+    const localUser = db.users.find((item) => item.id === params.studentId);
+    const savedName = (profile?.display_name || localUser?.user_metadata?.display_name || params.studentName || "Student")
+      .trim()
+      .slice(0, 80);
+    if (existing) {
+      existing.rating = rating;
+      existing.review_text = reviewText;
+      existing.student_name = savedName || "Student";
+      existing.updated_at = now;
+      this.write();
+      return existing;
+    }
+    const review: CourseReview = {
+      id: crypto.randomUUID(),
+      course_id: course.id,
+      student_id: params.studentId,
+      student_name: savedName || "Student",
+      rating,
+      review_text: reviewText,
+      created_at: now,
+      updated_at: now,
+    };
+    db.course_reviews.push(review);
+    this.write();
+    return review;
   }
 
   createCourse(course: Omit<Course, "id" | "created_at" | "updated_at">): Course {
