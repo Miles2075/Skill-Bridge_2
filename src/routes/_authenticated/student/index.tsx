@@ -241,7 +241,7 @@ function StudentDashboardPage() {
         title: c.title,
         instructor: c.instructor || "Instructor",
         description: c.description || "",
-        thumbnail: getCourseImage(c.slug),
+        thumbnail: c.thumbnail || getCourseImage(c.slug),
         hours: c.hours || 10,
         progress: 0,
         lessonsDone: 0,
@@ -879,7 +879,7 @@ function StudentDashboardPage() {
 
               <div className="flex flex-col md:flex-row gap-5 items-center">
                 <img
-                  src={getCourseImage(currentContinueCourse.slug)}
+                  src={currentContinueCourse.thumbnail || getCourseImage(currentContinueCourse.slug)}
                   alt={currentContinueCourse.title}
                   className="w-full md:w-56 h-32 rounded-xl object-cover"
                 />
@@ -1098,7 +1098,7 @@ function StudentDashboardPage() {
                   >
                     <div className="relative h-44 w-full bg-slate-900">
                       <img
-                        src={getCourseImage(course.slug)}
+                        src={course.thumbnail || getCourseImage(course.slug)}
                         alt={course.title}
                         className="h-full w-full object-cover opacity-90"
                       />
@@ -1206,7 +1206,7 @@ function StudentDashboardPage() {
                     <div>
                       <div className="relative h-28 w-full rounded-lg bg-slate-900 overflow-hidden mb-3">
                         <img
-                          src={getCourseImage(c.slug)}
+                          src={c.thumbnail || getCourseImage(c.slug)}
                           alt={c.title}
                           className="h-full w-full object-cover opacity-80"
                         />
