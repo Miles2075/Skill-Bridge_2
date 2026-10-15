@@ -1399,7 +1399,7 @@ class DatabaseManager {
         legacyIndex = Number(params.lessonId.slice(videoPrefix.length));
       } else if (params.lessonId.startsWith(oldPrefix)) {
         const suffix = params.lessonId.slice(oldPrefix.length);
-        if (/^\\d+$/.test(suffix)) legacyIndex = Number(suffix);
+        if (/^\d+$/.test(suffix)) legacyIndex = Number(suffix);
       }
       if (Number.isInteger(legacyIndex) && legacyIndex > 0) {
         lesson = courseLessons[legacyIndex - 1];
