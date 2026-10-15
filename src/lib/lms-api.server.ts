@@ -498,6 +498,25 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
     // GENERIC QUERY: POST /api/lms/query
     if (path === "query" && method === "POST") {
       const body = await req.json();
+      const tableName = typeof body.table === "string" ? body.table.toLowerCase() : "";
+      const action = typeof body.action === "string" ? body.action.toLowerCase() : "";
+
+      // Enrollments and payment records must only be changed by the dedicated,
+      // validated LMS endpoints. Otherwise the generic data adapter could bypass
+      // the payment verification performed during checkout.
+      if (["enrollments", "purchases"].includes(tableName) && action !== "select") {
+        return errorResponse("Enrollment and purchase records can only be changed through validated LMS endpoints.", 403);
+      }
+
+      if (tableName === "purchases") {
+        if (!user.userId) return errorResponse("Please sign in to view purchases.", 401);
+        body.filters = { ...(body.filters || {}), user_id: user.userId };
+      }
+      if (tableName === "enrollments" && !user.isTeacher && !user.isAdmin) {
+        if (!user.userId) return errorResponse("Please sign in to view enrollments.", 401);
+        body.filters = { ...(body.filters || {}), student_id: user.userId };
+      }
+
       const result = lmsDB.queryTable(body.table, body);
       return jsonResponse(result);
     }
