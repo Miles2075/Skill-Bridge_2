@@ -378,7 +378,7 @@ export const lmsClient = {
     }
 
     const authHeaders = await getAuthHeaders();
-    const authToken = authHeaders.Authorization?.replace(/^Bearer\\s+/i, "") || "";
+    const authToken = authHeaders.Authorization?.replace(/^Bearer\s+/i, "") || "";
     if (!authToken) throw new Error("Your session could not be verified. Sign in again before uploading.");
 
     const safeFileName = file.name
