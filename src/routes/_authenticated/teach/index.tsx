@@ -356,13 +356,53 @@ function TeachDashboardPage() {
       setMsg({ text: "Image file is too large (max 10MB)", isError: true });
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        onSuccess(reader.result);
+
+    // Store a compact thumbnail instead of a large original image data URL.
+    // Large base64 thumbnails can make course-update requests exceed Vercel's
+    // request-body limit and return HTTP 413.
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const maxDimension = 1200;
+      const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext("2d");
+      if (!context) {
+        setMsg({ text: "Could not process this image. Please choose another file.", isError: true });
+        return;
       }
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            setMsg({ text: "Could not compress this image. Please choose another file.", isError: true });
+            return;
+          }
+          if (blob.size > 900 * 1024) {
+            setMsg({ text: "Image is still too large after compression. Please choose a smaller image.", isError: true });
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result === "string") onSuccess(reader.result);
+          };
+          reader.onerror = () => {
+            setMsg({ text: "Could not read the processed image.", isError: true });
+          };
+          reader.readAsDataURL(blob);
+        },
+        "image/jpeg",
+        0.78,
+      );
     };
-    reader.readAsDataURL(file);
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      setMsg({ text: "This image could not be opened. Please choose another file.", isError: true });
+    };
+    image.src = objectUrl;
   };
 
   // Per-row additional URL input state in Courses management table
