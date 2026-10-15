@@ -1,4 +1,5 @@
 import { put } from "@vercel/blob";
+import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import postgres from "postgres";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
@@ -204,6 +205,87 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
   const path = url.pathname.replace(/^\/api\/lms\/?/, "");
   const method = req.method.toUpperCase();
+
+  // Vercel Blob client uploads exchange a small token request with this route;
+  // the video bytes themselves go directly from the browser to Blob, avoiding
+  // Vercel Functions' 4.5 MB request-body limit.
+  if (path === "upload-video-token" && method === "POST") {
+    const blobToken = process.env["BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
+    if (!blobToken) return errorResponse("Vercel Blob is not configured. Add BLOB_READ_WRITE_TOKEN in Vercel.", 503);
+
+    let body: HandleUploadBody;
+    try {
+      body = await req.json() as HandleUploadBody;
+    } catch {
+      return errorResponse("Invalid Blob upload token request.", 400);
+    }
+
+    try {
+      const result = await handleUpload({
+        body,
+        request: req,
+        token: blobToken,
+        onBeforeGenerateToken: async (pathname, clientPayload) => {
+          let payload: { courseId?: unknown; lessonId?: unknown; originalName?: unknown; authToken?: unknown };
+          try {
+            payload = JSON.parse(clientPayload || "{}");
+          } catch {
+            throw new Error("Invalid video upload metadata.");
+          }
+
+          const courseId = typeof payload.courseId === "string" ? payload.courseId : "";
+          const lessonId = typeof payload.lessonId === "string" && payload.lessonId ? payload.lessonId : null;
+          const originalName = typeof payload.originalName === "string" ? payload.originalName : "";
+          const authToken = typeof payload.authToken === "string" ? payload.authToken : "";
+          if (!courseId || !originalName || !authToken) throw new Error("Sign in again before uploading a video.");
+
+          const authHeaders = new Headers(req.headers);
+          authHeaders.set("authorization", `Bearer ${authToken}`);
+          const authRequest = new Request(req.url, { method: "GET", headers: authHeaders });
+          const uploadUser = await parseUserContext(authRequest);
+          if (!uploadUser.isTeacher || !uploadUser.userId) throw new Error("Forbidden: Instructor role required.");
+
+          const course = lmsDB.getCourse(courseId);
+          if (!course) throw new Error("Course not found.");
+
+          const segments = pathname.split("/");
+          if (segments.length !== 4 || segments[0] !== "courses" || segments[1] !== courseId || segments[2] !== "videos" || segments[3].includes("..")) {
+            throw new Error("Invalid video upload path.");
+          }
+          const extension = segments[3].slice(segments[3].lastIndexOf(".")).toLowerCase();
+          const allowedExtensions = new Set([".mp4", ".webm", ".mov", ".m4v"]);
+          if (!allowedExtensions.has(extension)) throw new Error("Unsupported video format. Use MP4, WebM, MOV, or M4V.");
+
+          if (lessonId) {
+            const snapshot = lmsDB.exportSnapshot();
+            const lesson = snapshot.lessons.find((item) => item.id === lessonId && (item.course_id === course.id || item.course_id === course.slug));
+            if (!lesson) throw new Error("Lesson not found for this course.");
+          }
+
+          return {
+            allowedContentTypes: ["video/mp4", "video/webm", "video/quicktime", "video/x-m4v", "application/octet-stream"],
+            maximumSizeInBytes: 500 * 1024 * 1024,
+            addRandomSuffix: true,
+            tokenPayload: JSON.stringify({
+              courseId,
+              lessonId,
+              originalName,
+              userId: uploadUser.userId,
+            }),
+          };
+        },
+        onUploadCompleted: async () => {
+          // The browser registers the returned Blob URL through the authenticated
+          // register-video endpoint after upload succeeds.
+        },
+      });
+      return jsonResponse(result);
+    } catch (error) {
+      console.error("Vercel Blob client upload token error:", error);
+      return errorResponse(error instanceof Error ? error.message : "Could not prepare video upload.", 400);
+    }
+  }
+
   const user = await parseUserContext(req);
 
   try {
@@ -745,8 +827,47 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       return jsonResponse({ success: ok });
     }
 
+    // POST /api/lms/register-video
+    // Persist the URL after the browser uploads the bytes directly to Vercel Blob.
+    if (path === "register-video" && method === "POST") {
+      if (!user.isTeacher) return errorResponse("Forbidden: Instructor role required", 403);
+      const body = await req.json();
+      const courseId = typeof body.courseId === "string" ? body.courseId : "";
+      const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl : "";
+      const lessonId = typeof body.lessonId === "string" && body.lessonId ? body.lessonId : null;
+      if (!courseId || !videoUrl) return errorResponse("Course id and video URL are required.");
+      let parsedVideoUrl: URL;
+      try {
+        parsedVideoUrl = new URL(videoUrl);
+      } catch {
+        return errorResponse("Invalid video URL.");
+      }
+      if (parsedVideoUrl.protocol !== "https:" || !parsedVideoUrl.hostname.endsWith(".blob.vercel-storage.com")) {
+        return errorResponse("Video must be uploaded to the configured Vercel Blob store.");
+      }
+
+      const course = lmsDB.getCourse(courseId);
+      if (!course) return errorResponse("Course not found.", 404);
+
+      if (lessonId) {
+        const snapshot = lmsDB.exportSnapshot();
+        const lesson = snapshot.lessons.find((item) => item.id === lessonId && (item.course_id === course.id || item.course_id === course.slug));
+        if (!lesson) return errorResponse("Lesson not found for this course.", 404);
+        const updatedLesson = lmsDB.updateLesson(lessonId, { video_url: videoUrl });
+        if (!updatedLesson) return errorResponse("Could not save video to the lesson.", 500);
+      } else {
+        const currentUrls = course.video_urls && Array.isArray(course.video_urls)
+          ? [...course.video_urls]
+          : course.video_url ? [course.video_url] : [];
+        if (!currentUrls.includes(videoUrl)) currentUrls.push(videoUrl);
+        lmsDB.updateCourse(course.id, { video_url: videoUrl, video_urls: currentUrls });
+      }
+
+      return jsonResponse({ videoUrl, fileName: String(body.fileName || ""), size: Number(body.size) || 0 });
+    }
+
     // POST /api/lms/upload-video
-    // The request body is the video file itself, not multipart/form-data.
+    // Legacy server-side upload route retained for compatibility with small files.
     if (path === "upload-video" && method === "POST") {
       if (!user.isTeacher) return errorResponse("Forbidden: Instructor role required", 403);
 
