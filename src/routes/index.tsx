@@ -413,8 +413,13 @@ function useCommerceState(
           reviews: course.reviews || "0",
           learners: course.learners || "0",
           category: course.category || "Development",
-          // Prefer bundled assets for built-in courses; API thumbnails may be legacy root-relative paths.
-          image: imageForSlug(course.slug),
+          // Use the saved instructor-uploaded thumbnail for custom courses. Only fall back
+          // to bundled artwork for missing or legacy built-in image paths.
+          image: (() => {
+            const thumbnail = typeof course.thumbnail === "string" ? course.thumbnail.trim() : "";
+            const isLegacyBuiltinPath = /^\/?course-(typescript|react|system-design|dsa)\.jpg$/i.test(thumbnail);
+            return thumbnail && !isLegacyBuiltinPath ? thumbnail : imageForSlug(course.slug);
+          })(),
           bestseller: course.bestseller,
           video_url: course.video_url || "",
           video_urls:
