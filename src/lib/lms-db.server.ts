@@ -1155,21 +1155,39 @@ class DatabaseManager {
       return directLessons;
     }
 
-    // When teachers upload course-level videos without explicit lesson rows,
-    // render exactly one curriculum item per real video URL. Never invent lessons.
+    // Migrate older course-level video URL lists into persistent lesson rows.
+    // This preserves a readable video filename as the initial lesson title and
+    // gives instructors a real lesson record whose title can be renamed and saved.
     const videoUrls =
       course.video_urls && Array.isArray(course.video_urls)
         ? course.video_urls.filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
         : course.video_url
           ? [course.video_url]
           : [];
-    const distinctVideoUrls = videoUrls.filter((url, index, urls) => urls.indexOf(url) === index);
+    const distinctVideoUrls = videoUrls
+      .filter((url) => !url.includes("commondatastorage.googleapis.com/gtv-videos-bucket/sample/"))
+      .filter((url, index, urls) => urls.indexOf(url) === index);
     if (distinctVideoUrls.length === 0) return [];
 
-    return distinctVideoUrls.map((videoUrl, i) => ({
-      id: `les_${course.slug}_video_${i + 1}`,
+    const titleFromUrl = (videoUrl: string, index: number) => {
+      try {
+        const filename = decodeURIComponent(new URL(videoUrl).pathname.split("/").pop() || "");
+        const withoutExtension = filename.replace(/\.[^.]+$/, "");
+        const readable = withoutExtension
+          .replace(/[-_]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+        return readable || `Video ${index + 1}`;
+      } catch {
+        return `Video ${index + 1}`;
+      }
+    };
+
+    const migratedLessons: CourseLesson[] = distinctVideoUrls.map((videoUrl, i) => ({
+      id: `les_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       course_id: course.id,
-      title: distinctVideoUrls.length === 1 ? course.title : `Video ${i + 1}: ${course.title}`,
+      title: titleFromUrl(videoUrl, i),
       description: course.description || "",
       video_url: videoUrl,
       duration: "1:00",
@@ -1179,6 +1197,10 @@ class DatabaseManager {
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }));
+
+    db.lessons.push(...migratedLessons);
+    this.write();
+    return migratedLessons;
   }
 
   addLesson(
