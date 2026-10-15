@@ -349,7 +349,7 @@ function useCommerceState(
               ...c,
               progress: enr.progress,
               lessonsDone: enr.lessonsDone,
-              lessonsTotal: enr.lessonsTotal || c.lessonsTotal || 3,
+              lessonsTotal: enr.lessonsTotal || c.lessonsTotal ?? 0,
               nextLesson: enr.nextLesson,
               certificateId: enr.certificateId || undefined,
             };
@@ -358,7 +358,7 @@ function useCommerceState(
             ...c,
             progress: 0,
             lessonsDone: 0,
-            lessonsTotal: c.lessonsTotal || 3,
+            lessonsTotal: c.lessonsTotal ?? 0,
             certificateId: undefined,
           };
         }),
@@ -388,14 +388,13 @@ function useCommerceState(
       };
 
       const dynamicCourses: Course[] = publishedCourses.map((course: ClientCourse) => {
+        const videoCount = Array.isArray(course.video_urls)
+          ? course.video_urls.filter(Boolean).length
+          : course.video_url
+            ? 1
+            : 0;
         const totalLectures =
-          course.lessons_count && course.lessons_count > 0
-            ? course.lessons_count
-            : course.video_urls && course.video_urls.length > 0
-              ? course.video_urls.length
-              : course.video_url
-                ? 1
-                : 3;
+          typeof course.lessons_count === "number" ? course.lessons_count : videoCount;
 
         return {
           id: course.id,
@@ -452,7 +451,7 @@ function useCommerceState(
               ...c,
               progress: existing.progress,
               lessonsDone: existing.lessonsDone,
-              lessonsTotal: c.lessonsTotal || existing.lessonsTotal || 3,
+              lessonsTotal: c.lessonsTotal || existing.lessonsTotal ?? 0,
               nextLesson: existing.nextLesson,
               certificateId: existing.certificateId,
             };
@@ -750,8 +749,8 @@ function MyLearning({
                   <div className="mt-4">
                     <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                       <span>
-                        {Math.min(course.lessonsDone, course.lessonsTotal || 3)} of{" "}
-                        {course.lessonsTotal || 3} lectures
+                        {Math.min(course.lessonsDone, course.lessonsTotal ?? 0)} of{" "}
+                        {course.lessonsTotal ?? 0} lectures
                       </span>
                       <span className="font-bold text-foreground">{course.progress}%</span>
                     </div>
@@ -1053,7 +1052,7 @@ function CourseCard({
           <Stars rating={course.rating} reviews={course.reviews} />
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          {course.hours} total hours · {course.lessonsTotal || 3} lectures · {course.level}
+          {course.hours} total hours · {course.lessonsTotal ?? 0} lectures · {course.level}
         </p>
         <div className="mt-2">
           <PriceTag course={course} />
@@ -1071,7 +1070,7 @@ function CourseCard({
         <div className="mt-4">
           <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
             <span>
-              {Math.min(course.lessonsDone, course.lessonsTotal || 3)} of {course.lessonsTotal || 3}{" "}
+              {Math.min(course.lessonsDone, course.lessonsTotal ?? 0)} of {course.lessonsTotal ?? 0}{" "}
               lectures
             </span>
             <span className="font-semibold text-foreground">{course.progress}% complete</span>
@@ -1235,8 +1234,8 @@ function Dashboard({
             <div className="mt-6">
               <div className="mb-1.5 flex justify-between text-xs text-muted-foreground">
                 <span>
-                  {Math.min(current.lessonsDone, current.lessonsTotal || 3)} of{" "}
-                  {current.lessonsTotal || 3} lectures complete
+                  {Math.min(current.lessonsDone, current.lessonsTotal ?? 0)} of{" "}
+                  {current.lessonsTotal ?? 0} lectures complete
                 </span>
                 <span className="font-semibold text-foreground">{current.progress}%</span>
               </div>
@@ -1726,8 +1725,8 @@ function Certificates({ onOpenCert }: { onOpenCert: (course: Course) => void }) 
                 <span className="text-xs font-bold text-primary">{course.progress}%</span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                {Math.min(course.lessonsDone, course.lessonsTotal || 3)} of{" "}
-                {course.lessonsTotal || 3} lessons completed
+                {Math.min(course.lessonsDone, course.lessonsTotal ?? 0)} of{" "}
+                {course.lessonsTotal ?? 0} lessons completed
               </p>
               <div className="mt-3">
                 <Progress value={course.progress} />
