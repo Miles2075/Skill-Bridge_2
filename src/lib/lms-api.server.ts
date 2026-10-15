@@ -527,140 +527,9 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       return jsonResponse({ keyId });
     }
 
-    // PAYMENTS: POST /api/lms/payments/create-order (or /payment/create-order)
-    if (
-      (path === "payments/create-order" || path === "payment/create-order") &&
-      method === "POST"
-    ) {
-      const body = (await req.json()) as { courseId?: string; courseSlug?: string };
-      const courseId = body.courseId || body.courseSlug;
-      if (!courseId) return errorResponse("Missing courseId");
-
-      const course = lmsDB.getCourse(courseId);
-      if (!course) return errorResponse("Course not found", 404);
-
-      const priceInr = course.price_inr > 0 ? course.price_inr : 999;
-      const { keyId } = getRazorpayServerCredentials();
-
-      try {
-        const order = (await callRazorpayApi("/orders", {
-          method: "POST",
-          body: JSON.stringify({
-            amount: Math.round(priceInr * 100),
-            currency: "INR",
-            receipt: `rcpt_${course.id.replace(/-/g, "").slice(0, 10)}_${Date.now()}`.slice(0, 40),
-            notes: {
-              course_id: course.id,
-              course_slug: course.slug,
-              course_title: course.title,
-              user_id: user.userId || "",
-              user_email: user.email || "",
-            },
-          }),
-        })) as { id: string; amount?: number; currency?: string };
-
-        return jsonResponse({
-          orderId: order.id,
-          amount: order.amount || Math.round(priceInr * 100),
-          currency: order.currency || "INR",
-          keyId,
-          title: course.title,
-          courseId: course.id,
-        });
-      } catch (err) {
-        console.error("Razorpay order creation error:", err);
-        return errorResponse(
-          err instanceof Error ? err.message : "Failed to create payment order with gateway",
-          500,
-        );
-      }
-    }
-
-    // PAYMENTS: POST /api/lms/payments/verify (or /payment/verify)
-    if ((path === "payments/verify" || path === "payment/verify") && method === "POST") {
-      const body = (await req.json()) as {
-        courseId?: string;
-        orderId?: string;
-        paymentId?: string;
-        signature?: string;
-        studentName?: string;
-        studentEmail?: string;
-      };
-      const { courseId, orderId, paymentId, signature } = body;
-      if (!courseId || !orderId || !paymentId || !signature) {
-        return errorResponse(
-          "Missing required payment verification fields (courseId, orderId, paymentId, signature)",
-        );
-      }
-
-      const course = lmsDB.getCourse(courseId);
-      if (!course) return errorResponse("Course not found", 404);
-
-      const { keySecret } = getRazorpayServerCredentials();
-      const expected = crypto
-        .createHmac("sha256", keySecret)
-        .update(`${orderId}|${paymentId}`)
-        .digest("hex");
-
-      const expectedBuf = Buffer.from(expected, "utf8");
-      const signatureBuf = Buffer.from(signature, "utf8");
-
-      if (
-        expectedBuf.length !== signatureBuf.length ||
-        !crypto.timingSafeEqual(expectedBuf, signatureBuf)
-      ) {
-        return errorResponse(
-          "Payment signature verification failed. Invalid transaction signature.",
-          400,
-        );
-      }
-
-      // Check payment status with Razorpay API if live
-      try {
-        const paymentData = (await callRazorpayApi(
-          `/payments/${encodeURIComponent(paymentId)}`,
-        )) as {
-          status?: string;
-        };
-        if (
-          paymentData.status &&
-          paymentData.status !== "captured" &&
-          paymentData.status !== "authorized"
-        ) {
-          return errorResponse(
-            `Payment is not completed. Current status: ${paymentData.status}`,
-            400,
-          );
-        }
-      } catch (verifyApiErr) {
-        console.warn("Razorpay API status check note:", verifyApiErr);
-      }
-
-      const effectiveUserId = user.userId || "anonymous-student";
-      const studentName = user.name || body.studentName || "Student Learner";
-      const studentEmail = user.email || body.studentEmail || "student@example.com";
-
-      const purchase = lmsDB.recordPurchase({
-        userId: effectiveUserId,
-        courseId: course.id,
-        amountInr: course.price_inr,
-        razorpayOrderId: orderId,
-        razorpayPaymentId: paymentId,
-      });
-
-      const enrollment = lmsDB.enrollStudent(effectiveUserId, course.id, studentName, studentEmail);
-
-      return jsonResponse({
-        ok: true,
-        purchase,
-        enrollment,
-        paymentId,
-        orderId,
-        courseId: course.id,
-        courseTitle: course.title,
-        amount: course.price_inr,
-      });
-    }
+    // Paid checkout is handled by the authenticated order and payment verification
+    // endpoints below. Do not keep legacy create-order/verify handlers here: they returned
+    // incompatible responses and allowed enrollment before confirming a captured payment.
 
     // PAYMENTS: GET /api/lms/payments/purchases (or /payment/purchases)
     // Purchase history is private to the currently authenticated user.
@@ -733,7 +602,7 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
     // POST /api/lms/payment/create-order
     // Create an actual Razorpay order; never return simulated order IDs.
-    if (path === "payment/create-order" && method === "POST") {
+    if ((path === "payment/create-order" || path === "payments/create-order") && method === "POST") {
       if (!user.userId) return errorResponse("Please sign in before purchasing a course.", 401);
       const body = await req.json().catch(() => ({}));
       const requestedCourseId = typeof body.courseId === "string" ? body.courseId : "";
@@ -746,8 +615,7 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         return errorResponse("This course does not require a paid checkout.", 400);
       }
 
-      const keyId = process.env["RAZORPAY_KEY_ID"]?.trim() || "";
-      const keySecret = process.env["RAZORPAY_KEY_SECRET"]?.trim() || "";
+      const { keyId, keySecret } = getRazorpayServerCredentials();
       if (!/^rzp_(test|live)_/.test(keyId) || !keySecret) {
         return errorResponse(
           "Razorpay is not configured for this deployment. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to the Vercel environment, then redeploy.",
@@ -812,7 +680,7 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
     // POST /api/lms/payment/verify
     // Verify the HMAC signature and confirm a captured payment directly with Razorpay.
-    if (path === "payment/verify" && method === "POST") {
+    if ((path === "payment/verify" || path === "payments/verify") && method === "POST") {
       if (!user.userId) return errorResponse("Please sign in again to verify your payment.", 401);
       const body = await req.json().catch(() => ({}));
       const requestedCourseId = typeof body.courseId === "string" ? body.courseId : "";
