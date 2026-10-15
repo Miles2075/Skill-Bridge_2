@@ -206,8 +206,21 @@ function StudentDashboardPage() {
           lmsClient.getStudentDashboard(),
           lmsClient.getCourses().catch(() => ({ courses: [] })),
         ]);
-        setData(res);
-        const enrolledIds = new Set((res?.enrolledCourses || []).flatMap((c) => [c.id, c.slug]));
+        // Reconcile enrollment progress with the canonical course catalog so cover images
+        // and uploaded video URLs come from the latest saved course record.
+        const enrolledCourses = (res?.enrolledCourses || []).map((enrolled) => {
+          const canonical = (catalog?.courses || []).find(
+            (course) => course.id === enrolled.id || course.slug === enrolled.slug,
+          );
+          return {
+            ...enrolled,
+            thumbnail: canonical?.thumbnail || enrolled.thumbnail || "",
+            videoUrl: canonical?.video_url || canonical?.video_urls?.[0] || enrolled.videoUrl || "",
+          };
+        });
+        const dashboard = { ...res, enrolledCourses };
+        setData(dashboard);
+        const enrolledIds = new Set((dashboard?.enrolledCourses || []).flatMap((c) => [c.id, c.slug]));
         const unEnrolled = (catalog?.courses || []).filter(
           (c) => c.status === "published" && !enrolledIds.has(c.id) && !enrolledIds.has(c.slug),
         );
