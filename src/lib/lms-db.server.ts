@@ -1376,16 +1376,41 @@ class DatabaseManager {
     isCompleted: boolean;
     certificateId?: string;
   } {
-    const db = this.read();
     const course = this.getCourse(params.courseIdOrSlug);
     if (!course) throw new Error("Course not found");
 
-    const lesson = db.lessons.find((l) => l.id === params.lessonId && l.course_id === course.id);
-    if (!lesson) throw new Error("Lesson not found in course");
+    // Older deployments generated virtual curriculum IDs from course URLs. Reconcile
+    // those URLs into persistent lesson rows before recording student progress.
+    this.getLessonsForCourse(course.id);
+    const db = this.read();
+    const courseLessons = db.lessons
+      .filter((item) => item.course_id === course.id || item.course_id === course.slug)
+      .sort((a, b) => a.lesson_order - b.lesson_order);
 
-    // Upsert lesson progress (Unique student_id + lesson_id constraint)
+    let lesson = courseLessons.find((item) => item.id === params.lessonId);
+    if (!lesson) {
+      // Be backward-compatible with a student tab opened before virtual lesson IDs
+      // were migrated to database-backed IDs. Resolve only IDs that encode this
+      // exact course slug and a one-based curriculum index.
+      const videoPrefix = `les_${course.slug}_video_`;
+      const oldPrefix = `les_${course.slug}_`;
+      let legacyIndex = 0;
+      if (params.lessonId.startsWith(videoPrefix)) {
+        legacyIndex = Number(params.lessonId.slice(videoPrefix.length));
+      } else if (params.lessonId.startsWith(oldPrefix)) {
+        const suffix = params.lessonId.slice(oldPrefix.length);
+        if (/^\\d+$/.test(suffix)) legacyIndex = Number(suffix);
+      }
+      if (Number.isInteger(legacyIndex) && legacyIndex > 0) {
+        lesson = courseLessons[legacyIndex - 1];
+      }
+    }
+    if (!lesson) throw new Error("Lesson not found in course. Refresh the course page and try again.");
+
+    // Always store progress against the canonical database lesson ID.
+    const canonicalLessonId = lesson.id;
     const existingProgIdx = db.lesson_progress.findIndex(
-      (p) => p.student_id === params.studentId && p.lesson_id === params.lessonId,
+      (p) => p.student_id === params.studentId && p.lesson_id === canonicalLessonId,
     );
 
     const now = new Date().toISOString();
@@ -1401,7 +1426,7 @@ class DatabaseManager {
         id: `prog_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         student_id: params.studentId,
         course_id: course.id,
-        lesson_id: params.lessonId,
+        lesson_id: canonicalLessonId,
         completed: params.completed,
         completed_at: params.completed ? now : null,
         updated_at: now,
@@ -1428,7 +1453,6 @@ class DatabaseManager {
     }
 
     // Recalculate progress: completed required lessons / total required lessons * 100
-    const courseLessons = db.lessons.filter((l) => l.course_id === course.id);
     const requiredLessons = courseLessons.filter((l) => l.is_required);
     const totalRequired = requiredLessons.length || courseLessons.length || 1;
 
