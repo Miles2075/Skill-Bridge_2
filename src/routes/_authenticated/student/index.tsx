@@ -258,8 +258,24 @@ function StudentDashboardPage() {
         hours: c.hours || 10,
         progress: 0,
         lessonsDone: 0,
-        lessonsTotal: c.lessons_count || 3,
-        nextLesson: "1. Course Overview & Master Lecture",
+        lessonsTotal:
+          typeof c.lessons_count === "number"
+            ? c.lessons_count
+            : Array.isArray(c.video_urls)
+              ? c.video_urls.filter(Boolean).length
+              : c.video_url
+                ? 1
+                : 0,
+        nextLesson:
+          (typeof c.lessons_count === "number"
+            ? c.lessons_count
+            : Array.isArray(c.video_urls)
+              ? c.video_urls.filter(Boolean).length
+              : c.video_url
+                ? 1
+                : 0) > 0
+            ? `1. ${c.title}`
+            : "No lessons added yet",
         status: "enrolled",
         enrolledAt: new Date().toISOString(),
         completedAt: null,
@@ -884,9 +900,9 @@ function StudentDashboardPage() {
                 <span className="text-xs text-slate-500">
                   {Math.min(
                     currentContinueCourse.lessonsDone,
-                    currentContinueCourse.lessonsTotal || 3,
+                    currentContinueCourse.lessonsTotal ?? 0,
                   )}{" "}
-                  of {currentContinueCourse.lessonsTotal || 3} Lessons Completed
+                  of {currentContinueCourse.lessonsTotal ?? 0} Lessons Completed
                 </span>
               </div>
 
@@ -1130,8 +1146,8 @@ function StudentDashboardPage() {
                       <div>
                         <div className="flex items-center justify-between text-xs mb-1.5">
                           <span className="text-slate-500">
-                            Progress ({Math.min(course.lessonsDone, course.lessonsTotal || 3)}/
-                            {course.lessonsTotal || 3} Lessons)
+                            Progress ({Math.min(course.lessonsDone, course.lessonsTotal ?? 0)}/
+                            {course.lessonsTotal ?? 0} Lessons)
                           </span>
                           <span className="font-bold text-indigo-600">{course.progress}%</span>
                         </div>
@@ -2051,11 +2067,11 @@ function StudentDashboardPage() {
                 <div className="lg:col-span-2 flex flex-col space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <span className="text-xs font-bold text-slate-900">
-                      Curriculum Syllabus ({playerLessons.length || 3} Lessons)
+                      Curriculum Syllabus ({playerLessons.length} Lessons)
                     </span>
                     <span className="text-[11px] font-semibold text-indigo-600">
                       {playerLessons.filter((l) => l.completed).length} /{" "}
-                      {playerLessons.length || 3} Completed
+                      {playerLessons.length} Completed
                     </span>
                   </div>
 
