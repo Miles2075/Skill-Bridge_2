@@ -85,6 +85,8 @@ export async function verifyCoursePayment(opts: {
 
 /** Fetches the authenticated user's purchase records. */
 export async function getUserPurchases(opts?: { data?: { userId?: string } }): Promise<string[]> {
+  // The supplied ID is intentionally not used for access control; use the signed-in session.
+  void opts;
   try {
     const headers = await getAuthHeaders();
     const response = await fetch("/api/lms/payment/purchases", { headers });
