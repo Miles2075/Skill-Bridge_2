@@ -153,6 +153,27 @@ function AuthPage() {
     }
   };
 
+  const signInDemo = async (email: string) => {
+    setBusy(true);
+    setMsg("");
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password: "password123",
+      });
+      if (error || !data?.session) {
+        setMsg(error?.message || "This demo account is not available. Please use Sign up or your own account.");
+        return;
+      }
+      const targetRole = data.session.user.user_metadata?.role as string;
+      window.location.replace(targetRole === "teacher" || targetRole === "admin" ? "/teach" : "/");
+    } catch (err: unknown) {
+      setMsg(err instanceof Error ? err.message : "Could not sign in to the demo account.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (checkingSession) {
     return (
       <div className="grid min-h-screen place-items-center bg-background px-4">
@@ -254,15 +275,7 @@ function AuthPage() {
               variant="outline"
               size="sm"
               className="text-xs"
-              onClick={() => {
-                establishDirectSession({
-                  id: "00000000-0000-4000-a000-000000000001",
-                  email: "student@skillbridge.edu",
-                  name: "Alex Learner",
-                  role: "student",
-                });
-                window.location.href = "/";
-              }}
+              onClick={() => void signInDemo("student@skillbridge.edu")}
             >
               🎓 Demo Student
             </Button>
@@ -271,15 +284,7 @@ function AuthPage() {
               variant="outline"
               size="sm"
               className="text-xs"
-              onClick={() => {
-                establishDirectSession({
-                  id: "8d95e694-3d47-422e-a017-86a1a0ee1251",
-                  email: "instructor@skillbridge.edu",
-                  name: "Sarah Chen",
-                  role: "teacher",
-                });
-                window.location.href = "/teach";
-              }}
+              onClick={() => void signInDemo("instructor@skillbridge.edu")}
             >
               👨‍🏫 Demo Instructor
             </Button>
