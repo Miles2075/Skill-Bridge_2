@@ -1392,8 +1392,7 @@ function TeachDashboardPage() {
             <div>
               <h1 className="text-xl font-extrabold text-slate-900">Course Portfolio & Pricing</h1>
               <p className="text-xs text-slate-500">
-                Configure pricing in ₹ INR, free preview minutes, total duration hours, and video
-                streams.
+                Manage course pricing, publication status, and media.
               </p>
             </div>
             <button
@@ -1450,7 +1449,7 @@ function TeachDashboardPage() {
 
                 <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4 text-xs">
                   <div>
-                    <label className="font-semibold text-slate-700 block mb-1">Fee (₹ INR)</label>
+                    <label className="font-semibold text-slate-700 block mb-1">Fee (₹)</label>
                     <Input
                       type="number"
                       min={1}
@@ -1464,7 +1463,7 @@ function TeachDashboardPage() {
 
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">
-                      Preview Limit (0–30 min)
+                      Preview (min)
                     </label>
                     <Input
                       type="number"
@@ -1482,7 +1481,7 @@ function TeachDashboardPage() {
 
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">
-                      Duration (Hours)
+                      Duration (hrs)
                     </label>
                     <Input
                       type="number"
@@ -1498,7 +1497,7 @@ function TeachDashboardPage() {
 
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">
-                      Publication Status
+                      Status
                     </label>
                     <select
                       value={row.status || "published"}
@@ -1744,7 +1743,7 @@ function TeachDashboardPage() {
                     setNewSlug(e.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "-"));
                 }}
                 placeholder="e.g., Cloud Native Microservices Architecture"
-                className="h-9 text-xs"
+                className="text-xs"
                 required
               />
             </div>
@@ -1770,7 +1769,7 @@ function TeachDashboardPage() {
                   min={1}
                   value={newPrice}
                   onChange={(e) => setNewPrice(Number(e.target.value))}
-                  className="h-9 text-xs"
+                  className="text-xs"
                 />
               </div>
 
@@ -1782,7 +1781,7 @@ function TeachDashboardPage() {
                   max={30}
                   value={newPreview}
                   onChange={(e) => setNewPreview(Number(e.target.value))}
-                  className="h-9 text-xs"
+                  className="text-xs"
                 />
               </div>
 
@@ -1794,7 +1793,7 @@ function TeachDashboardPage() {
                   min={1}
                   value={newHours}
                   onChange={(e) => setNewHours(Number(e.target.value))}
-                  className="h-9 text-xs"
+                  className="text-xs"
                 />
               </div>
             </div>
@@ -2293,7 +2292,7 @@ function TeachDashboardPage() {
                     value={newLessonTitle}
                     onChange={(e) => setNewLessonTitle(e.target.value)}
                     placeholder="e.g., Cache Eviction Algorithms"
-                    className="h-9 text-xs"
+                    className="text-xs"
                     required
                   />
                 </div>
@@ -2305,7 +2304,7 @@ function TeachDashboardPage() {
                   <Input
                     value={newLessonDuration}
                     onChange={(e) => setNewLessonDuration(e.target.value)}
-                    className="h-9 text-xs"
+                    className="text-xs"
                   />
                 </div>
 
@@ -2391,7 +2390,7 @@ function TeachDashboardPage() {
                     value={newLessonOrder || ""}
                     onChange={(e) => setNewLessonOrder(parseInt(e.target.value) || 0)}
                     placeholder="e.g. 1"
-                    className="h-9 text-xs"
+                    className="text-xs"
                   />
                 </div>
 
@@ -2509,7 +2508,7 @@ function TeachDashboardPage() {
                     value={newAsgTitle}
                     onChange={(e) => setNewAsgTitle(e.target.value)}
                     placeholder="e.g., Implement Distributed Locks"
-                    className="h-9 text-xs"
+                    className="text-xs"
                     required
                   />
                 </div>
@@ -2521,7 +2520,7 @@ function TeachDashboardPage() {
                       type="date"
                       value={newAsgDue}
                       onChange={(e) => setNewAsgDue(e.target.value)}
-                      className="h-9 text-xs"
+                      className="text-xs"
                     />
                   </div>
                   <div>
@@ -2530,7 +2529,7 @@ function TeachDashboardPage() {
                       type="number"
                       value={newAsgMaxScore}
                       onChange={(e) => setNewAsgMaxScore(Number(e.target.value))}
-                      className="h-9 text-xs"
+                      className="text-xs"
                     />
                   </div>
                 </div>
@@ -2544,7 +2543,7 @@ function TeachDashboardPage() {
                     value={newAsgDesc}
                     onChange={(e) => setNewAsgDesc(e.target.value)}
                     placeholder="State requirements, starter repositories, and scoring criteria..."
-                    className="h-9 text-xs"
+                    className="text-xs"
                     required
                   />
                 </div>
@@ -2642,7 +2641,7 @@ function TeachDashboardPage() {
                     value={newQuizTitle}
                     onChange={(e) => setNewQuizTitle(e.target.value)}
                     placeholder="e.g., Redis Sliding Window Caching Quiz"
-                    className="h-9 text-xs"
+                    className="text-xs"
                     required
                   />
                 </div>
@@ -2656,7 +2655,7 @@ function TeachDashboardPage() {
                       type="number"
                       value={newQuizDuration}
                       onChange={(e) => setNewQuizDuration(Number(e.target.value))}
-                      className="h-9 text-xs"
+                      className="text-xs"
                     />
                   </div>
                   <div>
@@ -2665,7 +2664,7 @@ function TeachDashboardPage() {
                       type="number"
                       value={newQuizPass}
                       onChange={(e) => setNewQuizPass(Number(e.target.value))}
-                      className="h-9 text-xs"
+                      className="text-xs"
                     />
                   </div>
                 </div>
@@ -2676,7 +2675,7 @@ function TeachDashboardPage() {
                     value={newQText}
                     onChange={(e) => setNewQText(e.target.value)}
                     placeholder="What data structure best supports LRU eviction?"
-                    className="h-9 text-xs"
+                    className="text-xs"
                     required
                   />
                 </div>
@@ -2686,25 +2685,25 @@ function TeachDashboardPage() {
                     value={newQOpt1}
                     onChange={(e) => setNewQOpt1(e.target.value)}
                     placeholder="Option A: Hash Map + Doubly Linked List"
-                    className="h-9 text-xs"
+                    className="text-xs"
                   />
                   <Input
                     value={newQOpt2}
                     onChange={(e) => setNewQOpt2(e.target.value)}
                     placeholder="Option B: Binary Search Tree"
-                    className="h-9 text-xs"
+                    className="text-xs"
                   />
                   <Input
                     value={newQOpt3}
                     onChange={(e) => setNewQOpt3(e.target.value)}
                     placeholder="Option C: Min Heap"
-                    className="h-9 text-xs"
+                    className="text-xs"
                   />
                   <Input
                     value={newQOpt4}
                     onChange={(e) => setNewQOpt4(e.target.value)}
                     placeholder="Option D: FIFO Queue"
-                    className="h-9 text-xs"
+                    className="text-xs"
                   />
                 </div>
 
