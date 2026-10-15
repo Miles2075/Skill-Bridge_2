@@ -504,8 +504,11 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       // Enrollments and payment records must only be changed by the dedicated,
       // validated LMS endpoints. Otherwise the generic data adapter could bypass
       // the payment verification performed during checkout.
-      if (["enrollments", "purchases", "course_reviews"].includes(tableName) && action !== "select") {
-        return errorResponse("Enrollment, purchase, and review records can only be changed through validated LMS endpoints.", 403);
+      if (tableName === "course_reviews") {
+        return errorResponse("Use the course review endpoint to read or write sanitized review data.", 403);
+      }
+      if (["enrollments", "purchases"].includes(tableName) && action !== "select") {
+        return errorResponse("Enrollment and purchase records can only be changed through validated LMS endpoints.", 403);
       }
 
       if (tableName === "purchases") {
