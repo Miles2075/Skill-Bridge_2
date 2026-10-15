@@ -155,11 +155,11 @@ const initialCourses: Course[] = [
     nextLesson: "1. Advanced Type Narrowing",
     level: "Advanced",
     hours: 18,
-    rating: 4.8,
-    reviews: "12,480",
-    learners: "48,210",
+    rating: 0,
+    reviews: "0",
+    learners: "0",
     category: "Web Development",
-    bestseller: true,
+    bestseller: false,
     image: tsThumb,
   },
   {
@@ -174,9 +174,9 @@ const initialCourses: Course[] = [
     nextLesson: "1. Profiling Renders with React DevTools",
     level: "Intermediate",
     hours: 16,
-    rating: 4.7,
-    reviews: "8,932",
-    learners: "31,764",
+    rating: 0,
+    reviews: "0",
+    learners: "0",
     category: "Web Development",
     image: reactThumb,
   },
@@ -192,11 +192,11 @@ const initialCourses: Course[] = [
     nextLesson: "1. High Availability & Load Balancing Strategies",
     level: "Intermediate",
     hours: 20,
-    rating: 4.9,
-    reviews: "15,207",
-    learners: "62,905",
+    rating: 0,
+    reviews: "0",
+    learners: "0",
     category: "Software Architecture",
-    bestseller: true,
+    bestseller: false,
     image: systemThumb,
   },
   {
@@ -211,9 +211,9 @@ const initialCourses: Course[] = [
     nextLesson: "1. Arrays & Dynamic Resizing",
     level: "Intermediate",
     hours: 24,
-    rating: 4.6,
-    reviews: "21,338",
-    learners: "84,120",
+    rating: 0,
+    reviews: "0",
+    learners: "0",
     category: "Computer Science",
     image: dsaThumb,
   },
@@ -408,7 +408,7 @@ function useCommerceState(
           nextLesson: "Start your first lesson",
           level: course.level || "Intermediate",
           hours: course.hours || 10,
-          rating: course.rating || 5,
+          rating: course.rating ?? 0,
           reviews: course.reviews || "0",
           learners: course.learners || "0",
           category: course.category || "Development",
@@ -646,8 +646,13 @@ function PriceTag({ course }: { course: Course }) {
 }
 
 function Stars({ rating, reviews }: { rating: number; reviews?: string }) {
+  const reviewCount = Number(String(reviews ?? "0").replace(/[^0-9]/g, "")) || 0;
+  if (reviewCount === 0) {
+    return <span className="text-xs text-muted-foreground">No reviews yet</span>;
+  }
+
   return (
-    <div className="flex items-center gap-1.5 text-xs">
+    <div className="flex items-center gap-1.5 text-xs" aria-label={`Rated ${rating.toFixed(1)} out of 5 from ${reviewCount} reviews`}>
       <span className="font-bold text-orange">{rating.toFixed(1)}</span>
       <span className="flex">
         {[1, 2, 3, 4, 5].map((i) => (
@@ -657,7 +662,7 @@ function Stars({ rating, reviews }: { rating: number; reviews?: string }) {
           />
         ))}
       </span>
-      {reviews && <span className="text-muted-foreground">({reviews})</span>}
+      <span className="text-muted-foreground">({reviewCount.toLocaleString()})</span>
     </div>
   );
 }
