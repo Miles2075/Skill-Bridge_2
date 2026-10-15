@@ -1169,7 +1169,14 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
       await tx`SELECT pg_advisory_xact_lock(736284910)`;
       const rows = await tx`SELECT state FROM skillbridge_lms_state WHERE id = 1`;
       if (rows.length > 0) {
-        lmsDB.importSnapshot(rows[0]!.state as import("./lms-db.server").LMSDatabase);
+        // PostgreSQL JSONB should normally be decoded to an object, but older
+        // rows/deployments may return a JSON-serialized string. Normalize both
+        // formats before importing so schema integrity checks can mutate it.
+        const persistedState = rows[0]!.state;
+        const snapshot = typeof persistedState === "string"
+          ? JSON.parse(persistedState)
+          : persistedState;
+        lmsDB.importSnapshot(snapshot as import("./lms-db.server").LMSDatabase);
       } else {
         await tx`
           INSERT INTO skillbridge_lms_state (id, state, updated_at)
