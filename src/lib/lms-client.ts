@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { upload } from "@vercel/blob/client";
 import { getLocalSession } from "@/lib/local-db";
 
 async function getAuthHeaders(): Promise<Record<string, string>> {
@@ -366,35 +367,49 @@ export const lmsClient = {
     file: File,
     lessonId?: string,
   ): Promise<{ videoUrl: string; fileName: string; size: number }> {
-    const authHeaders = await getAuthHeaders();
-    const headers: Record<string, string> = {
-      ...authHeaders,
-      "Content-Type": file.type || "application/octet-stream",
-      "X-File-Name": encodeURIComponent(file.name),
-      "X-File-Size": String(file.size),
-    };
-
-    const query = new URLSearchParams({ courseId });
-    if (lessonId) query.set("lessonId", lessonId);
-
-    const res = await fetch(`/api/lms/upload-video?${query.toString()}`, {
-      method: "POST",
-      headers,
-      body: file,
-    });
-
-    if (!res.ok) {
-      let errMsg = `Upload failed: ${res.status} ${res.statusText}`;
-      try {
-        const body = await res.json();
-        if (body.error) errMsg = body.error;
-      } catch {
-        // ignore
-      }
-      throw new Error(errMsg);
+    if (!file) throw new Error("Choose a video file first.");
+    const allowedExtensions = new Set(["mp4", "webm", "mov", "m4v"]);
+    const extension = file.name.includes(".") ? file.name.split(".").pop()!.toLowerCase() : "";
+    if (!allowedExtensions.has(extension)) {
+      throw new Error("Unsupported video format. Use MP4, WebM, MOV, or M4V.");
+    }
+    if (file.size > 500 * 1024 * 1024) {
+      throw new Error("Video is too large. Maximum file size is 500 MB.");
     }
 
-    return res.json();
+    const authHeaders = await getAuthHeaders();
+    const authToken = authHeaders.Authorization?.replace(/^Bearer\\s+/i, "") || "";
+    if (!authToken) throw new Error("Your session could not be verified. Sign in again before uploading.");
+
+    const safeFileName = file.name
+      .normalize("NFKD")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 120) || `video.${extension}`;
+    const pathname = `courses/${courseId}/videos/${safeFileName}`;
+    const blob = await upload(pathname, file, {
+      access: "public",
+      contentType: file.type || "application/octet-stream",
+      handleUploadUrl: "/api/lms/upload-video-token",
+      clientPayload: JSON.stringify({
+        courseId,
+        lessonId: lessonId || null,
+        originalName: file.name,
+        authToken,
+      }),
+      multipart: file.size > 5 * 1024 * 1024,
+    });
+
+    return request("register-video", {
+      method: "POST",
+      body: JSON.stringify({
+        courseId,
+        lessonId: lessonId || null,
+        videoUrl: blob.url,
+        fileName: file.name,
+        size: file.size,
+      }),
+    });
   },
 
   // LESSON MANAGEMENT
