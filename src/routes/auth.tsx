@@ -1,10 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { setLocalSession } from "@/lib/local-db";
+import { clearLocalSession } from "@/lib/local-db";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
@@ -24,119 +24,6 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
-function toBase64Url(str: string) {
-  return btoa(unescape(encodeURIComponent(str)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-function establishDirectSession(params: {
-  id?: string;
-  email: string;
-  name?: string;
-  role?: "student" | "teacher" | "admin";
-}) {
-  const email = params.email.trim().toLowerCase();
-  let id = params.id;
-  if (!id) {
-    // Generate valid UUIDv4 based on email hash
-    let hash = 0;
-    for (let i = 0; i < email.length; i++) {
-      hash = (hash << 5) - hash + email.charCodeAt(i);
-      hash |= 0;
-    }
-    const seed = Math.abs(hash).toString(16).padStart(8, "0");
-    id = `${seed.slice(0, 8)}-4444-4888-a999-${seed.padEnd(12, "0").slice(0, 12)}`;
-  }
-
-  const role = params.role || "student";
-  const displayName = params.name?.trim() || email.split("@")[0] || "Learner";
-  const now = Math.floor(Date.now() / 1000);
-  const exp = now + 86400 * 30; // 30 days
-
-  const payload = {
-    iss: "supabase",
-    sub: id,
-    aud: "authenticated",
-    exp,
-    iat: now,
-    email,
-    phone: "",
-    app_metadata: { provider: "email", providers: ["email"] },
-    user_metadata: {
-      display_name: displayName,
-      email,
-      role,
-      sub: id,
-    },
-    role: "authenticated",
-    aal: "aal1",
-    amr: [{ method: "password", timestamp: now }],
-    session_id: `sess_${Date.now()}`,
-    is_anonymous: false,
-  };
-
-  const header = { alg: "HS256", typ: "JWT" };
-  const headerB64 = toBase64Url(JSON.stringify(header));
-  const payloadB64 = toBase64Url(JSON.stringify(payload));
-  const sigB64 = toBase64Url("skillbridge_direct_signature");
-  const token = `${headerB64}.${payloadB64}.${sigB64}`;
-
-  const session = {
-    access_token: token,
-    token_type: "bearer",
-    expires_in: 86400 * 30,
-    expires_at: exp,
-    refresh_token: `ref_${Date.now()}`,
-    user: {
-      id,
-      aud: "authenticated",
-      role: "authenticated",
-      email,
-      email_confirmed_at: new Date().toISOString(),
-      phone: "",
-      confirmed_at: new Date().toISOString(),
-      last_sign_in_at: new Date().toISOString(),
-      app_metadata: { provider: "email", providers: ["email"] },
-      user_metadata: {
-        display_name: displayName,
-        email,
-        role,
-        sub: id,
-      },
-      identities: [],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      is_anonymous: false,
-    },
-  };
-
-  const storageKeys = [
-    "sb-local-auth-token",
-    "sb-csjygxumpnonfupobhih-auth-token",
-    "skillbridge_local_auth_session",
-  ];
-  for (const k of storageKeys) {
-    localStorage.setItem(k, JSON.stringify(session));
-  }
-
-  setLocalSession({
-    id,
-    email,
-    user_metadata: {
-      display_name: displayName,
-      email,
-      role,
-    },
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  });
-
-  window.dispatchEvent(new Event("storage"));
-  return session;
-}
-
 function AuthPage() {
   const [mode, setMode] = useState<"in" | "up">("in");
   const [role, setRole] = useState<"student" | "teacher">("student");
@@ -145,6 +32,68 @@ function AuthPage() {
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const routeForRole = (value: unknown) =>
+      value === "teacher" || value === "admin" ? "/teach" : "/";
+
+    const restoreSession = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const session = data?.session;
+        if (!session?.access_token) {
+          if (!cancelled) setCheckingSession(false);
+          return;
+        }
+
+        // Supabase JWTs are already managed and refreshed by the Supabase client.
+        // The built-in LMS adapter uses server-issued tokens, which we validate
+        // against the persisted backend session before auto-signing the user in.
+        if (session.access_token.split(".").length === 3) {
+          if (!cancelled) {
+            window.location.replace(routeForRole(session.user?.user_metadata?.role));
+          }
+          return;
+        }
+
+        const response = await fetch("/api/lms/auth/session", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          cache: "no-store",
+        });
+        const result = await response.json().catch(() => ({}));
+
+        if (cancelled) return;
+        if (response.ok && result?.user) {
+          const role = Array.isArray(result.roles) ? result.roles[0] : result.user.user_metadata?.role;
+          window.location.replace(routeForRole(role));
+          return;
+        }
+        if (response.ok && !result?.user) {
+          // Remove old fake/expired sessions left by previous versions. They
+          // must not be treated as a valid login.
+          clearLocalSession();
+        }
+      } catch {
+        // A temporary network issue should not erase a saved session.
+        const { data } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+        if (data?.session && !cancelled) {
+          window.location.replace(routeForRole(data.session.user?.user_metadata?.role));
+          return;
+        }
+      }
+
+      if (!cancelled) setCheckingSession(false);
+    };
+
+    void restoreSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -153,9 +102,8 @@ function AuthPage() {
 
     const cleanEmail = email.trim().toLowerCase();
 
-    const getRedirectRoute = (targetRole: string) => {
-      return targetRole === "teacher" || targetRole === "admin" ? "/teach" : "/";
-    };
+    const getRedirectRoute = (targetRole: string) =>
+      targetRole === "teacher" || targetRole === "admin" ? "/teach" : "/";
 
     try {
       if (mode === "in") {
@@ -164,24 +112,17 @@ function AuthPage() {
           password,
         });
 
-        if (!error && data?.session) {
-          const userMetaRole = (data.session.user.user_metadata?.role as string) || "student";
-          window.location.href = getRedirectRoute(userMetaRole);
+        if (error) {
+          setMsg(error.message || "Sign-in failed. Check your email and password.");
+          return;
+        }
+        if (!data?.session) {
+          setMsg("Sign-in did not return a valid session. Please try again.");
           return;
         }
 
-        // Direct fallback so valid users/testers are never blocked
-        const detectedRole =
-          cleanEmail.includes("teach") ||
-          cleanEmail.includes("instructor") ||
-          cleanEmail.includes("admin")
-            ? "teacher"
-            : "student";
-        establishDirectSession({
-          email: cleanEmail,
-          role: detectedRole,
-        });
-        window.location.href = getRedirectRoute(detectedRole);
+        const userMetaRole = (data.session.user.user_metadata?.role as string) || "student";
+        window.location.replace(getRedirectRoute(userMetaRole));
         return;
       } else {
         const { data, error } = await supabase.auth.signUp({
@@ -192,41 +133,33 @@ function AuthPage() {
           },
         });
 
-        if (!error && data?.session) {
-          window.location.href = getRedirectRoute(role);
+        if (error) {
+          setMsg(error.message || "Registration failed. Please try again.");
+          return;
+        }
+        if (!data?.session) {
+          setMsg("Registration did not return a valid session. Please try again.");
           return;
         }
 
-        // Direct fallback so registration always starts session
-        establishDirectSession({
-          email: cleanEmail,
-          name: name.trim() || cleanEmail.split("@")[0],
-          role,
-        });
-        window.location.href = getRedirectRoute(role);
+        window.location.replace(getRedirectRoute(role));
         return;
       }
     } catch (err: unknown) {
       console.error("Auth submit error:", err);
-      try {
-        const targetRole =
-          role ||
-          (cleanEmail.includes("teach") || cleanEmail.includes("instructor")
-            ? "teacher"
-            : "student");
-        establishDirectSession({
-          email: cleanEmail,
-          name: name.trim() || cleanEmail.split("@")[0],
-          role: targetRole,
-        });
-        window.location.href = getRedirectRoute(targetRole);
-      } catch {
-        setMsg("Authentication failed.");
-      }
+      setMsg(err instanceof Error ? err.message : "Authentication failed. Please try again.");
     } finally {
       setBusy(false);
     }
   };
+
+  if (checkingSession) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-background px-4">
+        <p className="text-sm text-muted-foreground">Restoring your saved Skillbridge session…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="grid min-h-screen place-items-center bg-background px-4">
