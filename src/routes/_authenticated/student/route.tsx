@@ -26,7 +26,7 @@ import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/UserAvatar";
 import { lmsClient } from "@/lib/lms-client";
 import { supabase } from "@/integrations/supabase/client";
-import { getLocalSession, getLocalUserRole } from "@/lib/local-db";
+import { getLocalSession, getLocalUserRole, updateLocalSessionProfile } from "@/lib/local-db";
 
 export const Route = createFileRoute("/_authenticated/student")({
   ssr: false,
@@ -81,6 +81,31 @@ function StudentRouteLayout() {
   const displayName =
     (user?.user_metadata?.["display_name"] as string) || user?.email?.split("@")[0] || "Student";
   const initials = (displayName[0] || "S").toUpperCase();
+  const [savedAvatarUrl, setSavedAvatarUrl] = useState<string | null | undefined>(undefined);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setSavedAvatarUrl(undefined);
+      return;
+    }
+    let cancelled = false;
+    lmsClient.getProfile().then(({ user: profile }) => {
+      const avatar = typeof profile.user_metadata?.avatar_url === "string"
+        ? profile.user_metadata.avatar_url
+        : null;
+      if (cancelled) return;
+      setSavedAvatarUrl(avatar);
+      const localUser = getLocalSession();
+      if (localUser?.id === profile.id) {
+        updateLocalSessionProfile({ avatarUrl: avatar });
+      }
+    }).catch(() => {
+      if (!cancelled) setSavedAvatarUrl(undefined);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   const [activeView, setActiveView] = useState<StudentNavView>("dashboard");
 
@@ -297,7 +322,7 @@ function StudentRouteLayout() {
                 className="flex items-center gap-2 text-left cursor-pointer group"
               >
                 <UserAvatar
-                  src={user?.user_metadata?.avatar_url}
+                  src={savedAvatarUrl !== undefined ? savedAvatarUrl : user?.user_metadata?.avatar_url}
                   name={displayName}
                   initials={initials}
                   className="size-8 text-xs border border-indigo-200 shadow-2xs group-hover:ring-2 group-hover:ring-indigo-300 transition-all"
