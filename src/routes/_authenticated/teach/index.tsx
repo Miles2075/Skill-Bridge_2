@@ -529,12 +529,15 @@ function TeachDashboardPage() {
         }
       }
 
+      // Keep every uploaded stream, but point the primary player at the most
+      // recently uploaded video instead of silently retaining the starter/sample URL.
+      const primaryVideoUrl = currentUrls[currentUrls.length - 1] || "";
       updateRow(row.id, {
-        video_url: currentUrls[0] || "",
+        video_url: primaryVideoUrl,
         video_urls: currentUrls,
       });
       await lmsClient.updateCourse(row.id, {
-        video_url: currentUrls[0] || "",
+        video_url: primaryVideoUrl,
         video_urls: currentUrls,
       });
       setMsg({
