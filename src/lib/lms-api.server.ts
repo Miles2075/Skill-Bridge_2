@@ -382,6 +382,100 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
   const user = await parseUserContext(req);
 
   try {
+    // AUTH: POST /api/lms/auth/forgot-password
+    if (path === "auth/forgot-password" && method === "POST") {
+      const body = (await req.json()) as { email?: string };
+      const email = String(body.email || "").trim().toLowerCase();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return errorResponse("Enter a valid email address.");
+      }
+
+      const resendApiKey = process.env["RESEND_API_KEY"] || "";
+      const emailFrom = process.env["EMAIL_FROM"] || process.env["RESEND_FROM_EMAIL"] || "";
+      if (!resendApiKey || !emailFrom) {
+        return errorResponse(
+          "Password reset email is not configured yet. Add RESEND_API_KEY and EMAIL_FROM in Vercel, then redeploy.",
+          503,
+        );
+      }
+
+      // Respond identically whether or not the email belongs to an account.
+      const userToReset = lmsDB.findUserByEmail(email);
+      if (!userToReset) {
+        return jsonResponse({
+          message: "If an account exists for that email, password reset instructions have been sent.",
+        });
+      }
+
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+      if (!lmsDB.createPasswordResetToken(email, tokenHash, expiresAt)) {
+        return jsonResponse({
+          message: "If an account exists for that email, password reset instructions have been sent.",
+        });
+      }
+
+      const configuredAppUrl = (process.env["APP_URL"] || "").trim();
+      const vercelUrl = (process.env["VERCEL_URL"] || "").trim();
+      const configuredIsLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(configuredAppUrl);
+      const baseUrl = configuredAppUrl && !configuredIsLocal
+        ? configuredAppUrl
+        : vercelUrl
+          ? `https://${vercelUrl}`
+          : url.origin;
+      const resetUrl = `${baseUrl.replace(/\/+$/, "")}/auth?mode=reset&token=${encodeURIComponent(rawToken)}`;
+      const displayName = String(userToReset.user_metadata?.display_name || "there")
+        .replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char] || char);
+
+      try {
+        const emailResponse = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${resendApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            from: emailFrom,
+            to: [userToReset.email],
+            subject: "Reset your Skillbridge password",
+            html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#182033"><h2>Reset your Skillbridge password</h2><p>Hi ${displayName},</p><p>We received a request to reset the password for your Skillbridge account.</p><p><a href="${resetUrl}" style="display:inline-block;background:#4338ca;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Choose a new password</a></p><p>This link expires in 30 minutes and can be used once. If you did not request a reset, you can ignore this email.</p></div>`,
+            text: `Reset your Skillbridge password: ${resetUrl}\n\nThis link expires in 30 minutes and can be used once. If you did not request a reset, ignore this email.`,
+          }),
+        });
+        if (!emailResponse.ok) {
+          lmsDB.cancelPasswordResetToken(tokenHash);
+          console.error("Password reset email provider returned HTTP", emailResponse.status);
+          return errorResponse("We could not send the reset email right now. Please try again later.", 502);
+        }
+      } catch (err) {
+        lmsDB.cancelPasswordResetToken(tokenHash);
+        console.error("Password reset email delivery failed:", err instanceof Error ? err.message : "Unknown error");
+        return errorResponse("We could not send the reset email right now. Please try again later.", 502);
+      }
+
+      return jsonResponse({
+        message: "If an account exists for that email, password reset instructions have been sent.",
+      });
+    }
+
+    // AUTH: POST /api/lms/auth/reset-password
+    if (path === "auth/reset-password" && method === "POST") {
+      const body = (await req.json()) as { token?: string; password?: string };
+      const token = String(body.token || "").trim();
+      const password = String(body.password || "");
+      if (!token) return errorResponse("The password reset link is missing or invalid.");
+      if (password.length < 8) return errorResponse("Your new password must be at least 8 characters long.");
+      if (password.length > 128) return errorResponse("Your new password is too long.");
+
+      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      const updatedUser = lmsDB.resetPasswordWithToken(tokenHash, password);
+      if (!updatedUser) {
+        return errorResponse("This password reset link is invalid or expired. Request a new one.", 400);
+      }
+      return jsonResponse({ success: true });
+    }
+
     // AUTH: POST /api/lms/auth/login
     if (path === "auth/login" && method === "POST") {
       const body = await req.json();
