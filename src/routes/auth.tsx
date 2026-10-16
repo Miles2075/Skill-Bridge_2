@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,17 +25,34 @@ export const Route = createFileRoute("/auth")({
 });
 
 function AuthPage() {
-  const [mode, setMode] = useState<"in" | "up">("in");
+  const [mode, setMode] = useState<"in" | "up" | "forgot" | "reset">(() => {
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mode") === "reset") {
+      return "reset";
+    }
+    return "in";
+  });
   const [role, setRole] = useState<"student" | "teacher">("student");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [msg, setMsg] = useState("");
+  const [msgKind, setMsgKind] = useState<"error" | "success">("error");
   const [busy, setBusy] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
+
+    // A reset link must remain on this screen even if this browser has an
+    // unrelated saved session from an earlier sign-in.
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.get("mode") === "reset" || searchParams.has("token")) {
+      setCheckingSession(false);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     const routeForRole = (value: unknown) =>
       value === "teacher" || value === "admin" ? "/teach" : "/";
@@ -99,6 +116,7 @@ function AuthPage() {
     e.preventDefault();
     setBusy(true);
     setMsg("");
+    setMsgKind("error");
 
     const cleanEmail = email.trim().toLowerCase();
 
@@ -106,6 +124,45 @@ function AuthPage() {
       targetRole === "teacher" || targetRole === "admin" ? "/teach" : "/";
 
     try {
+      if (mode === "forgot") {
+        if (!cleanEmail) {
+          setMsg("Enter the email address for your account.");
+          return;
+        }
+        const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: `${window.location.origin}/auth?mode=reset`,
+        });
+        if (error) {
+          setMsg(error.message || "Could not send a password reset email. Please try again.");
+          return;
+        }
+        setMsgKind("success");
+        setMsg("If an account exists for that email, password reset instructions have been sent. Check your inbox and spam folder.");
+        return;
+      }
+
+      if (mode === "reset") {
+        if (password.length < 8) {
+          setMsg("Your new password must be at least 8 characters long.");
+          return;
+        }
+        if (password !== confirmPassword) {
+          setMsg("The passwords do not match.");
+          return;
+        }
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) {
+          setMsg(error.message || "Could not update your password. Request a new reset link if necessary.");
+          return;
+        }
+        setMsgKind("success");
+        setMsg("Your password has been reset. You can now sign in with your new password.");
+        setPassword("");
+        setConfirmPassword("");
+        setMode("in");
+        return;
+      }
+
       if (mode === "in") {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: cleanEmail,
@@ -156,6 +213,7 @@ function AuthPage() {
   const signInDemo = async (email: string) => {
     setBusy(true);
     setMsg("");
+    setMsgKind("error");
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -195,12 +253,22 @@ function AuthPage() {
           <span className="text-lg font-extrabold tracking-tight">skillbridge</span>
         </Link>
         <h1 className="text-xl font-extrabold">
-          {mode === "in" ? "Welcome back" : "Create your account"}
+          {mode === "in"
+            ? "Welcome back"
+            : mode === "up"
+              ? "Create your account"
+              : mode === "forgot"
+                ? "Reset your password"
+                : "Choose a new password"}
         </h1>
         <p className="mt-1 text-xs text-muted-foreground">
           {mode === "in"
             ? "Sign in directly with your email and password."
-            : "Sign up as a student or teacher to get started."}
+            : mode === "up"
+              ? "Sign up as a student or teacher to get started."
+              : mode === "forgot"
+                ? "Enter your account email and we’ll send you a reset link."
+                : "Choose a new password with at least 8 characters."}
         </p>
         <div className="mt-5 space-y-3">
           {mode === "up" && (
@@ -225,46 +293,115 @@ function AuthPage() {
               />
             </>
           )}
-          <Input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete="email"
-          />
-          <Input
-            type="password"
-            placeholder="Password (min 6 characters)"
-            minLength={6}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete={mode === "in" ? "current-password" : "new-password"}
-          />
+          {mode !== "reset" && (
+            <Input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+            />
+          )}
+          {(mode === "in" || mode === "up" || mode === "reset") && (
+            <Input
+              type="password"
+              placeholder={mode === "reset" ? "New password (min 8 characters)" : "Password (min 6 characters)"}
+              minLength={mode === "reset" ? 8 : 6}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete={mode === "in" ? "current-password" : "new-password"}
+            />
+          )}
+          {mode === "reset" && (
+            <Input
+              type="password"
+              placeholder="Confirm new password"
+              minLength={8}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+            />
+          )}
+          {mode === "in" && (
+            <div className="flex justify-end -mt-1">
+              <button
+                type="button"
+                className="text-xs font-semibold text-primary hover:underline cursor-pointer"
+                onClick={() => {
+                  setMsg("");
+                  setMsgKind("error");
+                  setMode("forgot");
+                }}
+              >
+                Forgot password?
+              </button>
+            </div>
+          )}
         </div>
 
         {msg && (
-          <div className="mt-4 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs font-medium text-destructive">
-            <AlertCircle className="size-4 shrink-0 text-destructive" />
+          <div
+            role="status"
+            className={`mt-4 flex items-center gap-2 rounded-md border p-3 text-xs font-medium ${msgKind === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border-destructive/30 bg-destructive/10 text-destructive"}`}
+          >
+            {msgKind === "success" ? (
+              <CheckCircle2 className="size-4 shrink-0" />
+            ) : (
+              <AlertCircle className="size-4 shrink-0" />
+            )}
             <span>{msg}</span>
           </div>
         )}
 
         <Button type="submit" variant="chrome" className="mt-5 w-full" disabled={busy}>
-          {busy ? "Signing in…" : mode === "in" ? "Sign in" : "Sign up"}
+          {busy
+            ? mode === "forgot"
+              ? "Sending reset link…"
+              : mode === "reset"
+                ? "Updating password…"
+                : mode === "up"
+                  ? "Creating account…"
+                  : "Signing in…"
+            : mode === "in"
+              ? "Sign in"
+              : mode === "up"
+                ? "Sign up"
+                : mode === "forgot"
+                  ? "Send reset link"
+                  : "Update password"}
         </Button>
-        <button
-          type="button"
-          className="mt-4 w-full text-sm text-primary hover:underline cursor-pointer"
-          onClick={() => {
-            setMode(mode === "in" ? "up" : "in");
-            setMsg("");
-          }}
-        >
-          {mode === "in" ? "New here? Create an account" : "Already have an account? Sign in"}
-        </button>
+        {mode === "in" || mode === "up" ? (
+          <button
+            type="button"
+            className="mt-4 w-full text-sm text-primary hover:underline cursor-pointer"
+            onClick={() => {
+              setMode(mode === "in" ? "up" : "in");
+              setMsg("");
+              setMsgKind("error");
+            }}
+          >
+            {mode === "in" ? "New here? Create an account" : "Already have an account? Sign in"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="mt-4 w-full text-sm text-primary hover:underline cursor-pointer"
+            onClick={() => {
+              setMode("in");
+              setMsg("");
+              setMsgKind("error");
+              setPassword("");
+              setConfirmPassword("");
+            }}
+          >
+            Back to sign in
+          </button>
+        )}
 
+        {(mode === "in" || mode === "up") && (
         <div className="mt-6 border-t border-border pt-4">
           <p className="text-center text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-2">
             Instant Demo Access
@@ -306,6 +443,7 @@ function AuthPage() {
             </div>
           </div>
         </div>
+        )}
       </form>
     </div>
   );
