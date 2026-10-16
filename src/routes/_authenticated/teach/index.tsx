@@ -1327,7 +1327,7 @@ function TeachDashboardPage() {
               </span>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+            <div className="group relative overflow-hidden rounded-2xl border border-amber-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/80 p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-amber-400/50 hover:shadow-lg hover:shadow-amber-950/10"><div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-400 to-orange-500" />
               <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Pending Review Queue</span>
               <p className="mt-1 text-2xl font-bold text-slate-900">{pendingAssignments}</p>
               <span
@@ -1337,7 +1337,7 @@ function TeachDashboardPage() {
               </span>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+            <div className="group relative overflow-hidden rounded-2xl border border-fuchsia-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/80 p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-fuchsia-400/50 hover:shadow-lg hover:shadow-fuchsia-950/10"><div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-fuchsia-400 to-pink-500" />
               <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Gross Tuition Revenue</span>
               <p className="mt-1 text-2xl font-bold text-slate-900">
                 ₹{totalRevenue.toLocaleString("en-IN")}
