@@ -1185,7 +1185,7 @@ function Dashboard({
 
   return (
     <>
-      <section className="mb-6 overflow-hidden rounded-lg bg-violet text-white">
+      <section className="mb-6 overflow-hidden rounded-lg bg-gradient-to-r from-violet-600 via-purple-500 to-indigo-500 text-white">
         <div className="flex flex-col gap-6 p-6 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-white/70">
