@@ -426,7 +426,15 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
           : url.origin;
       const resetUrl = `${baseUrl.replace(/\/+$/, "")}/auth?mode=reset&token=${encodeURIComponent(rawToken)}`;
       const displayName = String(userToReset.user_metadata?.display_name || "there")
-        .replace(/[&<>"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[char] || char);
+        .replace(/[&<>"]/g, (char) => {
+          const replacements: Record<string, string> = {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+          };
+          return replacements[char] || char;
+        });
 
       try {
         const emailResponse = await fetch("https://api.resend.com/emails", {
