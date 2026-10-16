@@ -1185,7 +1185,7 @@ function Dashboard({
 
   return (
     <>
-      <section className="mb-6 overflow-hidden rounded-lg text-white shadow-lg shadow-violet-500/20" style={{ background: "linear-gradient(115deg, #581C87 0%, #A21CAF 48%, #F472B6 100%)" }}>
+      <section className="mb-6 overflow-hidden rounded-lg bg-gradient-to-br from-indigo-700 via-violet-600 to-fuchsia-500 text-white shadow-lg shadow-violet-500/20">
         <div className="flex flex-col gap-6 p-6 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-white/70">
