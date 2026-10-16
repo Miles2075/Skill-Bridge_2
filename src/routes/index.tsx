@@ -221,14 +221,6 @@ const initialCourses: Course[] = [
 
 const courses: Course[] = initialCourses;
 
-const categories = [
-  "Web Development",
-  "Software Architecture",
-  "Computer Science",
-  "Data Science",
-  "Cloud & DevOps",
-];
-
 const assignments = [
   {
     day: "18",
@@ -801,6 +793,7 @@ function MyLearning({
 
 function Skillbridge() {
   const [view, setView] = useState<StudentView>("dashboard");
+  const [selectedCourseCategory, setSelectedCourseCategory] = useState("All");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -855,6 +848,17 @@ function Skillbridge() {
   };
 
   const commerce = useCommerceState(notify);
+  const courseCategories = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          commerce.courses
+            .map((course) => course.category?.trim())
+            .filter((category): category is string => Boolean(category)),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    [commerce.courses],
+  );
 
   useEffect(() => {
     if (typeof window !== "undefined" && commerce.courses?.length) {
@@ -880,6 +884,8 @@ function Skillbridge() {
         avatarUrl={commerce.avatarUrl}
         user={commerce.user}
         signOut={commerce.signOut}
+        categories={courseCategories}
+        onSelectCategory={setSelectedCourseCategory}
       >
         {view === "dashboard" && (
           <Dashboard
@@ -892,7 +898,14 @@ function Skillbridge() {
             }}
           />
         )}
-        {view === "courses" && <Courses openPlayer={setPlayer} />}
+        {view === "courses" && (
+          <Courses
+            openPlayer={setPlayer}
+            categories={courseCategories}
+            selectedCategory={selectedCourseCategory}
+            onCategoryChange={setSelectedCourseCategory}
+          />
+        )}
         {view === "my-learning" && (
           <MyLearning
             openPlayer={setPlayer}
@@ -1349,10 +1362,19 @@ function Dashboard({
   );
 }
 
-function Courses({ openPlayer }: { openPlayer: (course: Course) => void }) {
+function Courses({
+  openPlayer,
+  categories,
+  selectedCategory,
+  onCategoryChange,
+}: {
+  openPlayer: (course: Course) => void;
+  categories: string[];
+  selectedCategory: string;
+  onCategoryChange: (category: string) => void;
+}) {
   const { courses } = useCommerce();
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("All");
   const shown = useMemo(
     () =>
       courses.filter(
@@ -1360,9 +1382,9 @@ function Courses({ openPlayer }: { openPlayer: (course: Course) => void }) {
           `${course.title} ${course.description} ${course.instructor}`
             .toLowerCase()
             .includes(query.toLowerCase()) &&
-          (category === "All" || course.category === category),
+          (selectedCategory === "All" || course.category === selectedCategory),
       ),
-    [query, category, courses],
+    [query, selectedCategory, courses],
   );
   return (
     <>
@@ -1384,7 +1406,7 @@ function Courses({ openPlayer }: { openPlayer: (course: Course) => void }) {
           {["All", ...categories].map((item) => (
             <button
               key={item}
-              onClick={() => setCategory(item)}
+              onClick={() => onCategoryChange(item)}
               className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${category === item ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:bg-secondary"}`}
             >
               {item}
