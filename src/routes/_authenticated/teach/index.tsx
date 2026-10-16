@@ -1309,9 +1309,9 @@ function TeachDashboardPage() {
 
           {/* Operational Metrics Cards */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="group relative overflow-hidden rounded-2xl border border-teal-500/20 bg-slate-900/80 p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-teal-400/50 hover:shadow-lg hover:shadow-teal-950/30"><div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-teal-400 to-cyan-400" />
-              <span className="text-xs font-medium text-slate-500">Total Courses</span>
-              <p className="mt-1 text-xl font-bold text-slate-900">{rows.length}</p>
+            <div className="group relative overflow-hidden rounded-2xl border border-teal-500/20 bg-white dark:bg-slate-900/80 p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-teal-400/50 hover:shadow-lg hover:shadow-teal-950/30"><div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-teal-400 to-cyan-400" />
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Courses</span>
+              <p className="mt-1 text-xl font-bold text-slate-900 dark:text-white">{rows.length}</p>
               <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
                 <span className="text-emerald-700 font-semibold">{publishedCount} Published</span>
                 <span>·</span>
@@ -1319,16 +1319,16 @@ function TeachDashboardPage() {
               </div>
             </div>
 
-            <div className="group relative overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900/80 p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-indigo-400/50 hover:shadow-lg hover:shadow-indigo-950/30"><div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-400 to-violet-500" />
-              <span className="text-xs font-medium text-slate-500">Enrolled Students</span>
-              <p className="mt-1 text-2xl font-bold text-slate-900">{totalStudents}</p>
-              <span className="text-[11px] text-teal-700 font-medium">
+            <div className="group relative overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/80 p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-indigo-400/50 hover:shadow-lg hover:shadow-indigo-950/30"><div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-400 to-violet-500" />
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Enrolled Students</span>
+              <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{totalStudents}</p>
+              <span className="text-[11px] text-teal-700 dark:text-teal-400 font-medium">
                 {avgCompletion}% avg completion
               </span>
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500">Pending Review Queue</span>
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Pending Review Queue</span>
               <p className="mt-1 text-2xl font-bold text-slate-900">{pendingAssignments}</p>
               <span
                 className={`text-[11px] font-bold ${pendingAssignments > 0 ? "text-amber-700" : "text-emerald-700"}`}
@@ -1338,32 +1338,32 @@ function TeachDashboardPage() {
             </div>
 
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500">Gross Tuition Revenue</span>
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Gross Tuition Revenue</span>
               <p className="mt-1 text-2xl font-bold text-slate-900">
                 ₹{totalRevenue.toLocaleString("en-IN")}
               </p>
-              <span className="text-[11px] text-slate-500 font-medium">Recorded tuition</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Recorded tuition</span>
             </div>
           </div>
 
           {/* Review Queue Spotlight & Quick Grading */}
-          <div className="rounded-2xl border border-slate-700/80 bg-slate-900/80 p-5 space-y-3 shadow-sm">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/80 p-5 space-y-3 shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
               <div className="flex items-center gap-2">
                 <ClipboardCheck className="size-4 text-teal-700" />
-                <h3 className="font-bold text-sm text-slate-100">
+                <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
                   Needs review
                 </h3>
               </div>
               <button
                 onClick={() => switchView("submissions")}
-                className="text-xs font-semibold text-teal-400 transition-colors hover:text-teal-300 hover:underline cursor-pointer"
+                className="text-xs font-semibold text-teal-700 dark:text-teal-400 transition-colors hover:text-teal-600 dark:hover:text-teal-300 hover:underline cursor-pointer"
               >
                 View all
               </button>
             </div>
 
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-slate-100 dark:divide-slate-700">
               {submissions
                 .filter((s) => s.status === "pending")
                 .slice(0, 3)
@@ -1375,9 +1375,9 @@ function TeachDashboardPage() {
                     <div>
                       <div className="flex items-center gap-2 text-xs">
                         <span className="font-bold text-slate-900">{sub.studentName}</span>
-                        <span className="text-slate-400">({sub.studentEmail})</span>
+                        <span className="text-slate-500 dark:text-slate-400">({sub.studentEmail})</span>
                         <span className="text-slate-300">·</span>
-                        <span className="text-teal-700 font-semibold">{sub.courseTitle}</span>
+                        <span className="text-teal-700 dark:text-teal-400 font-semibold">{sub.courseTitle}</span>
                       </div>
                       <p className="text-xs text-slate-600 font-medium mt-0.5">
                         {sub.assignmentTitle}
