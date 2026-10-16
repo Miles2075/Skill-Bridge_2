@@ -3,6 +3,7 @@ import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import postgres from "postgres";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import nodemailer from "nodemailer";
 import nodePath from "node:path";
 import fs from "node:fs";
 import { Readable } from "node:stream";
@@ -390,11 +391,21 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         return errorResponse("Enter a valid email address.");
       }
 
-      const resendApiKey = process.env["RESEND_API_KEY"] || "";
-      const emailFrom = process.env["EMAIL_FROM"] || process.env["RESEND_FROM_EMAIL"] || "";
-      if (!resendApiKey || !emailFrom) {
+      const resendApiKey = process.env["RESEND_API_KEY"]?.trim() || "";
+      const smtpHost = process.env["SMTP_HOST"]?.trim() || "smtp.gmail.com";
+      const smtpPort = Number(process.env["SMTP_PORT"] || 465);
+      const smtpUser = process.env["SMTP_USER"]?.trim() || "";
+      const smtpPass = process.env["SMTP_PASS"] || "";
+      const smtpConfigured = Boolean(smtpUser && smtpPass && Number.isInteger(smtpPort) && smtpPort > 0);
+      const emailFrom =
+        process.env["EMAIL_FROM"]?.trim() ||
+        process.env["RESEND_FROM_EMAIL"]?.trim() ||
+        (smtpUser ? `Skillbridge <${smtpUser}>` : "");
+      const resendConfigured = Boolean(resendApiKey && emailFrom);
+
+      if (!smtpConfigured && !resendConfigured) {
         return errorResponse(
-          "Password reset email is not configured yet. Add RESEND_API_KEY and EMAIL_FROM in Vercel, then redeploy.",
+          "Password reset email is not configured. Set SMTP_USER and SMTP_PASS for Gmail SMTP, or set RESEND_API_KEY and EMAIL_FROM for Resend, then redeploy.",
           503,
         );
       }
@@ -436,25 +447,48 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
           return replacements[char] || char;
         });
 
+      const subject = "Reset your Skillbridge password";
+      const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#182033"><h2>Reset your Skillbridge password</h2><p>Hi ${displayName},</p><p>We received a request to reset the password for your Skillbridge account.</p><p><a href="${resetUrl}" style="display:inline-block;background:#4338ca;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Choose a new password</a></p><p>This link expires in 30 minutes and can be used once. If you did not request a reset, you can ignore this email.</p></div>`;
+      const text = `Reset your Skillbridge password: ${resetUrl}\\n\\nThis link expires in 30 minutes and can be used once. If you did not request a reset, ignore this email.`;
+
       try {
-        const emailResponse = await fetch("https://api.resend.com/emails", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${resendApiKey}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
+        if (smtpConfigured) {
+          const transporter = nodemailer.createTransport({
+            host: smtpHost,
+            port: smtpPort,
+            secure: smtpPort === 465,
+            auth: { user: smtpUser, pass: smtpPass },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000,
+          });
+          await transporter.sendMail({
             from: emailFrom,
-            to: [userToReset.email],
-            subject: "Reset your Skillbridge password",
-            html: `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#182033"><h2>Reset your Skillbridge password</h2><p>Hi ${displayName},</p><p>We received a request to reset the password for your Skillbridge account.</p><p><a href="${resetUrl}" style="display:inline-block;background:#4338ca;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Choose a new password</a></p><p>This link expires in 30 minutes and can be used once. If you did not request a reset, you can ignore this email.</p></div>`,
-            text: `Reset your Skillbridge password: ${resetUrl}\n\nThis link expires in 30 minutes and can be used once. If you did not request a reset, ignore this email.`,
-          }),
-        });
-        if (!emailResponse.ok) {
-          lmsDB.cancelPasswordResetToken(tokenHash);
-          console.error("Password reset email provider returned HTTP", emailResponse.status);
-          return errorResponse("We could not send the reset email right now. Please try again later.", 502);
+            to: userToReset.email,
+            subject,
+            html,
+            text,
+          });
+        } else {
+          const emailResponse = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${resendApiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: emailFrom,
+              to: [userToReset.email],
+              subject,
+              html,
+              text,
+            }),
+          });
+          if (!emailResponse.ok) {
+            lmsDB.cancelPasswordResetToken(tokenHash);
+            console.error("Password reset email provider returned HTTP", emailResponse.status);
+            return errorResponse("We could not send the reset email right now. Please try again later.", 502);
+          }
         }
       } catch (err) {
         lmsDB.cancelPasswordResetToken(tokenHash);
