@@ -718,7 +718,7 @@ function MyLearning({
             const isCompleted = course.progress >= 100;
             return (
               <div
-                key={course.slug}
+                key={course.id || course.slug}
                 className="overflow-hidden rounded-xl border border-border bg-card shadow-sm hover:shadow-md transition-shadow"
               >
                 <div
@@ -1354,7 +1354,7 @@ function Dashboard({
         </div>
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {courses.slice(1).map((course) => (
-            <CourseCard key={course.title} course={course} openPlayer={openPlayer} compact />
+            <CourseCard key={course.id || course.slug} course={course} openPlayer={openPlayer} compact />
           ))}
         </div>
       </section>
@@ -1421,7 +1421,7 @@ function Courses({
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {shown.map((course) => (
-            <CourseCard key={course.title} course={course} openPlayer={openPlayer} />
+            <CourseCard key={course.id || course.slug} course={course} openPlayer={openPlayer} />
           ))}
         </div>
       )}
@@ -1601,7 +1601,7 @@ function Assessments({ open }: { open: () => void }) {
       />
       <div className="grid gap-5 sm:grid-cols-2">
         {courses.map((course, index) => (
-          <article key={course.title} className="rounded-lg border border-border bg-card p-5">
+          <article key={course.id || course.slug} className="rounded-lg border border-border bg-card p-5">
             <div className="flex items-center justify-between">
               <span className="grid size-9 place-items-center rounded-md bg-primary/10 text-primary">
                 <Target className="size-4" />
@@ -1746,7 +1746,7 @@ function Certificates({ onOpenCert }: { onOpenCert: (course: Course) => void }) 
         <h2 className="mb-4 text-base font-bold text-foreground">Courses in Progress</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           {inProgressCourses.map((course) => (
-            <div key={course.title} className="rounded-xl border border-border bg-card p-5">
+            <div key={course.id || course.slug} className="rounded-xl border border-border bg-card p-5">
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-foreground">{course.title}</h3>
                 <span className="text-xs font-bold text-primary">{course.progress}%</span>
