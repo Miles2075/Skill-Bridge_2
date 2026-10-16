@@ -207,6 +207,14 @@ export interface LocalProfile {
   created_at: string;
 }
 
+export interface PasswordResetToken {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  expires_at: string;
+  created_at: string;
+}
+
 export interface LMSDatabase {
   courses: Course[];
   lessons: CourseLesson[];
@@ -223,6 +231,7 @@ export interface LMSDatabase {
   sessions: LocalSession[];
   purchases: LocalPurchase[];
   profiles: LocalProfile[];
+  password_reset_tokens: PasswordResetToken[];
 }
 
 export function hashPassword(password: string, salt: string): string {
@@ -906,6 +915,7 @@ class DatabaseManager {
       sessions: [],
       purchases: [],
       profiles: INITIAL_PROFILES,
+      password_reset_tokens: [],
     };
     this.write();
     return this.db;
@@ -927,6 +937,10 @@ class DatabaseManager {
     }
     if (!db.purchases) {
       db.purchases = [];
+      changed = true;
+    }
+    if (!db.password_reset_tokens) {
+      db.password_reset_tokens = [];
       changed = true;
     }
     if (!db.profiles || db.profiles.length === 0) {
@@ -2169,6 +2183,68 @@ class DatabaseManager {
     const profile = db.profiles.find((item) => item.id === userId);
     if (profile && params.displayName !== undefined)
       profile.display_name = user.user_metadata.display_name || "";
+    this.write();
+    return user;
+  }
+
+  createPasswordResetToken(email: string, tokenHash: string, expiresAt: string): boolean {
+    const db = this.read();
+    const cleanEmail = email.trim().toLowerCase();
+    const user = db.users.find((item) => item.email.toLowerCase() === cleanEmail);
+    if (!user) return false;
+
+    db.password_reset_tokens = (db.password_reset_tokens || []).filter(
+      (item) => item.user_id !== user.id && new Date(item.expires_at).getTime() > Date.now(),
+    );
+    db.password_reset_tokens.push({
+      id: crypto.randomUUID(),
+      user_id: user.id,
+      token_hash: tokenHash,
+      expires_at: expiresAt,
+      created_at: new Date().toISOString(),
+    });
+    this.write();
+    return true;
+  }
+
+  cancelPasswordResetToken(tokenHash: string): void {
+    const db = this.read();
+    db.password_reset_tokens = (db.password_reset_tokens || []).filter(
+      (item) => item.token_hash !== tokenHash,
+    );
+    this.write();
+  }
+
+  resetPasswordWithToken(tokenHash: string, password: string): LocalUser | null {
+    const db = this.read();
+    const now = Date.now();
+    const resetToken = (db.password_reset_tokens || []).find(
+      (item) =>
+        item.token_hash === tokenHash &&
+        new Date(item.expires_at).getTime() > now,
+    );
+    if (!resetToken) return null;
+
+    const user = db.users.find((item) => item.id === resetToken.user_id);
+    if (!user) {
+      db.password_reset_tokens = (db.password_reset_tokens || []).filter(
+        (item) => item.token_hash !== tokenHash,
+      );
+      this.write();
+      return null;
+    }
+
+    const salt = crypto.randomBytes(16).toString("hex");
+    user.salt = salt;
+    user.password_hash = hashPassword(password, salt);
+    user.updated_at = new Date().toISOString();
+
+    // A password reset invalidates every outstanding reset link and login
+    // session for this account.
+    db.password_reset_tokens = (db.password_reset_tokens || []).filter(
+      (item) => item.user_id !== user.id,
+    );
+    db.sessions = db.sessions.filter((session) => session.user_id !== user.id);
     this.write();
     return user;
   }
