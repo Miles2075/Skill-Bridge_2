@@ -41,7 +41,7 @@ export interface LocalAuthSession {
 }
 
 type AuthChangeCallback = (
-  event: "SIGNED_IN" | "SIGNED_OUT" | "TOKEN_REFRESHED" | "INITIAL_SESSION",
+  event: "SIGNED_IN" | "SIGNED_OUT" | "TOKEN_REFRESHED" | "INITIAL_SESSION" | "USER_UPDATED",
   session: LocalAuthSession | null,
 ) => void;
 
@@ -91,12 +91,14 @@ function saveStoredSession(session: LocalAuthSession | null) {
         id: session.user.id,
         email: session.user.email || "",
         user_metadata: {
+          ...session.user.user_metadata,
           display_name:
             session.user.user_metadata?.display_name ||
             session.user.email?.split("@")[0] ||
             "Learner",
           email: session.user.email || "",
           role,
+          avatar_url: session.user.user_metadata?.avatar_url,
         },
         created_at: session.user.created_at,
         updated_at: session.user.updated_at,
@@ -270,7 +272,7 @@ class LocalSupabaseAuth {
   }
 
   private notifyListeners(
-    event: "SIGNED_IN" | "SIGNED_OUT" | "TOKEN_REFRESHED" | "INITIAL_SESSION",
+    event: "SIGNED_IN" | "SIGNED_OUT" | "TOKEN_REFRESHED" | "INITIAL_SESSION" | "USER_UPDATED",
     session: LocalAuthSession | null,
   ) {
     for (const listener of this.listeners) {
@@ -426,6 +428,40 @@ class LocalSupabaseAuth {
         },
       };
     }
+  }
+
+  async updateUser(attributes: {
+    data?: Record<string, unknown>;
+  }): Promise<{
+    data: { user: LocalAuthUser | null };
+    error: { message: string } | null;
+  }> {
+    const session = getStoredSession();
+    if (!session?.user) {
+      return {
+        data: { user: null },
+        error: { message: "You must be signed in to update your profile." },
+      };
+    }
+
+    const updatedUser: LocalAuthUser = {
+      ...session.user,
+      user_metadata: {
+        ...session.user.user_metadata,
+        ...(attributes.data || {}),
+      },
+      updated_at: new Date().toISOString(),
+    };
+    const updatedSession: LocalAuthSession = {
+      ...session,
+      user: updatedUser,
+    };
+
+    // Persist the merged metadata in the browser session and notify auth hooks
+    // so the avatar/name update immediately across the app.
+    saveStoredSession(updatedSession);
+    this.notifyListeners("USER_UPDATED", updatedSession);
+    return { data: { user: updatedUser }, error: null };
   }
 
   async signOut(): Promise<{ error: null }> {
