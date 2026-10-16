@@ -241,6 +241,12 @@ export function hashPassword(password: string, salt: string): string {
 const DB_DIR = path.resolve(process.cwd(), "data");
 const DB_FILE = path.resolve(DB_DIR, "lms-db.json");
 
+const SAMPLE_VIDEO_URL_MARKER = "commondatastorage.googleapis.com/gtv-videos-bucket/sample/";
+
+function isSampleVideoUrl(videoUrl: string | null | undefined): boolean {
+  return typeof videoUrl === "string" && videoUrl.includes(SAMPLE_VIDEO_URL_MARKER);
+}
+
 const INITIAL_COURSES: Course[] = [
   {
     id: "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
@@ -339,180 +345,7 @@ const INITIAL_COURSES: Course[] = [
   },
 ];
 
-const INITIAL_LESSONS: CourseLesson[] = [
-  // React Performance Lessons
-  {
-    id: "les-react-1",
-    course_id: "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
-    title: "1. Profiling Renders with React DevTools",
-    description: "Understand commit phase, flame graphs, and identify unnecessary re-renders.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-    duration: "18:40",
-    lesson_order: 1,
-    is_required: true,
-    is_preview: true,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-react-2",
-    course_id: "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
-    title: "2. Strategic Memoization (useMemo, useCallback & React.memo)",
-    description: "When memoization saves CPU cycles and when it costs more than re-running.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-    duration: "24:15",
-    lesson_order: 2,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-react-3",
-    course_id: "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
-    title: "3. Virtualization & DOM Pruning at Scale",
-    description: "Building 100,000+ item infinite scrolls with dynamic windowing and zero lag.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-    duration: "28:50",
-    lesson_order: 3,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-
-  // Advanced TypeScript Lessons
-  {
-    id: "les-ts-1",
-    course_id: "45c4dd4a-715b-4f7d-b508-9c7501f2a63b",
-    title: "1. Advanced Type Narrowing & Discriminated Unions",
-    description: "Master pattern matching and compile-time exhaustiveness checking.",
-    video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    duration: "15:20",
-    lesson_order: 1,
-    is_required: true,
-    is_preview: true,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-ts-2",
-    course_id: "45c4dd4a-715b-4f7d-b508-9c7501f2a63b",
-    title: "2. Template Literal Types & Key Remapping",
-    description: "Create type-safe event buses and DSLs directly in TypeScript's type system.",
-    video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    duration: "21:30",
-    lesson_order: 2,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-ts-3",
-    course_id: "45c4dd4a-715b-4f7d-b508-9c7501f2a63b",
-    title: "3. Conditional Types & Distributive Inference (infer keyword)",
-    description: "Unwrap nested promises, function arguments, and build recursive utility types.",
-    video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    duration: "26:45",
-    lesson_order: 3,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-
-  // System Design Lessons
-  {
-    id: "les-sys-1",
-    course_id: "ed458579-67a4-41bc-b426-ff10ce69551e",
-    title: "1. High Availability & Load Balancing Strategies",
-    description: "L4 vs L7 routing, consistent hashing, and failover topologies.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-    duration: "22:10",
-    lesson_order: 1,
-    is_required: true,
-    is_preview: true,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-sys-2",
-    course_id: "ed458579-67a4-41bc-b426-ff10ce69551e",
-    title: "2. Distributed Caching & Cache Eviction (Redis / Memcached)",
-    description: "Cache-aside, write-through, stampede prevention, and Redis clustering.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-    duration: "27:40",
-    lesson_order: 2,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-sys-3",
-    course_id: "ed458579-67a4-41bc-b426-ff10ce69551e",
-    title: "3. Database Sharding & Leaderless Replication",
-    description: "Handling multi-terabyte writes with partitioning keys and quorum reads.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-    duration: "31:00",
-    lesson_order: 3,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-
-  // DSA Lessons
-  {
-    id: "les-dsa-1",
-    course_id: "1ac4b07c-8a19-4f77-a712-9bb1a665bc7e",
-    title: "1. Asymptotic Complexity & Two-Pointer Patterns",
-    description: "Sliding window, fast & slow pointers, and rigorous Big-O space/time proofs.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-    duration: "19:30",
-    lesson_order: 1,
-    is_required: true,
-    is_preview: true,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-dsa-2",
-    course_id: "1ac4b07c-8a19-4f77-a712-9bb1a665bc7e",
-    title: "2. Graph Traversal: BFS, DFS & Topological Sorting",
-    description: "Cycle detection, shortest paths with Dijkstra, and dependency resolution.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-    duration: "25:15",
-    lesson_order: 2,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-dsa-3",
-    course_id: "1ac4b07c-8a19-4f77-a712-9bb1a665bc7e",
-    title: "3. Dynamic Programming: State Transitions & Memoization",
-    description: "Knapsack variants, longest common subsequence, and space-optimized DP tables.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-    duration: "34:00",
-    lesson_order: 3,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-];
+const INITIAL_LESSONS: CourseLesson[] = [];
 
 const INITIAL_ASSIGNMENTS: Assignment[] = [
   {
@@ -966,6 +799,36 @@ class DatabaseManager {
         changed = true;
       }
     }
+    // Remove legacy starter videos and their seeded lesson rows from the persistent snapshot.
+    // These public sample clips and fixed durations were placeholders, not instructor uploads.
+    const placeholderLessonIds = new Set(
+      (Array.isArray(db.lessons) ? db.lessons : [])
+        .filter((lesson) => isSampleVideoUrl(lesson.video_url))
+        .map((lesson) => lesson.id),
+    );
+    if (placeholderLessonIds.size > 0) {
+      db.lessons = db.lessons.filter((lesson) => !placeholderLessonIds.has(lesson.id));
+      db.lesson_progress = (db.lesson_progress || []).filter(
+        (progress) => !placeholderLessonIds.has(progress.lesson_id),
+      );
+      changed = true;
+    }
+
+    // Clear sample media URLs from seeded courses while preserving every non-sample upload.
+    for (const course of db.courses || []) {
+      if (isSampleVideoUrl(course.video_url)) {
+        course.video_url = "";
+        changed = true;
+      }
+      if (Array.isArray(course.video_urls)) {
+        const realVideoUrls = course.video_urls.filter((videoUrl) => !isSampleVideoUrl(videoUrl));
+        if (realVideoUrls.length !== course.video_urls.length) {
+          course.video_urls = realVideoUrls;
+          changed = true;
+        }
+      }
+    }
+
     if (changed) {
       this.write();
     }
@@ -1027,13 +890,8 @@ class DatabaseManager {
           : c.video_url
             ? [c.video_url]
             : [];
-      // Older course creation inserted a sample video even when the teacher
-      // uploaded none. Once a real Blob upload exists, hide those starter assets.
-      if (videoUrls.some((url) => url.includes(".blob.vercel-storage.com"))) {
-        videoUrls = videoUrls.filter(
-          (url) => !url.includes("commondatastorage.googleapis.com/gtv-videos-bucket/sample/"),
-        );
-      }
+      // Never count or expose public sample clips as course uploads.
+      videoUrls = videoUrls.filter((url) => !isSampleVideoUrl(url));
       videoUrls = videoUrls.filter((url, index, urls) => urls.indexOf(url) === index);
       const courseLessons = db.lessons.filter(
         (l) => l.course_id === c.id || l.course_id === c.slug,
@@ -1080,11 +938,7 @@ class DatabaseManager {
         : c.video_url
           ? [c.video_url]
           : [];
-    if (videoUrls.some((url) => url.includes(".blob.vercel-storage.com"))) {
-      videoUrls = videoUrls.filter(
-        (url) => !url.includes("commondatastorage.googleapis.com/gtv-videos-bucket/sample/"),
-      );
-    }
+    videoUrls = videoUrls.filter((url) => !isSampleVideoUrl(url));
     videoUrls = videoUrls.filter((url, index, urls) => urls.indexOf(url) === index);
     const courseLessons = db.lessons.filter((l) => l.course_id === c.id || l.course_id === c.slug);
     const lessonsCount = courseLessons.length > 0 ? courseLessons.length : videoUrls.length;
@@ -1315,7 +1169,11 @@ class DatabaseManager {
     if (!course) return [];
 
     const directLessons = db.lessons
-      .filter((lesson) => lesson.course_id === course.id || lesson.course_id === course.slug)
+      .filter(
+        (lesson) =>
+          (lesson.course_id === course.id || lesson.course_id === course.slug) &&
+          !isSampleVideoUrl(lesson.video_url),
+      )
       .sort((a, b) => a.lesson_order - b.lesson_order);
 
     let videoUrls =
