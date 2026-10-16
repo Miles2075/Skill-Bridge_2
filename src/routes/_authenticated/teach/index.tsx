@@ -342,6 +342,12 @@ function TeachDashboardPage() {
   const [selectedContentCourse, setSelectedContentCourse] = useState("advanced-typescript");
   const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
   const [editingLessonTitle, setEditingLessonTitle] = useState("");
+  // Per-course title editor for the student-facing videos in Course Portfolio.
+  const [videoTitleEditorCourse, setVideoTitleEditorCourse] = useState<string | null>(null);
+  const [videoTitleLessons, setVideoTitleLessons] = useState<Record<string, LessonItem[]>>({});
+  const [videoTitleDrafts, setVideoTitleDrafts] = useState<Record<string, string>>({});
+  const [loadingVideoTitleCourse, setLoadingVideoTitleCourse] = useState<string | null>(null);
+  const [savingVideoTitleId, setSavingVideoTitleId] = useState<string | null>(null);
 
   // Grading modal state
   const [gradingSub, setGradingSub] = useState<AssignmentSubmission | null>(null);
@@ -502,6 +508,83 @@ function TeachDashboardPage() {
       }
     } catch {
       setLessons([]);
+    }
+  };
+
+  const toggleRowVideoTitleEditor = async (row: CourseRow) => {
+    if (videoTitleEditorCourse === row.id) {
+      setVideoTitleEditorCourse(null);
+      return;
+    }
+
+    setLoadingVideoTitleCourse(row.id);
+    setMsg(null);
+    try {
+      // Load persistent lesson records by course ID, so duplicate course slugs
+      // cannot cause a teacher to rename another course's video.
+      const { lessons: courseLessons } = await lmsClient.getCourse(row.id);
+      const loadedLessons: LessonItem[] = (courseLessons || [])
+        .filter((lesson) => Boolean(lesson.video_url))
+        .map((lesson) => ({
+          id: lesson.id,
+          courseSlug: row.slug,
+          title: lesson.title,
+          duration: lesson.duration,
+          videoUrl: lesson.video_url,
+          isPreview: lesson.is_preview,
+        }));
+
+      setVideoTitleLessons((previous) => ({ ...previous, [row.id]: loadedLessons }));
+      setVideoTitleDrafts((previous) => ({
+        ...previous,
+        ...Object.fromEntries(loadedLessons.map((lesson) => [lesson.id, lesson.title])),
+      }));
+      setVideoTitleEditorCourse(row.id);
+      if (loadedLessons.length === 0) {
+        setMsg({ text: `No uploaded video lessons found for "${row.title}". Upload a video first.`, isError: true });
+      }
+    } catch (error) {
+      setMsg({
+        text: error instanceof Error ? error.message : "Could not load video titles.",
+        isError: true,
+      });
+    } finally {
+      setLoadingVideoTitleCourse(null);
+    }
+  };
+
+  const saveRowVideoTitle = async (rowId: string, lesson: LessonItem) => {
+    const title = (videoTitleDrafts[lesson.id] || "").trim();
+    if (!title) {
+      setMsg({ text: "Enter a video title before saving.", isError: true });
+      return;
+    }
+
+    setSavingVideoTitleId(lesson.id);
+    setMsg(null);
+    try {
+      const { lesson: savedLesson } = await lmsClient.updateLesson(lesson.id, { title });
+      setVideoTitleLessons((previous) => ({
+        ...previous,
+        [rowId]: (previous[rowId] || []).map((item) =>
+          item.id === lesson.id ? { ...item, title: savedLesson.title } : item,
+        ),
+      }));
+      setVideoTitleDrafts((previous) => ({ ...previous, [lesson.id]: savedLesson.title }));
+      setLessons((previous) =>
+        previous.map((item) =>
+          item.id === lesson.id ? { ...item, title: savedLesson.title } : item,
+        ),
+      );
+      setMsg({ text: `Saved video title: "${savedLesson.title}". Students will see this name in the course player.` });
+      window.dispatchEvent(new CustomEvent("lms_data_updated"));
+    } catch (error) {
+      setMsg({
+        text: error instanceof Error ? error.message : "Could not save video title.",
+        isError: true,
+      });
+    } finally {
+      setSavingVideoTitleId(null);
     }
   };
 
@@ -1622,6 +1705,90 @@ function TeachDashboardPage() {
                           />
                         </label>
                       </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => void toggleRowVideoTitleEditor(row)}
+                          disabled={loadingVideoTitleCourse === row.id}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-60 cursor-pointer"
+                        >
+                          {loadingVideoTitleCourse === row.id ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : (
+                            <Pencil className="size-3" />
+                          )}
+                          {loadingVideoTitleCourse === row.id
+                            ? "Loading titles…"
+                            : videoTitleEditorCourse === row.id
+                              ? "Hide video titles"
+                              : "Rename video titles"}
+                        </button>
+                      </div>
+
+                      {videoTitleEditorCourse === row.id && (
+                        <div className="space-y-2 rounded-lg border border-indigo-100 bg-indigo-50/50 p-3">
+                          <div>
+                            <p className="text-xs font-bold text-slate-800">Student-facing video names</p>
+                            <p className="mt-0.5 text-[10px] text-slate-500">
+                              Rename a video here. The saved title appears in the course player; the video file stays unchanged.
+                            </p>
+                          </div>
+                          {(videoTitleLessons[row.id] || []).length === 0 ? (
+                            <p className="rounded-md border border-dashed border-slate-200 bg-white p-3 text-[11px] text-slate-500">
+                              No video lessons are available to rename yet.
+                            </p>
+                          ) : (
+                            (videoTitleLessons[row.id] || []).map((lesson, lessonIndex) => (
+                              <div
+                                key={lesson.id}
+                                className="flex flex-col gap-2 rounded-md border border-slate-200 bg-white p-2.5 sm:flex-row sm:items-center"
+                              >
+                                <div className="min-w-0 sm:w-40 shrink-0">
+                                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                                    Video {lessonIndex + 1}
+                                  </p>
+                                  <p className="truncate text-[10px] text-slate-400" title={lesson.videoUrl}>
+                                    {lesson.videoUrl}
+                                  </p>
+                                </div>
+                                <Input
+                                  value={videoTitleDrafts[lesson.id] ?? lesson.title}
+                                  onChange={(event) =>
+                                    setVideoTitleDrafts((previous) => ({
+                                      ...previous,
+                                      [lesson.id]: event.target.value,
+                                    }))
+                                  }
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") {
+                                      event.preventDefault();
+                                      void saveRowVideoTitle(row.id, lesson);
+                                    }
+                                  }}
+                                  aria-label={`Title for video ${lessonIndex + 1}`}
+                                  placeholder="Enter a student-facing video title"
+                                  className="h-8 flex-1 text-xs"
+                                />
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => void saveRowVideoTitle(row.id, lesson)}
+                                  disabled={savingVideoTitleId === lesson.id}
+                                  className="h-8 shrink-0 bg-indigo-600 px-3 text-[11px] font-semibold text-white hover:bg-indigo-700"
+                                >
+                                  {savingVideoTitleId === lesson.id ? (
+                                    <Loader2 className="size-3 animate-spin" />
+                                  ) : (
+                                    <Save className="size-3" />
+                                  )}
+                                  Save name
+                                </Button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
 
                       {/* Video URLs list */}
                       <div className="space-y-1.5">
