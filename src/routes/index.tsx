@@ -1407,7 +1407,7 @@ function Courses({
             <button
               key={item}
               onClick={() => onCategoryChange(item)}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${category === item ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:bg-secondary"}`}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${selectedCategory === item ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:bg-secondary"}`}
             >
               {item}
             </button>
