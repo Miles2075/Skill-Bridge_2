@@ -430,12 +430,86 @@ class LocalSupabaseAuth {
     }
   }
 
+  async resetPasswordForEmail(
+    credentials: { email: string },
+    _options?: { redirectTo?: string },
+  ): Promise<{
+    data: Record<string, never>;
+    error: { message: string } | null;
+  }> {
+    try {
+      const response = await fetch("/api/lms/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: credentials.email }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.error) {
+        return {
+          data: {},
+          error: { message: result?.error || "Could not request a password reset." },
+        };
+      }
+      return { data: {}, error: null };
+    } catch {
+      return {
+        data: {},
+        error: { message: "Unable to reach the password reset service. Please try again." },
+      };
+    }
+  }
+
   async updateUser(attributes: {
     data?: Record<string, unknown>;
+    password?: string;
   }): Promise<{
     data: { user: LocalAuthUser | null };
     error: { message: string } | null;
   }> {
+    // Password-reset links for the local LMS adapter carry a short-lived token
+    // in the URL instead of an authenticated session.
+    if (attributes.password !== undefined) {
+      const resetToken =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("token")
+          : null;
+      if (!resetToken) {
+        return {
+          data: { user: null },
+          error: { message: "Open the password reset link from your email to choose a new password." },
+        };
+      }
+      try {
+        const response = await fetch("/api/lms/auth/reset-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: resetToken, password: attributes.password }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result?.error) {
+          return {
+            data: { user: null },
+            error: { message: result?.error || "This password reset link is invalid or expired." },
+          };
+        }
+
+        // The backend revokes all old sessions when the password is reset.
+        saveStoredSession(null);
+        this.notifyListeners("SIGNED_OUT", null);
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("token");
+        cleanUrl.searchParams.delete("mode");
+        cleanUrl.hash = "";
+        window.history.replaceState({}, "", `${cleanUrl.pathname}${cleanUrl.search}`);
+        return { data: { user: null }, error: null };
+      } catch {
+        return {
+          data: { user: null },
+          error: { message: "Unable to reset the password right now. Please try again." },
+        };
+      }
+    }
+
     const session = getStoredSession();
     if (!session?.user) {
       return {
