@@ -2193,8 +2193,16 @@ class DatabaseManager {
     const user = db.users.find((item) => item.email.toLowerCase() === cleanEmail);
     if (!user) return false;
 
+    const now = Date.now();
+    const recentRequest = (db.password_reset_tokens || []).some(
+      (item) =>
+        item.user_id === user.id &&
+        now - new Date(item.created_at).getTime() < 60_000,
+    );
+    if (recentRequest) return false;
+
     db.password_reset_tokens = (db.password_reset_tokens || []).filter(
-      (item) => item.user_id !== user.id && new Date(item.expires_at).getTime() > Date.now(),
+      (item) => item.user_id !== user.id && new Date(item.expires_at).getTime() > now,
     );
     db.password_reset_tokens.push({
       id: crypto.randomUUID(),
