@@ -431,7 +431,7 @@ class LocalSupabaseAuth {
   }
 
   async resetPasswordForEmail(
-    credentials: { email: string },
+    email: string,
     _options?: { redirectTo?: string },
   ): Promise<{
     data: Record<string, never>;
@@ -441,7 +441,7 @@ class LocalSupabaseAuth {
       const response = await fetch("/api/lms/auth/forgot-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: credentials.email }),
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || result?.error) {
