@@ -1268,7 +1268,7 @@ function TeachDashboardPage() {
               : "bg-teal-50 text-teal-800 border border-teal-200"
           }`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             {msg.isError ? (
               <AlertCircle className="size-4 shrink-0" />
             ) : (
@@ -2917,12 +2917,11 @@ function TeachDashboardPage() {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
-            <div className="overflow-x-auto">
-            <table className="w-full min-w-[1200px] text-left text-xs">
+          <div className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <table className="w-full table-fixed text-left text-[11px] sm:text-xs">
               <thead className="border-b border-slate-200 bg-slate-50 text-slate-600 font-semibold dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 <tr>
-                  <th className="px-4 py-3">Learner</th>
+                  <th className="break-words px-2 py-3 sm:px-3">Learner</th>
                   <th className="px-4 py-3">Certificates Earned</th>
                   <th className="px-4 py-3">Course</th>
                   <th className="px-4 py-3">Progress</th>
@@ -2938,8 +2937,8 @@ function TeachDashboardPage() {
                 {filteredStudents.length > 0 ? (
                   filteredStudents.map((s) => (
                     <tr key={s.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2.5">
+                      <td className="break-words px-2 py-3 sm:px-3">
+                        <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
                           <UserAvatar
                             src={
                               (s as unknown as Record<string, string>)["studentAvatar"] ||
@@ -2949,8 +2948,8 @@ function TeachDashboardPage() {
                             className="size-8 text-xs border border-slate-200 shadow-2xs"
                           />
                           <div>
-                            <div className="font-bold text-slate-900 dark:text-white">{s.studentName}</div>
-                            <div className="text-[11px] text-slate-500 dark:text-slate-400">{s.studentEmail}</div>
+                            <div className="break-words font-bold text-slate-900 dark:text-white">{s.studentName}</div>
+                            <div className="break-all text-[10px] text-slate-500 dark:text-slate-400">{s.studentEmail}</div>
                           </div>
                         </div>
                       </td>
@@ -2963,10 +2962,10 @@ function TeachDashboardPage() {
                           }
                         </span>
                       </td>
-                      <td className="px-4 py-3 font-semibold text-teal-800 dark:text-teal-300">{s.courseTitle}</td>
+                      <td className="break-words px-2 py-3 font-semibold text-teal-800 dark:text-teal-300 sm:px-3">{s.courseTitle}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-16 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                          <div className="h-1.5 w-10 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden sm:w-14">
                             <div
                               className="h-full bg-teal-700 rounded-full"
                               style={{ width: `${s.progress}%` }}
@@ -2975,7 +2974,7 @@ function TeachDashboardPage() {
                           <span className="font-bold">{s.progress}%</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-slate-600 font-medium">
+                      <td className="break-words px-2 py-3 text-slate-600 font-medium dark:text-slate-300 sm:px-3">
                         {s.completedLessons ?? s.completedLectures ?? 0} /{" "}
                         {s.totalRequiredLessons ?? s.totalLectures ?? 3}
                       </td>
@@ -2992,16 +2991,16 @@ function TeachDashboardPage() {
                             : "In Progress"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-500 text-[11px]">
+                      <td className="break-words px-2 py-3 text-slate-500 text-[11px] dark:text-slate-400 sm:px-3">
                         {s.completedAt ? new Date(s.completedAt).toLocaleDateString() : "—"}
                       </td>
-                      <td className="px-4 py-3 text-slate-600 text-[11px]">
+                      <td className="break-words px-2 py-3 text-slate-600 text-[11px] dark:text-slate-300 sm:px-3">
                         {s.assignmentStatus || "No submissions"}
                       </td>
                       <td className="px-4 py-3 text-slate-600 text-[11px]">
                         {s.quizStatus || "No quizzes"}
                       </td>
-                      <td className="px-4 py-3 font-mono text-[11px]">
+                      <td className="break-words px-2 py-3 font-mono text-[11px] sm:px-3">
                         {s.certificateEarned || s.certificateId ? (
                           <span className="text-amber-700 font-bold">
                             {s.certificateId || "Earned"}
@@ -3021,7 +3020,6 @@ function TeachDashboardPage() {
                 )}
               </tbody>
             </table>
-            </div>
           </div>
         </div>
       )}
