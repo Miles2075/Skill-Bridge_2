@@ -1291,16 +1291,16 @@ function TeachDashboardPage() {
       {currentView === "dashboard" && (
         <div className="space-y-4">
           {/* Compact dashboard header */}
-          <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="relative overflow-hidden rounded-2xl border border-teal-500/25 bg-gradient-to-r from-slate-900 via-slate-900 to-teal-950 px-6 py-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-lg shadow-teal-950/20"><div className="pointer-events-none absolute -right-8 -top-14 size-44 rounded-full bg-teal-400/10 blur-3xl" />
             <div>
-              <h1 className="text-xl font-bold text-slate-900">Welcome, {displayName}</h1>
-              <p className="text-xs text-slate-500 mt-1">
+              <h1 className="text-2xl font-bold tracking-tight text-white">Welcome back, {displayName} <span className="inline-block">✦</span></h1>
+              <p className="text-sm text-slate-300 mt-1">
                 Your courses, learners, and reviews at a glance.
               </p>
             </div>
             <button
               onClick={() => switchView("create-course")}
-              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-teal-700 px-3 py-2 text-xs font-semibold text-white hover:bg-teal-800 transition-colors cursor-pointer"
+              className="relative inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-md shadow-teal-500/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-teal-500/30 cursor-pointer"
             >
               <PlusCircle className="size-3.5" />
               <span>Create Course</span>
@@ -1309,7 +1309,7 @@ function TeachDashboardPage() {
 
           {/* Operational Metrics Cards */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+            <div className="group relative overflow-hidden rounded-2xl border border-teal-500/20 bg-slate-900/80 p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-teal-400/50 hover:shadow-lg hover:shadow-teal-950/30"><div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-teal-400 to-cyan-400" />
               <span className="text-xs font-medium text-slate-500">Total Courses</span>
               <p className="mt-1 text-xl font-bold text-slate-900">{rows.length}</p>
               <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
@@ -1319,7 +1319,7 @@ function TeachDashboardPage() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
+            <div className="group relative overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-900/80 p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-indigo-400/50 hover:shadow-lg hover:shadow-indigo-950/30"><div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-400 to-violet-500" />
               <span className="text-xs font-medium text-slate-500">Enrolled Students</span>
               <p className="mt-1 text-2xl font-bold text-slate-900">{totalStudents}</p>
               <span className="text-[11px] text-teal-700 font-medium">
@@ -1347,17 +1347,17 @@ function TeachDashboardPage() {
           </div>
 
           {/* Review Queue Spotlight & Quick Grading */}
-          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+          <div className="rounded-2xl border border-slate-700/80 bg-slate-900/80 p-5 space-y-3 shadow-sm">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <ClipboardCheck className="size-4 text-teal-700" />
-                <h3 className="font-bold text-sm text-slate-900">
+                <h3 className="font-bold text-sm text-slate-100">
                   Needs review
                 </h3>
               </div>
               <button
                 onClick={() => switchView("submissions")}
-                className="text-xs font-semibold text-teal-700 hover:underline cursor-pointer"
+                className="text-xs font-semibold text-teal-400 transition-colors hover:text-teal-300 hover:underline cursor-pointer"
               >
                 View all
               </button>
