@@ -1438,16 +1438,16 @@ function TeachDashboardPage() {
                     <th className="pb-2 text-right">Fee</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700">
+                <tbody className="divide-y divide-slate-100 text-slate-700 dark:divide-slate-700 dark:text-slate-200">
                   {students.slice(0, 4).map((s) => (
-                    <tr key={s.id} className="hover:bg-slate-50">
+                    <tr key={s.id} className="transition-colors hover:bg-teal-50/70 dark:hover:bg-slate-800/80">
                       <td className="py-2.5 font-bold text-slate-900">{s.studentName}</td>
                       <td className="py-2.5 text-teal-700 font-medium">{s.courseTitle}</td>
                       <td className="py-2.5">
                         <div className="flex items-center gap-2">
                           <div className="h-1.5 w-16 bg-slate-100 rounded-full overflow-hidden">
                             <div
-                              className="h-full bg-teal-700 rounded-full"
+                              className="h-full bg-gradient-to-r from-teal-500 to-cyan-400 rounded-full"
                               style={{ width: `${s.progress}%` }}
                             />
                           </div>
@@ -2917,9 +2917,10 @@ function TeachDashboardPage() {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xs">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b border-slate-200 bg-slate-50 text-slate-600 font-semibold">
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[1200px] text-left text-xs">
+              <thead className="border-b border-slate-200 bg-slate-50 text-slate-600 font-semibold dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 <tr>
                   <th className="px-4 py-3">Learner</th>
                   <th className="px-4 py-3">Certificates Earned</th>
@@ -2948,8 +2949,8 @@ function TeachDashboardPage() {
                             className="size-8 text-xs border border-slate-200 shadow-2xs"
                           />
                           <div>
-                            <div className="font-bold text-slate-900">{s.studentName}</div>
-                            <div className="text-[11px] text-slate-500">{s.studentEmail}</div>
+                            <div className="font-bold text-slate-900 dark:text-white">{s.studentName}</div>
+                            <div className="text-[11px] text-slate-500 dark:text-slate-400">{s.studentEmail}</div>
                           </div>
                         </div>
                       </td>
@@ -2962,10 +2963,10 @@ function TeachDashboardPage() {
                           }
                         </span>
                       </td>
-                      <td className="px-4 py-3 font-semibold text-teal-800">{s.courseTitle}</td>
+                      <td className="px-4 py-3 font-semibold text-teal-800 dark:text-teal-300">{s.courseTitle}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-14 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-1.5 w-16 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
                             <div
                               className="h-full bg-teal-700 rounded-full"
                               style={{ width: `${s.progress}%` }}
@@ -2980,7 +2981,7 @@ function TeachDashboardPage() {
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold ${
                             s.progress >= 100 || s.status === "completed"
                               ? "bg-emerald-100 text-emerald-800"
                               : "bg-amber-100 text-amber-800"
@@ -3020,6 +3021,7 @@ function TeachDashboardPage() {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}
