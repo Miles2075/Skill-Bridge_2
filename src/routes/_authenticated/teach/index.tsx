@@ -19,6 +19,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   PlusCircle,
+  Pencil,
   Save,
   Search,
   Settings,
