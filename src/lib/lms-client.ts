@@ -1,7 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
+import { upload } from "@vercel/blob/client";
 import { getLocalSession } from "@/lib/local-db";
 
-async function getAuthHeaders(): Promise<Record<string, string>> {
+export async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -106,6 +107,24 @@ export interface ClientLesson {
   is_required: boolean;
   is_preview: boolean;
   completed?: boolean;
+}
+
+export interface ClientCourseReview {
+  id: string;
+  studentName: string;
+  rating: number;
+  reviewText: string;
+  createdAt: string;
+}
+
+export interface ClientCourseReviewSummary {
+  courseId: string;
+  rating: number;
+  reviewCount: number;
+  learners: number;
+  bestseller: boolean;
+  reviews: ClientCourseReview[];
+  myReview: { rating: number; reviewText: string; updatedAt: string } | null;
 }
 
 export interface ClientEnrollment {
@@ -274,6 +293,23 @@ export const lmsClient = {
     return request(`course?idOrSlug=${encodeURIComponent(idOrSlug)}`);
   },
 
+  async getCourseReviews(courseIdOrSlug: string): Promise<ClientCourseReviewSummary> {
+    return request<ClientCourseReviewSummary>(
+      `course-reviews?courseId=${encodeURIComponent(courseIdOrSlug)}`,
+    );
+  },
+
+  async saveCourseReview(data: {
+    courseId: string;
+    rating: number;
+    reviewText: string;
+  }): Promise<ClientCourseReviewSummary & { ok: true }> {
+    return request<ClientCourseReviewSummary & { ok: true }>("course-reviews", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
   async enroll(
     courseIdOrSlug: string,
     studentName?: string,
@@ -328,14 +364,34 @@ export const lmsClient = {
   },
 
   // PROFILE
+  async getProfile(): Promise<{
+    user: { id: string; email: string; user_metadata: Record<string, unknown>; created_at?: string; updated_at?: string };
+  }> {
+    return request("profile");
+  },
+
   async updateProfile(data: {
     displayName?: string;
     avatarUrl?: string | null;
   }): Promise<{ user: { id: string; email: string; user_metadata: Record<string, unknown> } }> {
-    return request("profile", {
+    // Persist the profile in the LMS database and, when this is a Supabase
+    // account, mirror it into Supabase Auth metadata so it survives a fresh login.
+    const result = await request<{ user: { id: string; email: string; user_metadata: Record<string, unknown> } }>("profile", {
       method: "PATCH",
       body: JSON.stringify(data),
     });
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (sessionData.session) {
+      const metadata: Record<string, unknown> = {};
+      if (data.displayName !== undefined) metadata.display_name = data.displayName;
+      if (data.avatarUrl !== undefined) metadata.avatar_url = data.avatarUrl;
+      const { error } = await supabase.auth.updateUser({ data: metadata });
+      if (error) {
+        throw new Error(`Profile saved to SkillBridge, but login profile sync failed: ${error.message}`);
+      }
+    }
+    return result;
   },
 
   // COURSE MANAGEMENT
@@ -360,41 +416,95 @@ export const lmsClient = {
     });
   },
 
+  // THUMBNAIL UPLOADS
+  async uploadThumbnail(
+    courseId: string,
+    file: File,
+  ): Promise<{ thumbnailUrl: string; fileName: string; size: number }> {
+    if (!file) throw new Error("Choose an image file first.");
+    const allowedExtensions = new Set(["jpg", "jpeg", "png", "webp", "avif", "gif"]);
+    const extension = file.name.includes(".") ? file.name.split(".").pop()!.toLowerCase() : "";
+    if (!allowedExtensions.has(extension)) {
+      throw new Error("Unsupported image format. Use JPG, PNG, WebP, AVIF, or GIF.");
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      throw new Error("Thumbnail is too large. Maximum file size is 10 MB.");
+    }
+
+    const authHeaders = await getAuthHeaders();
+    const authToken = authHeaders.Authorization?.replace(/^Bearer\s+/i, "") || "";
+    if (!authToken) throw new Error("Your session could not be verified. Sign in again before uploading.");
+
+    const safeFileName = file.name
+      .normalize("NFKD")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 120) || `thumbnail.${extension}`;
+    const pathname = `courses/${courseId}/thumbnails/${safeFileName}`;
+    const blob = await upload(pathname, file, {
+      access: "public",
+      contentType: file.type || "image/jpeg",
+      handleUploadUrl: "/api/lms/upload-thumbnail-token",
+      clientPayload: JSON.stringify({
+        courseId,
+        originalName: file.name,
+        authToken,
+      }),
+      multipart: file.size > 5 * 1024 * 1024,
+    });
+
+    return { thumbnailUrl: blob.url, fileName: file.name, size: file.size };
+  },
+
   // VIDEO UPLOADS
   async uploadVideo(
     courseId: string,
     file: File,
     lessonId?: string,
   ): Promise<{ videoUrl: string; fileName: string; size: number }> {
-    const authHeaders = await getAuthHeaders();
-    const headers: Record<string, string> = {
-      ...authHeaders,
-      "Content-Type": file.type || "application/octet-stream",
-      "X-File-Name": encodeURIComponent(file.name),
-      "X-File-Size": String(file.size),
-    };
-
-    const query = new URLSearchParams({ courseId });
-    if (lessonId) query.set("lessonId", lessonId);
-
-    const res = await fetch(`/api/lms/upload-video?${query.toString()}`, {
-      method: "POST",
-      headers,
-      body: file,
-    });
-
-    if (!res.ok) {
-      let errMsg = `Upload failed: ${res.status} ${res.statusText}`;
-      try {
-        const body = await res.json();
-        if (body.error) errMsg = body.error;
-      } catch {
-        // ignore
-      }
-      throw new Error(errMsg);
+    if (!file) throw new Error("Choose a video file first.");
+    const allowedExtensions = new Set(["mp4", "webm", "mov", "m4v"]);
+    const extension = file.name.includes(".") ? file.name.split(".").pop()!.toLowerCase() : "";
+    if (!allowedExtensions.has(extension)) {
+      throw new Error("Unsupported video format. Use MP4, WebM, MOV, or M4V.");
+    }
+    if (file.size > 500 * 1024 * 1024) {
+      throw new Error("Video is too large. Maximum file size is 500 MB.");
     }
 
-    return res.json();
+    const authHeaders = await getAuthHeaders();
+    const authToken = authHeaders.Authorization?.replace(/^Bearer\s+/i, "") || "";
+    if (!authToken) throw new Error("Your session could not be verified. Sign in again before uploading.");
+
+    const safeFileName = file.name
+      .normalize("NFKD")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 120) || `video.${extension}`;
+    const pathname = `courses/${courseId}/videos/${safeFileName}`;
+    const blob = await upload(pathname, file, {
+      access: "public",
+      contentType: file.type || "application/octet-stream",
+      handleUploadUrl: "/api/lms/upload-video-token",
+      clientPayload: JSON.stringify({
+        courseId,
+        lessonId: lessonId || null,
+        originalName: file.name,
+        authToken,
+      }),
+      multipart: file.size > 5 * 1024 * 1024,
+    });
+
+    return request("register-video", {
+      method: "POST",
+      body: JSON.stringify({
+        courseId,
+        lessonId: lessonId || null,
+        videoUrl: blob.url,
+        fileName: file.name,
+        size: file.size,
+      }),
+    });
   },
 
   // LESSON MANAGEMENT

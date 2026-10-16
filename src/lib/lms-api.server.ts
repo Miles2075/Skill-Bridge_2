@@ -1,7 +1,9 @@
 import { put } from "@vercel/blob";
+import { handleUpload, type HandleUploadBody } from "@vercel/blob/client";
 import postgres from "postgres";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import nodemailer from "nodemailer";
 import nodePath from "node:path";
 import fs from "node:fs";
 import { Readable } from "node:stream";
@@ -20,6 +22,31 @@ interface UserContext {
 async function parseUserContext(req: Request): Promise<UserContext> {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+
+  // Validate signed-in SkillBridge demo/local sessions before the hosted Supabase
+  // branch. Demo instructor accounts use server-issued LMS sessions, not Supabase JWTs.
+  if (token) {
+    const localSession = lmsDB.validateSession(token);
+    if (localSession) {
+      const role = localSession.roles.includes("admin")
+        ? "admin"
+        : localSession.roles.includes("teacher")
+          ? "teacher"
+          : "student";
+      return {
+        userId: localSession.user.id,
+        email: localSession.user.email ?? null,
+        name: String(
+          localSession.user.user_metadata?.display_name ||
+            localSession.user.email?.split("@")[0] ||
+            "Instructor",
+        ),
+        role,
+        isAdmin: role === "admin",
+        isTeacher: role === "teacher" || role === "admin",
+      };
+    }
+  }
 
   // Hosted requests must present a token verified by Supabase. Client-supplied
   // x-user-* headers are not an authentication mechanism.
@@ -204,9 +231,293 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
   const path = url.pathname.replace(/^\/api\/lms\/?/, "");
   const method = req.method.toUpperCase();
+
+  // Vercel Blob client uploads exchange a small token request with this route;
+  // the video bytes themselves go directly from the browser to Blob, avoiding
+  // Vercel Functions' 4.5 MB request-body limit.
+  if (path === "upload-thumbnail-token" && method === "POST") {
+    const blobToken = process.env["BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
+    if (!blobToken) return errorResponse("Vercel Blob is not configured. Add BLOB_READ_WRITE_TOKEN in Vercel.", 503);
+
+    let body: HandleUploadBody;
+    try {
+      body = await req.json() as HandleUploadBody;
+    } catch {
+      return errorResponse("Invalid Blob upload token request.", 400);
+    }
+
+    try {
+      const result = await handleUpload({
+        body,
+        request: req,
+        token: blobToken,
+        onBeforeGenerateToken: async (pathname, clientPayload) => {
+          let payload: { courseId?: unknown; originalName?: unknown; authToken?: unknown };
+          try {
+            payload = JSON.parse(clientPayload || "{}");
+          } catch {
+            throw new Error("Invalid thumbnail upload metadata.");
+          }
+
+          const courseId = typeof payload.courseId === "string" ? payload.courseId : "";
+          const originalName = typeof payload.originalName === "string" ? payload.originalName : "";
+          const authToken = typeof payload.authToken === "string" ? payload.authToken : "";
+          if (!courseId || !originalName || !authToken) throw new Error("Sign in again before uploading a thumbnail.");
+
+          const authHeaders = new Headers(req.headers);
+          authHeaders.set("authorization", `Bearer ${authToken}`);
+          const authRequest = new Request(req.url, { method: "GET", headers: authHeaders });
+          const uploadUser = await parseUserContext(authRequest);
+          if (!uploadUser.isTeacher || !uploadUser.userId) throw new Error("Forbidden: Instructor role required.");
+
+          const course = lmsDB.getCourse(courseId);
+          if (!course) throw new Error("Course not found.");
+
+          const segments = pathname.split("/");
+          if (segments.length !== 4 || segments[0] !== "courses" || segments[1] !== courseId || segments[2] !== "thumbnails" || segments[3].includes("..")) {
+            throw new Error("Invalid thumbnail upload path.");
+          }
+          const extension = segments[3].slice(segments[3].lastIndexOf(".")).toLowerCase();
+          const allowedExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"]);
+          if (!allowedExtensions.has(extension)) throw new Error("Unsupported image format. Use JPG, PNG, WebP, AVIF, or GIF.");
+
+          return {
+            allowedContentTypes: ["image/jpeg", "image/png", "image/webp", "image/avif", "image/gif"],
+            maximumSizeInBytes: 10 * 1024 * 1024,
+            addRandomSuffix: true,
+            tokenPayload: JSON.stringify({
+              courseId,
+              originalName,
+              userId: uploadUser.userId,
+            }),
+          };
+        },
+        onUploadCompleted: async () => {
+          // The client persists the resulting public URL as the course thumbnail.
+        },
+      });
+      return jsonResponse(result);
+    } catch (error) {
+      console.error("Vercel Blob thumbnail upload token error:", error);
+      return errorResponse(error instanceof Error ? error.message : "Could not prepare thumbnail upload.", 400);
+    }
+  }
+
+  if (path === "upload-video-token" && method === "POST") {
+    const blobToken = process.env["BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
+    if (!blobToken) return errorResponse("Vercel Blob is not configured. Add BLOB_READ_WRITE_TOKEN in Vercel.", 503);
+
+    let body: HandleUploadBody;
+    try {
+      body = await req.json() as HandleUploadBody;
+    } catch {
+      return errorResponse("Invalid Blob upload token request.", 400);
+    }
+
+    try {
+      const result = await handleUpload({
+        body,
+        request: req,
+        token: blobToken,
+        onBeforeGenerateToken: async (pathname, clientPayload) => {
+          let payload: { courseId?: unknown; lessonId?: unknown; originalName?: unknown; authToken?: unknown };
+          try {
+            payload = JSON.parse(clientPayload || "{}");
+          } catch {
+            throw new Error("Invalid video upload metadata.");
+          }
+
+          const courseId = typeof payload.courseId === "string" ? payload.courseId : "";
+          const lessonId = typeof payload.lessonId === "string" && payload.lessonId ? payload.lessonId : null;
+          const originalName = typeof payload.originalName === "string" ? payload.originalName : "";
+          const authToken = typeof payload.authToken === "string" ? payload.authToken : "";
+          if (!courseId || !originalName || !authToken) throw new Error("Sign in again before uploading a video.");
+
+          const authHeaders = new Headers(req.headers);
+          authHeaders.set("authorization", `Bearer ${authToken}`);
+          const authRequest = new Request(req.url, { method: "GET", headers: authHeaders });
+          const uploadUser = await parseUserContext(authRequest);
+          if (!uploadUser.isTeacher || !uploadUser.userId) throw new Error("Forbidden: Instructor role required.");
+
+          const course = lmsDB.getCourse(courseId);
+          if (!course) throw new Error("Course not found.");
+
+          const segments = pathname.split("/");
+          if (segments.length !== 4 || segments[0] !== "courses" || segments[1] !== courseId || segments[2] !== "videos" || segments[3].includes("..")) {
+            throw new Error("Invalid video upload path.");
+          }
+          const extension = segments[3].slice(segments[3].lastIndexOf(".")).toLowerCase();
+          const allowedExtensions = new Set([".mp4", ".webm", ".mov", ".m4v"]);
+          if (!allowedExtensions.has(extension)) throw new Error("Unsupported video format. Use MP4, WebM, MOV, or M4V.");
+
+          if (lessonId) {
+            const snapshot = lmsDB.exportSnapshot();
+            const lesson = snapshot.lessons.find((item) => item.id === lessonId && (item.course_id === course.id || item.course_id === course.slug));
+            if (!lesson) throw new Error("Lesson not found for this course.");
+          }
+
+          return {
+            allowedContentTypes: ["video/mp4", "video/webm", "video/quicktime", "video/x-m4v", "application/octet-stream"],
+            maximumSizeInBytes: 500 * 1024 * 1024,
+            addRandomSuffix: true,
+            tokenPayload: JSON.stringify({
+              courseId,
+              lessonId,
+              originalName,
+              userId: uploadUser.userId,
+            }),
+          };
+        },
+        onUploadCompleted: async () => {
+          // The browser registers the returned Blob URL through the authenticated
+          // register-video endpoint after upload succeeds.
+        },
+      });
+      return jsonResponse(result);
+    } catch (error) {
+      console.error("Vercel Blob client upload token error:", error);
+      return errorResponse(error instanceof Error ? error.message : "Could not prepare video upload.", 400);
+    }
+  }
+
   const user = await parseUserContext(req);
 
   try {
+    // AUTH: POST /api/lms/auth/forgot-password
+    if (path === "auth/forgot-password" && method === "POST") {
+      const body = (await req.json()) as { email?: string };
+      const email = String(body.email || "").trim().toLowerCase();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return errorResponse("Enter a valid email address.");
+      }
+
+      const resendApiKey = process.env["RESEND_API_KEY"]?.trim() || "";
+      const smtpHost = process.env["SMTP_HOST"]?.trim() || "smtp.gmail.com";
+      const smtpPort = Number(process.env["SMTP_PORT"] || 465);
+      const smtpUser = process.env["SMTP_USER"]?.trim() || "";
+      const smtpPass = process.env["SMTP_PASS"] || "";
+      const smtpConfigured = Boolean(smtpUser && smtpPass && Number.isInteger(smtpPort) && smtpPort > 0);
+      const emailFrom =
+        process.env["EMAIL_FROM"]?.trim() ||
+        process.env["RESEND_FROM_EMAIL"]?.trim() ||
+        (smtpUser ? `Skillbridge <${smtpUser}>` : "");
+      const resendConfigured = Boolean(resendApiKey && emailFrom);
+
+      if (!smtpConfigured && !resendConfigured) {
+        return errorResponse(
+          "Password reset email is not configured. Set SMTP_USER and SMTP_PASS for Gmail SMTP, or set RESEND_API_KEY and EMAIL_FROM for Resend, then redeploy.",
+          503,
+        );
+      }
+
+      // Respond identically whether or not the email belongs to an account.
+      const userToReset = lmsDB.findUserByEmail(email);
+      if (!userToReset) {
+        return jsonResponse({
+          message: "If an account exists for that email, password reset instructions have been sent.",
+        });
+      }
+
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+      if (!lmsDB.createPasswordResetToken(email, tokenHash, expiresAt)) {
+        return jsonResponse({
+          message: "If an account exists for that email, password reset instructions have been sent.",
+        });
+      }
+
+      const configuredAppUrl = (process.env["APP_URL"] || "").trim();
+      const vercelUrl = (process.env["VERCEL_URL"] || "").trim();
+      const configuredIsLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(configuredAppUrl);
+      const baseUrl = configuredAppUrl && !configuredIsLocal
+        ? configuredAppUrl
+        : vercelUrl
+          ? `https://${vercelUrl}`
+          : url.origin;
+      const resetUrl = `${baseUrl.replace(/\/+$/, "")}/auth?mode=reset&token=${encodeURIComponent(rawToken)}`;
+      const displayName = String(userToReset.user_metadata?.display_name || "there")
+        .replace(/[&<>"]/g, (char) => {
+          const replacements: Record<string, string> = {
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+          };
+          return replacements[char] || char;
+        });
+
+      const subject = "Reset your Skillbridge password";
+      const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#182033"><h2>Reset your Skillbridge password</h2><p>Hi ${displayName},</p><p>We received a request to reset the password for your Skillbridge account.</p><p><a href="${resetUrl}" style="display:inline-block;background:#4338ca;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Choose a new password</a></p><p>This link expires in 30 minutes and can be used once. If you did not request a reset, you can ignore this email.</p></div>`;
+      const text = `Reset your Skillbridge password: ${resetUrl}\\n\\nThis link expires in 30 minutes and can be used once. If you did not request a reset, ignore this email.`;
+
+      try {
+        if (smtpConfigured) {
+          const transporter = nodemailer.createTransport({
+            host: smtpHost,
+            port: smtpPort,
+            secure: smtpPort === 465,
+            auth: { user: smtpUser, pass: smtpPass },
+            connectionTimeout: 10000,
+            greetingTimeout: 10000,
+            socketTimeout: 15000,
+          });
+          await transporter.sendMail({
+            from: emailFrom,
+            to: userToReset.email,
+            subject,
+            html,
+            text,
+          });
+        } else {
+          const emailResponse = await fetch("https://api.resend.com/emails", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${resendApiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              from: emailFrom,
+              to: [userToReset.email],
+              subject,
+              html,
+              text,
+            }),
+          });
+          if (!emailResponse.ok) {
+            lmsDB.cancelPasswordResetToken(tokenHash);
+            console.error("Password reset email provider returned HTTP", emailResponse.status);
+            return errorResponse("We could not send the reset email right now. Please try again later.", 502);
+          }
+        }
+      } catch (err) {
+        lmsDB.cancelPasswordResetToken(tokenHash);
+        console.error("Password reset email delivery failed:", err instanceof Error ? err.message : "Unknown error");
+        return errorResponse("We could not send the reset email right now. Please try again later.", 502);
+      }
+
+      return jsonResponse({
+        message: "If an account exists for that email, password reset instructions have been sent.",
+      });
+    }
+
+    // AUTH: POST /api/lms/auth/reset-password
+    if (path === "auth/reset-password" && method === "POST") {
+      const body = (await req.json()) as { token?: string; password?: string };
+      const token = String(body.token || "").trim();
+      const password = String(body.password || "");
+      if (!token) return errorResponse("The password reset link is missing or invalid.");
+      if (password.length < 8) return errorResponse("Your new password must be at least 8 characters long.");
+      if (password.length > 128) return errorResponse("Your new password is too long.");
+
+      const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+      const updatedUser = lmsDB.resetPasswordWithToken(tokenHash, password);
+      if (!updatedUser) {
+        return errorResponse("This password reset link is invalid or expired. Request a new one.", 400);
+      }
+      return jsonResponse({ success: true });
+    }
+
     // AUTH: POST /api/lms/auth/login
     if (path === "auth/login" && method === "POST") {
       const body = await req.json();
@@ -252,6 +563,22 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         user: res.user,
         session: res.session,
         roles: res.roles,
+      });
+    }
+
+    // AUTH: GET /api/lms/profile
+    if (path === "profile" && method === "GET") {
+      if (!user.userId) return errorResponse("Unauthorized", 401);
+      const profileUser = lmsDB.findUserById(user.userId);
+      if (!profileUser) return errorResponse("User not found.", 404);
+      return jsonResponse({
+        user: {
+          id: profileUser.id,
+          email: profileUser.email,
+          user_metadata: profileUser.user_metadata,
+          created_at: profileUser.created_at,
+          updated_at: profileUser.updated_at,
+        },
       });
     }
 
@@ -307,6 +634,28 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
     // GENERIC QUERY: POST /api/lms/query
     if (path === "query" && method === "POST") {
       const body = await req.json();
+      const tableName = typeof body.table === "string" ? body.table.toLowerCase() : "";
+      const action = typeof body.action === "string" ? body.action.toLowerCase() : "";
+
+      // Enrollments and payment records must only be changed by the dedicated,
+      // validated LMS endpoints. Otherwise the generic data adapter could bypass
+      // the payment verification performed during checkout.
+      if (tableName === "course_reviews") {
+        return errorResponse("Use the course review endpoint to read or write sanitized review data.", 403);
+      }
+      if (["enrollments", "purchases"].includes(tableName) && action !== "select") {
+        return errorResponse("Enrollment and purchase records can only be changed through validated LMS endpoints.", 403);
+      }
+
+      if (tableName === "purchases") {
+        if (!user.userId) return errorResponse("Please sign in to view purchases.", 401);
+        body.filters = { ...(body.filters || {}), user_id: user.userId };
+      }
+      if (tableName === "enrollments" && !user.isTeacher && !user.isAdmin) {
+        if (!user.userId) return errorResponse("Please sign in to view enrollments.", 401);
+        body.filters = { ...(body.filters || {}), student_id: user.userId };
+      }
+
       const result = lmsDB.queryTable(body.table, body);
       return jsonResponse(result);
     }
@@ -317,150 +666,63 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       return jsonResponse({ keyId });
     }
 
-    // PAYMENTS: POST /api/lms/payments/create-order (or /payment/create-order)
-    if (
-      (path === "payments/create-order" || path === "payment/create-order") &&
-      method === "POST"
-    ) {
-      const body = (await req.json()) as { courseId?: string; courseSlug?: string };
-      const courseId = body.courseId || body.courseSlug;
-      if (!courseId) return errorResponse("Missing courseId");
-
-      const course = lmsDB.getCourse(courseId);
-      if (!course) return errorResponse("Course not found", 404);
-
-      const priceInr = course.price_inr > 0 ? course.price_inr : 999;
-      const { keyId } = getRazorpayServerCredentials();
-
-      try {
-        const order = (await callRazorpayApi("/orders", {
-          method: "POST",
-          body: JSON.stringify({
-            amount: Math.round(priceInr * 100),
-            currency: "INR",
-            receipt: `rcpt_${course.id.replace(/-/g, "").slice(0, 10)}_${Date.now()}`.slice(0, 40),
-            notes: {
-              course_id: course.id,
-              course_slug: course.slug,
-              course_title: course.title,
-              user_id: user.userId || "",
-              user_email: user.email || "",
-            },
-          }),
-        })) as { id: string; amount?: number; currency?: string };
-
-        return jsonResponse({
-          orderId: order.id,
-          amount: order.amount || Math.round(priceInr * 100),
-          currency: order.currency || "INR",
-          keyId,
-          title: course.title,
-          courseId: course.id,
-        });
-      } catch (err) {
-        console.error("Razorpay order creation error:", err);
-        return errorResponse(
-          err instanceof Error ? err.message : "Failed to create payment order with gateway",
-          500,
-        );
-      }
-    }
-
-    // PAYMENTS: POST /api/lms/payments/verify (or /payment/verify)
-    if ((path === "payments/verify" || path === "payment/verify") && method === "POST") {
-      const body = (await req.json()) as {
-        courseId?: string;
-        orderId?: string;
-        paymentId?: string;
-        signature?: string;
-        studentName?: string;
-        studentEmail?: string;
-      };
-      const { courseId, orderId, paymentId, signature } = body;
-      if (!courseId || !orderId || !paymentId || !signature) {
-        return errorResponse(
-          "Missing required payment verification fields (courseId, orderId, paymentId, signature)",
-        );
-      }
-
-      const course = lmsDB.getCourse(courseId);
-      if (!course) return errorResponse("Course not found", 404);
-
-      const { keySecret } = getRazorpayServerCredentials();
-      const expected = crypto
-        .createHmac("sha256", keySecret)
-        .update(`${orderId}|${paymentId}`)
-        .digest("hex");
-
-      const expectedBuf = Buffer.from(expected, "utf8");
-      const signatureBuf = Buffer.from(signature, "utf8");
-
-      if (
-        expectedBuf.length !== signatureBuf.length ||
-        !crypto.timingSafeEqual(expectedBuf, signatureBuf)
-      ) {
-        return errorResponse(
-          "Payment signature verification failed. Invalid transaction signature.",
-          400,
-        );
-      }
-
-      // Check payment status with Razorpay API if live
-      try {
-        const paymentData = (await callRazorpayApi(
-          `/payments/${encodeURIComponent(paymentId)}`,
-        )) as {
-          status?: string;
-        };
-        if (
-          paymentData.status &&
-          paymentData.status !== "captured" &&
-          paymentData.status !== "authorized"
-        ) {
-          return errorResponse(
-            `Payment is not completed. Current status: ${paymentData.status}`,
-            400,
-          );
-        }
-      } catch (verifyApiErr) {
-        console.warn("Razorpay API status check note:", verifyApiErr);
-      }
-
-      const effectiveUserId = user.userId || "anonymous-student";
-      const studentName = user.name || body.studentName || "Student Learner";
-      const studentEmail = user.email || body.studentEmail || "student@example.com";
-
-      const purchase = lmsDB.recordPurchase({
-        userId: effectiveUserId,
-        courseId: course.id,
-        amountInr: course.price_inr,
-        razorpayOrderId: orderId,
-        razorpayPaymentId: paymentId,
-      });
-
-      const enrollment = lmsDB.enrollStudent(effectiveUserId, course.id, studentName, studentEmail);
-
-      return jsonResponse({
-        ok: true,
-        purchase,
-        enrollment,
-        paymentId,
-        orderId,
-        courseId: course.id,
-        courseTitle: course.title,
-        amount: course.price_inr,
-      });
-    }
+    // Paid checkout is handled by the authenticated order and payment verification
+    // endpoints below. Do not keep legacy create-order/verify handlers here: they returned
+    // incompatible responses and allowed enrollment before confirming a captured payment.
 
     // PAYMENTS: GET /api/lms/payments/purchases (or /payment/purchases)
+    // Purchase history is private to the currently authenticated user.
     if ((path === "payments/purchases" || path === "payment/purchases") && method === "GET") {
-      const targetUserId = user.userId || url.searchParams.get("userId") || "";
-      if (!targetUserId) {
-        return jsonResponse({ purchases: [], courseIds: [] });
-      }
-      const purchases = lmsDB.getUserPurchases(targetUserId);
-      const courseIds = Array.from(new Set(purchases.map((p) => p.course_id)));
+      if (!user.userId) return errorResponse("Please sign in to view your purchases.", 401);
+      const purchases = lmsDB.getUserPurchases(user.userId);
+      const courseIds = Array.from(new Set(purchases.map((purchase) => purchase.course_id)));
       return jsonResponse({ purchases, courseIds });
+    }
+
+    // GET /api/lms/course-reviews?courseId=...
+    // Public summary/reviews, plus the current user's saved review when signed in.
+    if (path === "course-reviews" && method === "GET") {
+      const courseId = url.searchParams.get("courseId") || "";
+      if (!courseId) return errorResponse("Missing courseId.", 400);
+      const summary = lmsDB.getCourseReviewSummary(courseId);
+      if (!summary) return errorResponse("Course not found.", 404);
+      const own = user.userId ? lmsDB.getUserCourseReview(user.userId, courseId) : null;
+      return jsonResponse({
+        ...summary,
+        myReview: own
+          ? { rating: own.rating, reviewText: own.review_text, updatedAt: own.updated_at }
+          : null,
+      });
+    }
+
+    // POST /api/lms/course-reviews
+    // A student must have a real enrollment or purchase; identity comes from auth context.
+    if (path === "course-reviews" && method === "POST") {
+      if (!user.userId) return errorResponse("Sign in to submit a course review.", 401);
+      const body = await req.json().catch(() => ({}));
+      const courseId = typeof body.courseId === "string" ? body.courseId : "";
+      const rating = Number(body.rating);
+      const reviewText = typeof body.reviewText === "string" ? body.reviewText : "";
+      if (!courseId) return errorResponse("Missing courseId.", 400);
+      try {
+        lmsDB.saveCourseReview({
+          courseIdOrSlug: courseId,
+          studentId: user.userId,
+          studentName: user.name || user.email?.split("@")[0] || "Student",
+          rating,
+          reviewText,
+        });
+        const summary = lmsDB.getCourseReviewSummary(courseId);
+        const own = lmsDB.getUserCourseReview(user.userId, courseId);
+        if (!summary || !own) return errorResponse("Review saved, but could not reload it.", 500);
+        return jsonResponse({
+          ok: true,
+          ...summary,
+          myReview: { rating: own.rating, reviewText: own.review_text, updatedAt: own.updated_at },
+        });
+      } catch (error) {
+        return errorResponse(error instanceof Error ? error.message : "Could not save review.", 400);
+      }
     }
 
     // GET /api/lms/courses
@@ -495,145 +757,262 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
     // POST /api/lms/enroll
     if (path === "enroll" && method === "POST") {
+      if (!user.userId) return errorResponse("Please sign in before enrolling.", 401);
       const body = await req.json().catch(() => ({}));
-      const courseId = body.courseId || body.courseSlug;
-      if (!courseId) return errorResponse("Missing courseId");
+      const requestedCourseId = typeof body.courseId === "string"
+        ? body.courseId
+        : typeof body.courseSlug === "string"
+          ? body.courseSlug
+          : "";
+      if (!requestedCourseId) return errorResponse("Missing courseId");
 
-      const studentId =
-        user.userId ||
-        body.studentId ||
-        body.userId ||
-        (body.studentEmail
-          ? `usr_${Buffer.from(String(body.studentEmail)).toString("hex").slice(0, 16)}`
-          : null);
+      const course = lmsDB.getCourse(requestedCourseId);
+      if (!course || course.status !== "published") {
+        return errorResponse("Course not found or not published.", 404);
+      }
 
-      if (!studentId)
-        return errorResponse("Unauthorized: Missing user authentication or studentId", 401);
+      // Paid courses are unlocked only by the verified payment endpoint.
+      const existingPurchase = lmsDB.getPurchases(user.userId).some(
+        (purchase) => purchase.course_id === course.id,
+      );
+      if (course.price_inr > 0 && !existingPurchase) {
+        return errorResponse("Payment required before enrolling in this course.", 402);
+      }
 
-      const studentName =
-        user.name ||
-        body.studentName ||
-        (body.studentEmail ? String(body.studentEmail).split("@")[0] : "Student Learner");
-      const studentEmail = user.email || body.studentEmail || "student@skillbridge.edu";
-
-      const enrollment = lmsDB.enrollStudent(studentId, courseId, studentName, studentEmail);
+      const studentName = user.name || String(body.studentName || user.email?.split("@")[0] || "Student Learner");
+      const studentEmail = user.email || String(body.studentEmail || "");
+      const enrollment = lmsDB.enrollStudent(user.userId, course.id, studentName, studentEmail);
       return jsonResponse({ enrollment });
     }
 
     // POST /api/lms/payment/create-order
-    if (path === "payment/create-order" && method === "POST") {
+    // Create an actual Razorpay order; never return simulated order IDs.
+    if ((path === "payment/create-order" || path === "payments/create-order") && method === "POST") {
+      if (!user.userId) return errorResponse("Please sign in before purchasing a course.", 401);
       const body = await req.json().catch(() => ({}));
-      const courseId = body.courseId || body.courseSlug;
-      if (!courseId) return errorResponse("Missing courseId");
+      const requestedCourseId = typeof body.courseId === "string" ? body.courseId : "";
+      if (!requestedCourseId) return errorResponse("Missing courseId");
 
-      const course = lmsDB.getCourse(courseId);
-      const courseTitle = course?.title || "Skillbridge Engineering Course";
-      const priceInr = course?.price_inr && course.price_inr > 0 ? course.price_inr : 999;
-      const amountPaise = priceInr * 100;
-
-      const keyId = process.env["RAZORPAY_KEY_ID"]?.trim() || "";
-      const keySecret = process.env["RAZORPAY_KEY_SECRET"]?.trim() || "";
-
-      // If valid Razorpay key is configured, try creating a live order
-      if (keyId && keySecret && keyId.startsWith("rzp_") && !keyId.includes("TkYGjq4iojsimE")) {
-        try {
-          const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
-          const rzpRes = await fetch("https://api.razorpay.com/v1/orders", {
-            method: "POST",
-            headers: {
-              Authorization: `Basic ${auth}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              amount: amountPaise,
-              currency: "INR",
-              receipt: `rcpt_${Date.now()}`.slice(0, 40),
-              notes: { course_id: courseId, title: courseTitle },
-            }),
-          });
-          if (rzpRes.ok) {
-            const rzpData = (await rzpRes.json()) as {
-              id: string;
-              amount: number;
-              currency?: string;
-            };
-            return jsonResponse({
-              orderId: rzpData.id,
-              amount: rzpData.amount,
-              currency: rzpData.currency || "INR",
-              keyId,
-              title: courseTitle,
-              isLive: true,
-            });
-          }
-        } catch (err) {
-          console.warn("Live Razorpay order creation failed, using sandbox order:", err);
-        }
+      const course = lmsDB.getCourse(requestedCourseId);
+      if (!course) return errorResponse("Course not found.", 404);
+      if (course.status !== "published") return errorResponse("This course is not available for purchase.", 409);
+      if (!Number.isFinite(course.price_inr) || course.price_inr <= 0) {
+        return errorResponse("This course does not require a paid checkout.", 400);
       }
 
-      // Fast, guaranteed test/sandbox order ID
-      const orderId = `order_sim_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const { keyId, keySecret } = getRazorpayServerCredentials();
+      if (!/^rzp_(test|live)_/.test(keyId) || !keySecret) {
+        return errorResponse(
+          "Razorpay is not configured for this deployment. Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET to the Vercel environment, then redeploy.",
+          503,
+        );
+      }
+
+      const amountPaise = Math.round(course.price_inr * 100);
+      const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+      let razorpayOrder: {
+        id?: string;
+        amount?: number;
+        currency?: string;
+        notes?: Record<string, string>;
+      };
+      try {
+        const orderResponse = await fetch("https://api.razorpay.com/v1/orders", {
+          method: "POST",
+          headers: {
+            Authorization: `Basic ${auth}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            amount: amountPaise,
+            currency: "INR",
+            receipt: `sb_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`.slice(0, 40),
+            notes: {
+              course_id: course.id,
+              course_slug: course.slug,
+              student_id: user.userId,
+            },
+          }),
+        });
+        if (!orderResponse.ok) {
+          const detail = await orderResponse.text().catch(() => "");
+          console.error("Razorpay order API rejected request:", orderResponse.status, detail.slice(0, 500));
+          return errorResponse(
+            "Razorpay could not create the order. Check that the test/live API keys in Vercel match.",
+            502,
+          );
+        }
+        razorpayOrder = await orderResponse.json() as typeof razorpayOrder;
+      } catch (error) {
+        console.error("Razorpay order creation request failed:", error);
+        return errorResponse("Could not reach Razorpay to create the payment order.", 502);
+      }
+
+      if (!razorpayOrder.id || razorpayOrder.amount !== amountPaise) {
+        return errorResponse("Razorpay returned an invalid order. No payment has been taken.", 502);
+      }
+
       return jsonResponse({
-        orderId,
-        amount: amountPaise,
-        currency: "INR",
-        keyId: keyId || "rzp_test_sandbox",
-        title: courseTitle,
-        isLive: false,
+        orderId: razorpayOrder.id,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency || "INR",
+        keyId,
+        title: course.title,
+        isLive: true,
+        isTest: keyId.startsWith("rzp_test_"),
       });
     }
 
     // POST /api/lms/payment/verify
-    if (path === "payment/verify" && method === "POST") {
+    // Verify the HMAC signature and confirm a captured payment directly with Razorpay.
+    if ((path === "payment/verify" || path === "payments/verify") && method === "POST") {
+      if (!user.userId) return errorResponse("Please sign in again to verify your payment.", 401);
       const body = await req.json().catch(() => ({}));
-      const courseId = body.courseId || body.courseSlug;
-      if (!courseId) return errorResponse("Missing courseId");
-
-      const course = lmsDB.getCourse(courseId);
-      const studentId =
-        user.userId ||
-        body.userId ||
-        body.studentId ||
-        (body.userEmail
-          ? `usr_${Buffer.from(String(body.userEmail)).toString("hex").slice(0, 16)}`
-          : "guest_student");
-
-      const studentName = user.name || body.userName || body.displayName || "Student Learner";
-      const studentEmail = user.email || body.userEmail || "student@skillbridge.edu";
-      const priceInr = course?.price_inr && course.price_inr > 0 ? course.price_inr : 999;
-
-      // 1. Record purchase in LMS database
-      let purchase = null;
-      try {
-        purchase = lmsDB.recordPurchase({
-          userId: studentId,
-          courseIdOrSlug: courseId,
-          amountInr: priceInr,
-          razorpayOrderId: body.orderId || `order_${Date.now()}`,
-          razorpayPaymentId: body.paymentId || `pay_${Date.now()}`,
-        });
-      } catch (err) {
-        console.warn("Failed recording purchase in DB:", err);
+      const requestedCourseId = typeof body.courseId === "string" ? body.courseId : "";
+      const orderId = typeof body.orderId === "string" ? body.orderId : "";
+      const paymentId = typeof body.paymentId === "string" ? body.paymentId : "";
+      const signature = typeof body.signature === "string" ? body.signature.trim() : "";
+      if (!requestedCourseId || !orderId || !paymentId || !signature) {
+        return errorResponse("Missing course, order, payment, or signature details.", 400);
       }
 
-      // 2. Guarantee student is enrolled
-      let enrollment = null;
-      try {
-        enrollment = lmsDB.enrollStudent(studentId, courseId, studentName, studentEmail);
-      } catch (err) {
-        console.warn("Enrollment registration warning:", err);
+      const course = lmsDB.getCourse(requestedCourseId);
+      if (!course || course.status !== "published") return errorResponse("Course not found or not published.", 404);
+      if (!Number.isFinite(course.price_inr) || course.price_inr <= 0) {
+        return errorResponse("This course is not a paid course.", 400);
       }
+
+      const keyId = process.env["RAZORPAY_KEY_ID"]?.trim() || "";
+      const keySecret = process.env["RAZORPAY_KEY_SECRET"]?.trim() || "";
+      if (!/^rzp_(test|live)_/.test(keyId) || !keySecret) {
+        return errorResponse("Razorpay is not configured for this deployment.", 503);
+      }
+
+      // Razorpay Checkout signs order_id|payment_id using the API key secret.
+      const expectedSignature = crypto
+        .createHmac("sha256", keySecret)
+        .update(`${orderId}|${paymentId}`)
+        .digest("hex");
+      if (!/^[a-f0-9]{64}$/i.test(signature)) {
+        return errorResponse("Invalid Razorpay payment signature.", 400);
+      }
+      const expectedBytes = Buffer.from(expectedSignature, "hex");
+      const suppliedBytes = Buffer.from(signature, "hex");
+      if (expectedBytes.length !== suppliedBytes.length || !crypto.timingSafeEqual(expectedBytes, suppliedBytes)) {
+        return errorResponse("Razorpay signature verification failed. The course has not been unlocked.", 400);
+      }
+
+      const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
+      const razorpayHeaders = { Authorization: `Basic ${auth}`, "Content-Type": "application/json" };
+      const expectedAmount = Math.round(course.price_inr * 100);
+
+      let razorpayOrder: {
+        id?: string;
+        amount?: number;
+        currency?: string;
+        notes?: Record<string, string>;
+      };
+      try {
+        const orderResponse = await fetch(
+          `https://api.razorpay.com/v1/orders/${encodeURIComponent(orderId)}`,
+          { headers: razorpayHeaders },
+        );
+        if (!orderResponse.ok) return errorResponse("Could not confirm this Razorpay order.", 502);
+        razorpayOrder = await orderResponse.json() as typeof razorpayOrder;
+      } catch (error) {
+        console.error("Razorpay order verification request failed:", error);
+        return errorResponse("Could not reach Razorpay to verify the order.", 502);
+      }
+
+      if (
+        razorpayOrder.id !== orderId ||
+        razorpayOrder.amount !== expectedAmount ||
+        razorpayOrder.currency !== "INR" ||
+        razorpayOrder.notes?.["course_id"] !== course.id ||
+        razorpayOrder.notes?.["student_id"] !== user.userId
+      ) {
+        return errorResponse("This payment order does not match your account, course, or course price.", 403);
+      }
+
+      let razorpayPayment: {
+        id?: string;
+        order_id?: string;
+        amount?: number;
+        currency?: string;
+        status?: string;
+      };
+      try {
+        const paymentResponse = await fetch(
+          `https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`,
+          { headers: razorpayHeaders },
+        );
+        if (!paymentResponse.ok) return errorResponse("Could not confirm the Razorpay payment.", 502);
+        razorpayPayment = await paymentResponse.json() as typeof razorpayPayment;
+      } catch (error) {
+        console.error("Razorpay payment verification request failed:", error);
+        return errorResponse("Could not reach Razorpay to verify the payment.", 502);
+      }
+
+      if (
+        razorpayPayment.id !== paymentId ||
+        razorpayPayment.order_id !== orderId ||
+        razorpayPayment.amount !== expectedAmount ||
+        razorpayPayment.currency !== "INR"
+      ) {
+        return errorResponse("The Razorpay payment details do not match this course order.", 400);
+      }
+
+      if (razorpayPayment.status === "authorized") {
+        try {
+          const captureResponse = await fetch(
+            `https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}/capture`,
+            {
+              method: "POST",
+              headers: razorpayHeaders,
+              body: JSON.stringify({ amount: expectedAmount, currency: "INR" }),
+            },
+          );
+          if (!captureResponse.ok) {
+            const detail = await captureResponse.text().catch(() => "");
+            console.error("Razorpay capture failed:", captureResponse.status, detail.slice(0, 500));
+            return errorResponse("Payment was authorized but could not be captured. Course access has not been granted.", 402);
+          }
+          razorpayPayment = await captureResponse.json() as typeof razorpayPayment;
+        } catch (error) {
+          console.error("Razorpay capture request failed:", error);
+          return errorResponse("Payment capture could not be confirmed. Course access has not been granted.", 502);
+        }
+      }
+
+      if (razorpayPayment.status !== "captured") {
+        return errorResponse("Payment is not captured yet. The course has not been unlocked.", 402);
+      }
+
+      // Trust only the authenticated session identity, never a user ID sent in the request body.
+      const studentId = user.userId;
+      const studentName = user.name || String(body.userName || user.email?.split("@")[0] || "Student Learner");
+      const studentEmail = user.email || String(body.userEmail || "");
+      const purchase = lmsDB.recordPurchase({
+        userId: studentId,
+        courseIdOrSlug: course.id,
+        amountInr: course.price_inr,
+        razorpayOrderId: orderId,
+        razorpayPaymentId: paymentId,
+      });
+      const enrollment = lmsDB.enrollStudent(studentId, course.id, studentName, studentEmail);
 
       return jsonResponse({
         ok: true,
-        orderId: body.orderId || `order_${Date.now()}`,
-        paymentId: body.paymentId || `pay_${Date.now()}`,
-        amount: priceInr,
-        courseId: course?.id || courseId,
-        title: course?.title || "Skillbridge Course",
+        orderId,
+        paymentId,
+        amount: course.price_inr,
+        courseId: course.id,
+        title: course.title,
         enrolled: true,
         enrollment,
         purchase,
+        isLive: keyId.startsWith("rzp_live_"),
+        isTest: keyId.startsWith("rzp_test_"),
       });
     }
 
@@ -689,10 +1068,8 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         : body.video_url
           ? [body.video_url]
           : [];
-      const primaryVideoUrl =
-        body.video_url ||
-        videoUrls[0] ||
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+      // Do not seed a placeholder video when the teacher has not uploaded one.
+      const primaryVideoUrl = body.video_url || videoUrls[0] || "";
 
       const created = lmsDB.createCourse({
         title: body.title,
@@ -705,13 +1082,14 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         price_inr: Number(body.price_inr) || 999,
         preview_minutes: Number(body.preview_minutes) || 3,
         video_url: primaryVideoUrl,
-        video_urls: videoUrls.length > 0 ? videoUrls : [primaryVideoUrl],
+        video_urls: videoUrls,
         hours: Number(body.hours) || 10,
         level: body.level || "Intermediate",
         category: body.category || "Development",
-        rating: 5.0,
-        reviews: "1",
+        rating: 0,
+        reviews: "0",
         learners: "0",
+        bestseller: false,
       });
 
       return jsonResponse({ course: created });
@@ -745,8 +1123,55 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       return jsonResponse({ success: ok });
     }
 
+    // POST /api/lms/register-video
+    // Persist the URL after the browser uploads the bytes directly to Vercel Blob.
+    if (path === "register-video" && method === "POST") {
+      if (!user.isTeacher) return errorResponse("Forbidden: Instructor role required", 403);
+      const body = await req.json();
+      const courseId = typeof body.courseId === "string" ? body.courseId : "";
+      const videoUrl = typeof body.videoUrl === "string" ? body.videoUrl : "";
+      const lessonId = typeof body.lessonId === "string" && body.lessonId ? body.lessonId : null;
+      if (!courseId || !videoUrl) return errorResponse("Course id and video URL are required.");
+      let parsedVideoUrl: URL;
+      try {
+        parsedVideoUrl = new URL(videoUrl);
+      } catch {
+        return errorResponse("Invalid video URL.");
+      }
+      if (parsedVideoUrl.protocol !== "https:" || !parsedVideoUrl.hostname.endsWith(".blob.vercel-storage.com")) {
+        return errorResponse("Video must be uploaded to the configured Vercel Blob store.");
+      }
+
+      const course = lmsDB.getCourse(courseId);
+      if (!course) return errorResponse("Course not found.", 404);
+
+      if (lessonId) {
+        const snapshot = lmsDB.exportSnapshot();
+        const lesson = snapshot.lessons.find((item) => item.id === lessonId && (item.course_id === course.id || item.course_id === course.slug));
+        if (!lesson) return errorResponse("Lesson not found for this course.", 404);
+        const updatedLesson = lmsDB.updateLesson(lessonId, { video_url: videoUrl });
+        if (!updatedLesson) return errorResponse("Could not save video to the lesson.", 500);
+      } else {
+        let currentUrls = course.video_urls && Array.isArray(course.video_urls)
+          ? [...course.video_urls].filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
+          : course.video_url ? [course.video_url] : [];
+
+        // If this course has real Blob uploads, remove the old sample URLs
+        // that earlier versions inserted automatically during course creation.
+        if (videoUrl.includes(".blob.vercel-storage.com")) {
+          currentUrls = currentUrls.filter(
+            (url) => !url.includes("commondatastorage.googleapis.com/gtv-videos-bucket/sample/"),
+          );
+        }
+        if (!currentUrls.includes(videoUrl)) currentUrls.push(videoUrl);
+        lmsDB.updateCourse(course.id, { video_url: videoUrl, video_urls: currentUrls });
+      }
+
+      return jsonResponse({ videoUrl, fileName: String(body.fileName || ""), size: Number(body.size) || 0 });
+    }
+
     // POST /api/lms/upload-video
-    // The request body is the video file itself, not multipart/form-data.
+    // Legacy server-side upload route retained for compatibility with small files.
     if (path === "upload-video" && method === "POST") {
       if (!user.isTeacher) return errorResponse("Forbidden: Instructor role required", 403);
 
@@ -1169,7 +1594,25 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
       await tx`SELECT pg_advisory_xact_lock(736284910)`;
       const rows = await tx`SELECT state FROM skillbridge_lms_state WHERE id = 1`;
       if (rows.length > 0) {
-        lmsDB.importSnapshot(rows[0]!.state as import("./lms-db.server").LMSDatabase);
+        // PostgreSQL JSONB should normally be decoded to an object, but older
+        // rows/deployments may return a JSON-serialized string. Normalize both
+        // formats before importing so schema integrity checks can mutate it.
+        let snapshot: unknown = rows[0]!.state;
+        // Some earlier deployments stored the JSONB snapshot as a JSON string,
+        // and some drivers/legacy rows can expose that string more than once.
+        // Decode repeatedly until it is an object, rather than importing a string
+        // (which prevents every mutation from being persisted).
+        for (let depth = 0; typeof snapshot === "string" && depth < 3; depth += 1) {
+          try {
+            snapshot = JSON.parse(snapshot);
+          } catch {
+            break;
+          }
+        }
+        if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+          throw new Error("Neon LMS state is not a valid database snapshot.");
+        }
+        lmsDB.importSnapshot(snapshot as import("./lms-db.server").LMSDatabase);
       } else {
         await tx`
           INSERT INTO skillbridge_lms_state (id, state, updated_at)

@@ -41,6 +41,17 @@ export interface CourseLesson {
   updated_at: string;
 }
 
+export interface CourseReview {
+  id: string;
+  course_id: string;
+  student_id: string;
+  student_name: string;
+  rating: number;
+  review_text: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Enrollment {
   id: string;
   student_id: string;
@@ -196,9 +207,18 @@ export interface LocalProfile {
   created_at: string;
 }
 
+export interface PasswordResetToken {
+  id: string;
+  user_id: string;
+  token_hash: string;
+  expires_at: string;
+  created_at: string;
+}
+
 export interface LMSDatabase {
   courses: Course[];
   lessons: CourseLesson[];
+  course_reviews: CourseReview[];
   enrollments: Enrollment[];
   lesson_progress: LessonProgress[];
   assignments: Assignment[];
@@ -211,6 +231,7 @@ export interface LMSDatabase {
   sessions: LocalSession[];
   purchases: LocalPurchase[];
   profiles: LocalProfile[];
+  password_reset_tokens: PasswordResetToken[];
 }
 
 export function hashPassword(password: string, salt: string): string {
@@ -219,6 +240,12 @@ export function hashPassword(password: string, salt: string): string {
 
 const DB_DIR = path.resolve(process.cwd(), "data");
 const DB_FILE = path.resolve(DB_DIR, "lms-db.json");
+
+const SAMPLE_VIDEO_URL_MARKER = "commondatastorage.googleapis.com/gtv-videos-bucket/sample/";
+
+function isSampleVideoUrl(videoUrl: string | null | undefined): boolean {
+  return typeof videoUrl === "string" && videoUrl.includes(SAMPLE_VIDEO_URL_MARKER);
+}
 
 const INITIAL_COURSES: Course[] = [
   {
@@ -238,9 +265,9 @@ const INITIAL_COURSES: Course[] = [
     hours: 16,
     level: "Intermediate",
     category: "Web Development",
-    rating: 4.7,
-    reviews: "8,932",
-    learners: "31,764",
+    rating: 0,
+    reviews: "0",
+    learners: "0",
     bestseller: false,
     created_at: "2026-09-01T00:00:00.000Z",
     updated_at: "2026-09-29T06:03:15.734Z",
@@ -261,10 +288,10 @@ const INITIAL_COURSES: Course[] = [
     hours: 18,
     level: "Advanced",
     category: "Web Development",
-    rating: 4.8,
-    reviews: "12,480",
-    learners: "48,210",
-    bestseller: true,
+    rating: 0,
+    reviews: "0",
+    learners: "0",
+    bestseller: false,
     created_at: "2026-09-01T00:00:00.000Z",
     updated_at: "2026-09-29T06:03:15.734Z",
   },
@@ -285,10 +312,10 @@ const INITIAL_COURSES: Course[] = [
     hours: 20,
     level: "Intermediate",
     category: "Software Architecture",
-    rating: 4.9,
-    reviews: "15,207",
-    learners: "62,905",
-    bestseller: true,
+    rating: 0,
+    reviews: "0",
+    learners: "0",
+    bestseller: false,
     created_at: "2026-09-01T00:00:00.000Z",
     updated_at: "2026-09-29T06:03:15.734Z",
   },
@@ -309,189 +336,16 @@ const INITIAL_COURSES: Course[] = [
     hours: 24,
     level: "Intermediate",
     category: "Computer Science",
-    rating: 4.6,
-    reviews: "21,338",
-    learners: "84,120",
+    rating: 0,
+    reviews: "0",
+    learners: "0",
     bestseller: false,
     created_at: "2026-09-01T00:00:00.000Z",
     updated_at: "2026-09-29T06:03:15.734Z",
   },
 ];
 
-const INITIAL_LESSONS: CourseLesson[] = [
-  // React Performance Lessons
-  {
-    id: "les-react-1",
-    course_id: "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
-    title: "1. Profiling Renders with React DevTools",
-    description: "Understand commit phase, flame graphs, and identify unnecessary re-renders.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-    duration: "18:40",
-    lesson_order: 1,
-    is_required: true,
-    is_preview: true,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-react-2",
-    course_id: "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
-    title: "2. Strategic Memoization (useMemo, useCallback & React.memo)",
-    description: "When memoization saves CPU cycles and when it costs more than re-running.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-    duration: "24:15",
-    lesson_order: 2,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-react-3",
-    course_id: "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
-    title: "3. Virtualization & DOM Pruning at Scale",
-    description: "Building 100,000+ item infinite scrolls with dynamic windowing and zero lag.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-    duration: "28:50",
-    lesson_order: 3,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-
-  // Advanced TypeScript Lessons
-  {
-    id: "les-ts-1",
-    course_id: "45c4dd4a-715b-4f7d-b508-9c7501f2a63b",
-    title: "1. Advanced Type Narrowing & Discriminated Unions",
-    description: "Master pattern matching and compile-time exhaustiveness checking.",
-    video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    duration: "15:20",
-    lesson_order: 1,
-    is_required: true,
-    is_preview: true,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-ts-2",
-    course_id: "45c4dd4a-715b-4f7d-b508-9c7501f2a63b",
-    title: "2. Template Literal Types & Key Remapping",
-    description: "Create type-safe event buses and DSLs directly in TypeScript's type system.",
-    video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    duration: "21:30",
-    lesson_order: 2,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-ts-3",
-    course_id: "45c4dd4a-715b-4f7d-b508-9c7501f2a63b",
-    title: "3. Conditional Types & Distributive Inference (infer keyword)",
-    description: "Unwrap nested promises, function arguments, and build recursive utility types.",
-    video_url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-    duration: "26:45",
-    lesson_order: 3,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-
-  // System Design Lessons
-  {
-    id: "les-sys-1",
-    course_id: "ed458579-67a4-41bc-b426-ff10ce69551e",
-    title: "1. High Availability & Load Balancing Strategies",
-    description: "L4 vs L7 routing, consistent hashing, and failover topologies.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-    duration: "22:10",
-    lesson_order: 1,
-    is_required: true,
-    is_preview: true,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-sys-2",
-    course_id: "ed458579-67a4-41bc-b426-ff10ce69551e",
-    title: "2. Distributed Caching & Cache Eviction (Redis / Memcached)",
-    description: "Cache-aside, write-through, stampede prevention, and Redis clustering.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-    duration: "27:40",
-    lesson_order: 2,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-sys-3",
-    course_id: "ed458579-67a4-41bc-b426-ff10ce69551e",
-    title: "3. Database Sharding & Leaderless Replication",
-    description: "Handling multi-terabyte writes with partitioning keys and quorum reads.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-    duration: "31:00",
-    lesson_order: 3,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-
-  // DSA Lessons
-  {
-    id: "les-dsa-1",
-    course_id: "1ac4b07c-8a19-4f77-a712-9bb1a665bc7e",
-    title: "1. Asymptotic Complexity & Two-Pointer Patterns",
-    description: "Sliding window, fast & slow pointers, and rigorous Big-O space/time proofs.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-    duration: "19:30",
-    lesson_order: 1,
-    is_required: true,
-    is_preview: true,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-dsa-2",
-    course_id: "1ac4b07c-8a19-4f77-a712-9bb1a665bc7e",
-    title: "2. Graph Traversal: BFS, DFS & Topological Sorting",
-    description: "Cycle detection, shortest paths with Dijkstra, and dependency resolution.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-    duration: "25:15",
-    lesson_order: 2,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-  {
-    id: "les-dsa-3",
-    course_id: "1ac4b07c-8a19-4f77-a712-9bb1a665bc7e",
-    title: "3. Dynamic Programming: State Transitions & Memoization",
-    description: "Knapsack variants, longest common subsequence, and space-optimized DP tables.",
-    video_url:
-      "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-    duration: "34:00",
-    lesson_order: 3,
-    is_required: true,
-    is_preview: false,
-    created_at: "2026-09-01T00:00:00.000Z",
-    updated_at: "2026-09-01T00:00:00.000Z",
-  },
-];
+const INITIAL_LESSONS: CourseLesson[] = [];
 
 const INITIAL_ASSIGNMENTS: Assignment[] = [
   {
@@ -881,6 +735,7 @@ class DatabaseManager {
     this.db = {
       courses: INITIAL_COURSES,
       lessons: INITIAL_LESSONS,
+      course_reviews: [],
       enrollments: INITIAL_ENROLLMENTS,
       lesson_progress: INITIAL_LESSON_PROGRESS,
       assignments: INITIAL_ASSIGNMENTS,
@@ -893,6 +748,7 @@ class DatabaseManager {
       sessions: [],
       purchases: [],
       profiles: INITIAL_PROFILES,
+      password_reset_tokens: [],
     };
     this.write();
     return this.db;
@@ -916,8 +772,16 @@ class DatabaseManager {
       db.purchases = [];
       changed = true;
     }
+    if (!db.password_reset_tokens) {
+      db.password_reset_tokens = [];
+      changed = true;
+    }
     if (!db.profiles || db.profiles.length === 0) {
       db.profiles = [...INITIAL_PROFILES];
+      changed = true;
+    }
+    if (!db.course_reviews) {
+      db.course_reviews = [];
       changed = true;
     }
     if (!db.enrollments) {
@@ -935,6 +799,36 @@ class DatabaseManager {
         changed = true;
       }
     }
+    // Remove legacy starter videos and their seeded lesson rows from the persistent snapshot.
+    // These public sample clips and fixed durations were placeholders, not instructor uploads.
+    const placeholderLessonIds = new Set(
+      (Array.isArray(db.lessons) ? db.lessons : [])
+        .filter((lesson) => isSampleVideoUrl(lesson.video_url))
+        .map((lesson) => lesson.id),
+    );
+    if (placeholderLessonIds.size > 0) {
+      db.lessons = db.lessons.filter((lesson) => !placeholderLessonIds.has(lesson.id));
+      db.lesson_progress = (db.lesson_progress || []).filter(
+        (progress) => !placeholderLessonIds.has(progress.lesson_id),
+      );
+      changed = true;
+    }
+
+    // Clear sample media URLs from seeded courses while preserving every non-sample upload.
+    for (const course of db.courses || []) {
+      if (isSampleVideoUrl(course.video_url)) {
+        course.video_url = "";
+        changed = true;
+      }
+      if (Array.isArray(course.video_urls)) {
+        const realVideoUrls = course.video_urls.filter((videoUrl) => !isSampleVideoUrl(videoUrl));
+        if (realVideoUrls.length !== course.video_urls.length) {
+          course.video_urls = realVideoUrls;
+          changed = true;
+        }
+      }
+    }
+
     if (changed) {
       this.write();
     }
@@ -990,25 +884,35 @@ class DatabaseManager {
   getAllCourses(): Course[] {
     const db = this.read();
     return db.courses.map((c) => {
-      const videoUrls =
+      let videoUrls =
         c.video_urls && Array.isArray(c.video_urls)
-          ? c.video_urls.filter(Boolean)
+          ? c.video_urls.filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
           : c.video_url
             ? [c.video_url]
             : [];
+      // Never count or expose public sample clips as course uploads.
+      videoUrls = videoUrls.filter((url) => !isSampleVideoUrl(url));
+      videoUrls = videoUrls.filter((url, index, urls) => urls.indexOf(url) === index);
       const courseLessons = db.lessons.filter(
         (l) => l.course_id === c.id || l.course_id === c.slug,
       );
-      const lessonsCount =
-        courseLessons.length > 0
-          ? courseLessons.length
-          : videoUrls.length > 0
-            ? videoUrls.length
-            : 3;
+      const lessonsCount = courseLessons.length > 0 ? courseLessons.length : videoUrls.length;
+      const primaryVideoUrl = videoUrls.includes(c.video_url || "") ? c.video_url || "" : videoUrls[0] || "";
+      const courseReviews = db.course_reviews.filter((review) => review.course_id === c.id);
+      const rating = courseReviews.length
+        ? Math.round((courseReviews.reduce((sum, review) => sum + review.rating, 0) / courseReviews.length) * 10) / 10
+        : 0;
+      const enrollmentCount = db.enrollments.filter(
+        (enrollment) => enrollment.course_id === c.id || enrollment.course_id === c.slug,
+      ).length;
       return {
         ...c,
+        rating,
+        reviews: String(courseReviews.length),
+        learners: String(enrollmentCount),
+        bestseller: enrollmentCount >= 10,
         video_urls: videoUrls,
-        video_url: c.video_url || videoUrls[0] || "",
+        video_url: primaryVideoUrl,
         lessons_count: lessonsCount,
       };
     });
@@ -1028,21 +932,147 @@ class DatabaseManager {
       db.courses.find((x) => x.id === idOrSlug || x.slug === idOrSlug) ||
       db.courses[0];
     if (!c) return null;
-    const videoUrls =
+    let videoUrls =
       c.video_urls && Array.isArray(c.video_urls)
-        ? c.video_urls.filter(Boolean)
+        ? c.video_urls.filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
         : c.video_url
           ? [c.video_url]
           : [];
+    videoUrls = videoUrls.filter((url) => !isSampleVideoUrl(url));
+    videoUrls = videoUrls.filter((url, index, urls) => urls.indexOf(url) === index);
     const courseLessons = db.lessons.filter((l) => l.course_id === c.id || l.course_id === c.slug);
-    const lessonsCount =
-      courseLessons.length > 0 ? courseLessons.length : videoUrls.length > 0 ? videoUrls.length : 3;
+    const lessonsCount = courseLessons.length > 0 ? courseLessons.length : videoUrls.length;
+    const primaryVideoUrl = videoUrls.includes(c.video_url || "") ? c.video_url || "" : videoUrls[0] || "";
+    const courseReviews = db.course_reviews.filter((review) => review.course_id === c.id);
+    const rating = courseReviews.length
+      ? Math.round((courseReviews.reduce((sum, review) => sum + review.rating, 0) / courseReviews.length) * 10) / 10
+      : 0;
+    const enrollmentCount = db.enrollments.filter(
+      (enrollment) => enrollment.course_id === c.id || enrollment.course_id === c.slug,
+    ).length;
     return {
       ...c,
+      rating,
+      reviews: String(courseReviews.length),
+      learners: String(enrollmentCount),
+      bestseller: enrollmentCount >= 10,
       video_urls: videoUrls,
-      video_url: c.video_url || videoUrls[0] || "",
+      video_url: primaryVideoUrl,
       lessons_count: lessonsCount,
     };
+  }
+
+  getCourseReviews(courseIdOrSlug: string): CourseReview[] {
+    const db = this.read();
+    const course = db.courses.find((item) => item.id === courseIdOrSlug || item.slug === courseIdOrSlug);
+    if (!course) return [];
+    return db.course_reviews
+      .filter((review) => review.course_id === course.id)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
+
+  getUserCourseReview(studentId: string, courseIdOrSlug: string): CourseReview | null {
+    const db = this.read();
+    const course = db.courses.find((item) => item.id === courseIdOrSlug || item.slug === courseIdOrSlug);
+    if (!course) return null;
+    return db.course_reviews.find(
+      (review) => review.course_id === course.id && review.student_id === studentId,
+    ) || null;
+  }
+
+  getCourseReviewSummary(courseIdOrSlug: string) {
+    const db = this.read();
+    const course = db.courses.find((item) => item.id === courseIdOrSlug || item.slug === courseIdOrSlug);
+    if (!course) return null;
+    const reviews = db.course_reviews
+      .filter((review) => review.course_id === course.id)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+    const rating = reviews.length
+      ? Math.round((reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length) * 10) / 10
+      : 0;
+    const learners = db.enrollments.filter(
+      (enrollment) => enrollment.course_id === course.id || enrollment.course_id === course.slug,
+    ).length;
+    return {
+      courseId: course.id,
+      rating,
+      reviewCount: reviews.length,
+      learners,
+      // Display Bestseller only after ten real enrolments, not from a manually seeded flag.
+      bestseller: learners >= 10,
+      reviews: reviews.slice(0, 20).map((review) => ({
+        id: review.id,
+        studentName: review.student_name,
+        rating: review.rating,
+        reviewText: review.review_text,
+        createdAt: review.created_at,
+      })),
+    };
+  }
+
+  saveCourseReview(params: {
+    courseIdOrSlug: string;
+    studentId: string;
+    studentName: string;
+    rating: number;
+    reviewText: string;
+  }): CourseReview {
+    const db = this.read();
+    const course = db.courses.find(
+      (item) => item.id === params.courseIdOrSlug || item.slug === params.courseIdOrSlug,
+    );
+    if (!course || course.status !== "published") throw new Error("Published course not found.");
+    const rating = Number(params.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      throw new Error("Choose a rating from 1 to 5 stars.");
+    }
+    const reviewText = String(params.reviewText || "").trim().slice(0, 1200);
+    if (reviewText.length < 5) throw new Error("Write at least 5 characters for your review.");
+
+    const hasEnrollment = db.enrollments.some(
+      (enrollment) =>
+        enrollment.student_id === params.studentId &&
+        (enrollment.course_id === course.id || enrollment.course_id === course.slug),
+    );
+    const hasPurchase = db.purchases.some(
+      (purchase) =>
+        purchase.user_id === params.studentId &&
+        (purchase.course_id === course.id || purchase.course_id === course.slug),
+    );
+    if (!hasEnrollment && !hasPurchase) {
+      throw new Error("Only students enrolled in this course can submit a review.");
+    }
+
+    const existing = db.course_reviews.find(
+      (review) => review.course_id === course.id && review.student_id === params.studentId,
+    );
+    const now = new Date().toISOString();
+    const profile = db.profiles.find((item) => item.id === params.studentId);
+    const localUser = db.users.find((item) => item.id === params.studentId);
+    const savedName = (profile?.display_name || localUser?.user_metadata?.display_name || params.studentName || "Student")
+      .trim()
+      .slice(0, 80);
+    if (existing) {
+      existing.rating = rating;
+      existing.review_text = reviewText;
+      existing.student_name = savedName || "Student";
+      existing.updated_at = now;
+      this.write();
+      return existing;
+    }
+    const review: CourseReview = {
+      id: crypto.randomUUID(),
+      course_id: course.id,
+      student_id: params.studentId,
+      student_name: savedName || "Student",
+      rating,
+      review_text: reviewText,
+      created_at: now,
+      updated_at: now,
+    };
+    db.course_reviews.push(review);
+    this.write();
+    return review;
   }
 
   createCourse(course: Omit<Course, "id" | "created_at" | "updated_at">): Course {
@@ -1137,45 +1167,70 @@ class DatabaseManager {
     const db = this.read();
     const course = this.getCourse(courseIdOrSlug);
     if (!course) return [];
+
     const directLessons = db.lessons
-      .filter((l) => l.course_id === course.id || l.course_id === course.slug)
+      .filter(
+        (lesson) =>
+          (lesson.course_id === course.id || lesson.course_id === course.slug) &&
+          !isSampleVideoUrl(lesson.video_url),
+      )
       .sort((a, b) => a.lesson_order - b.lesson_order);
 
-    if (directLessons.length > 0) {
-      return directLessons;
-    }
-
-    // Always provide 3 curriculum lectures if no individual lesson rows were saved yet
-    const videoUrls =
+    let videoUrls =
       course.video_urls && Array.isArray(course.video_urls) && course.video_urls.length > 0
-        ? course.video_urls
+        ? [...course.video_urls]
         : course.video_url
           ? [course.video_url]
-          : [
-              "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-              "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-              "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-            ];
+          : [];
+    if (course.video_url && !videoUrls.includes(course.video_url)) {
+      videoUrls.unshift(course.video_url);
+    }
+    videoUrls = videoUrls
+      .filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
+      .filter((url) => !url.includes("commondatastorage.googleapis.com/gtv-videos-bucket/sample/"))
+      .filter((url, index, urls) => urls.indexOf(url) === index);
 
-    const titles = [
-      "1. Course Overview & System Architecture",
-      "2. Core Concepts & In-Depth Walkthrough",
-      "3. Production Patterns & Capstone Review",
-    ];
+    const titleFromUrl = (videoUrl: string, index: number) => {
+      try {
+        const filename = decodeURIComponent(new URL(videoUrl).pathname.split("/").pop() || "");
+        const withoutExtension = filename.replace(/\.[^.]+$/, "");
+        const readable = withoutExtension
+          .replace(/[-_]+/g, " ")
+          .replace(/\s+/g, " ")
+          .trim()
+          .replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
+        return readable || `Video ${index + 1}`;
+      } catch {
+        return `Video ${index + 1}`;
+      }
+    };
 
-    return Array.from({ length: Math.max(3, videoUrls.length) }).map((_, i) => ({
-      id: `les_${course.slug}_${i + 1}`,
-      course_id: course.id,
-      title: titles[i] || `${i + 1}. Module Lecture ${i + 1}`,
-      description: `In-depth technical lecture module for ${course.title}.`,
-      video_url: videoUrls[i] || videoUrls[0] || course.video_url || "",
-      duration: "1:00",
-      lesson_order: i + 1,
-      is_required: true,
-      is_preview: i === 0,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }));
+    // Reconcile course-level video assets with lesson rows. Existing lesson titles
+    // are left untouched; any uploaded asset that lacks a lesson becomes a
+    // persistent lesson with a readable filename-derived title.
+    const lessonVideoUrls = new Set(directLessons.map((lesson) => lesson.video_url).filter(Boolean));
+    const missingVideoUrls = videoUrls.filter((videoUrl) => !lessonVideoUrls.has(videoUrl));
+    if (missingVideoUrls.length > 0) {
+      const nextOrder = directLessons.reduce((max, lesson) => Math.max(max, lesson.lesson_order || 0), 0);
+      const addedLessons: CourseLesson[] = missingVideoUrls.map((videoUrl, index) => ({
+        id: `les_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        course_id: course.id,
+        title: titleFromUrl(videoUrl, nextOrder + index),
+        description: course.description || "",
+        video_url: videoUrl,
+        duration: "1:00",
+        lesson_order: nextOrder + index + 1,
+        is_required: true,
+        is_preview: directLessons.length === 0 && index === 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }));
+      db.lessons.push(...addedLessons);
+      this.write();
+      return [...directLessons, ...addedLessons].sort((a, b) => a.lesson_order - b.lesson_order);
+    }
+
+    return directLessons;
   }
 
   addLesson(
@@ -1345,16 +1400,41 @@ class DatabaseManager {
     isCompleted: boolean;
     certificateId?: string;
   } {
-    const db = this.read();
     const course = this.getCourse(params.courseIdOrSlug);
     if (!course) throw new Error("Course not found");
 
-    const lesson = db.lessons.find((l) => l.id === params.lessonId && l.course_id === course.id);
-    if (!lesson) throw new Error("Lesson not found in course");
+    // Older deployments generated virtual curriculum IDs from course URLs. Reconcile
+    // those URLs into persistent lesson rows before recording student progress.
+    this.getLessonsForCourse(course.id);
+    const db = this.read();
+    const courseLessons = db.lessons
+      .filter((item) => item.course_id === course.id || item.course_id === course.slug)
+      .sort((a, b) => a.lesson_order - b.lesson_order);
 
-    // Upsert lesson progress (Unique student_id + lesson_id constraint)
+    let lesson = courseLessons.find((item) => item.id === params.lessonId);
+    if (!lesson) {
+      // Be backward-compatible with a student tab opened before virtual lesson IDs
+      // were migrated to database-backed IDs. Resolve only IDs that encode this
+      // exact course slug and a one-based curriculum index.
+      const videoPrefix = `les_${course.slug}_video_`;
+      const oldPrefix = `les_${course.slug}_`;
+      let legacyIndex = 0;
+      if (params.lessonId.startsWith(videoPrefix)) {
+        legacyIndex = Number(params.lessonId.slice(videoPrefix.length));
+      } else if (params.lessonId.startsWith(oldPrefix)) {
+        const suffix = params.lessonId.slice(oldPrefix.length);
+        if (/^\d+$/.test(suffix)) legacyIndex = Number(suffix);
+      }
+      if (Number.isInteger(legacyIndex) && legacyIndex > 0) {
+        lesson = courseLessons[legacyIndex - 1];
+      }
+    }
+    if (!lesson) throw new Error("Lesson not found in course. Refresh the course page and try again.");
+
+    // Always store progress against the canonical database lesson ID.
+    const canonicalLessonId = lesson.id;
     const existingProgIdx = db.lesson_progress.findIndex(
-      (p) => p.student_id === params.studentId && p.lesson_id === params.lessonId,
+      (p) => p.student_id === params.studentId && p.lesson_id === canonicalLessonId,
     );
 
     const now = new Date().toISOString();
@@ -1370,7 +1450,7 @@ class DatabaseManager {
         id: `prog_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         student_id: params.studentId,
         course_id: course.id,
-        lesson_id: params.lessonId,
+        lesson_id: canonicalLessonId,
         completed: params.completed,
         completed_at: params.completed ? now : null,
         updated_at: now,
@@ -1397,7 +1477,6 @@ class DatabaseManager {
     }
 
     // Recalculate progress: completed required lessons / total required lessons * 100
-    const courseLessons = db.lessons.filter((l) => l.course_id === course.id);
     const requiredLessons = courseLessons.filter((l) => l.is_required);
     const totalRequired = requiredLessons.length || courseLessons.length || 1;
 
@@ -1966,35 +2045,88 @@ class DatabaseManager {
     return user;
   }
 
+  createPasswordResetToken(email: string, tokenHash: string, expiresAt: string): boolean {
+    const db = this.read();
+    const cleanEmail = email.trim().toLowerCase();
+    const user = db.users.find((item) => item.email.toLowerCase() === cleanEmail);
+    if (!user) return false;
+
+    const now = Date.now();
+    const recentRequest = (db.password_reset_tokens || []).some(
+      (item) =>
+        item.user_id === user.id &&
+        now - new Date(item.created_at).getTime() < 60_000,
+    );
+    if (recentRequest) return false;
+
+    db.password_reset_tokens = (db.password_reset_tokens || []).filter(
+      (item) => item.user_id !== user.id && new Date(item.expires_at).getTime() > now,
+    );
+    db.password_reset_tokens.push({
+      id: crypto.randomUUID(),
+      user_id: user.id,
+      token_hash: tokenHash,
+      expires_at: expiresAt,
+      created_at: new Date().toISOString(),
+    });
+    this.write();
+    return true;
+  }
+
+  cancelPasswordResetToken(tokenHash: string): void {
+    const db = this.read();
+    db.password_reset_tokens = (db.password_reset_tokens || []).filter(
+      (item) => item.token_hash !== tokenHash,
+    );
+    this.write();
+  }
+
+  resetPasswordWithToken(tokenHash: string, password: string): LocalUser | null {
+    const db = this.read();
+    const now = Date.now();
+    const resetToken = (db.password_reset_tokens || []).find(
+      (item) =>
+        item.token_hash === tokenHash &&
+        new Date(item.expires_at).getTime() > now,
+    );
+    if (!resetToken) return null;
+
+    const user = db.users.find((item) => item.id === resetToken.user_id);
+    if (!user) {
+      db.password_reset_tokens = (db.password_reset_tokens || []).filter(
+        (item) => item.token_hash !== tokenHash,
+      );
+      this.write();
+      return null;
+    }
+
+    const salt = crypto.randomBytes(16).toString("hex");
+    user.salt = salt;
+    user.password_hash = hashPassword(password, salt);
+    user.updated_at = new Date().toISOString();
+
+    // A password reset invalidates every outstanding reset link and login
+    // session for this account.
+    db.password_reset_tokens = (db.password_reset_tokens || []).filter(
+      (item) => item.user_id !== user.id,
+    );
+    db.sessions = db.sessions.filter((session) => session.user_id !== user.id);
+    this.write();
+    return user;
+  }
+
   authenticateUser(
     email: string,
     password: string,
   ): { user: LocalUser; session: LocalSession; roles: string[] } | null {
-    const db = this.read();
     const cleanEmail = email.trim().toLowerCase();
     const user = this.findUserByEmail(cleanEmail);
-    if (!user) {
-      const role =
-        cleanEmail.includes("teach") ||
-        cleanEmail.includes("instructor") ||
-        cleanEmail.includes("faculty")
-          ? "teacher"
-          : "student";
-      const registered = this.registerUser({
-        email: cleanEmail,
-        password,
-        name: cleanEmail.split("@")[0],
-        role,
-      });
-      return { user: registered.user, session: registered.session, roles: registered.roles };
-    }
+    // Login must only authenticate an existing account. Signup is handled by
+    // the signup endpoint; never create an account or replace its password here.
+    if (!user) return null;
 
     const hash = hashPassword(password, user.salt);
-    if (hash !== user.password_hash) {
-      user.password_hash = hash;
-      user.updated_at = new Date().toISOString();
-      this.write();
-    }
+    if (hash !== user.password_hash) return null;
 
     const session = this.createSession(user.id);
     const roles = this.getUserRoles(user.id);

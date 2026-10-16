@@ -60,14 +60,6 @@ const STUDENT_NAV_ITEMS: { id: StudentView; label: string; icon: LucideIcon }[] 
   { id: "analytics", label: "Learning Analytics", icon: BarChart3 },
 ];
 
-const CATEGORIES = [
-  "Web Development",
-  "Frontend Architecture",
-  "Backend & Cloud",
-  "System Design",
-  "Algorithms & DSA",
-];
-
 interface StudentLayoutProps {
   view: StudentView;
   setView: (view: StudentView) => void;
@@ -78,6 +70,8 @@ interface StudentLayoutProps {
   avatarUrl?: string | null;
   user?: LocalUser | null;
   signOut: () => void;
+  categories: string[];
+  onSelectCategory: (category: string) => void;
   children: React.ReactNode;
 }
 
@@ -91,6 +85,8 @@ function StudentLayout({
   avatarUrl,
   user,
   signOut,
+  categories,
+  onSelectCategory,
   children,
 }: StudentLayoutProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -173,16 +169,25 @@ function StudentLayout({
               />
             </Button>
             {exploreOpen && (
-              <div className="absolute left-0 top-12 w-64 rounded-md border border-border bg-card p-2 shadow-lg z-50">
-                {CATEGORIES.map((category) => (
-                  <button
-                    key={category}
-                    onClick={() => changeView("courses")}
-                    className="flex w-full items-center justify-between rounded px-3 py-2 text-left text-sm hover:bg-secondary cursor-pointer"
-                  >
-                    {category} <ChevronRight className="size-4 text-muted-foreground" />
-                  </button>
-                ))}
+              <div className="absolute left-0 top-12 z-50 w-64 rounded-md border border-border bg-card p-2 shadow-lg">
+                {categories.length > 0 ? (
+                  categories.map((category) => (
+                    <button
+                      key={category}
+                      onClick={() => {
+                        onSelectCategory(category);
+                        changeView("courses");
+                      }}
+                      className="flex w-full cursor-pointer items-center justify-between rounded px-3 py-2 text-left text-sm hover:bg-secondary"
+                    >
+                      {category} <ChevronRight className="size-4 text-muted-foreground" />
+                    </button>
+                  ))
+                ) : (
+                  <p className="px-3 py-2 text-sm text-muted-foreground">
+                    No course categories available yet.
+                  </p>
+                )}
               </div>
             )}
           </div>
