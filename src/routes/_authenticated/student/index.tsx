@@ -45,6 +45,8 @@ import { CodeLabView } from "@/components/student/CodeLabView";
 import { RecallDecksView } from "@/components/student/RecallDecksView";
 import { FocusStudioView } from "@/components/student/FocusStudioView";
 import { AnalyticsView } from "@/components/student/AnalyticsView";
+import { SkillDNAView } from "@/components/student/SkillDNAView";
+import { AssignmentAutopsyView } from "@/components/student/AssignmentAutopsyView";
 import { ProfileEditor } from "@/components/ProfileEditor";
 
 import tsThumb from "@/assets/course-typescript.jpg";
@@ -1525,6 +1527,9 @@ function StudentDashboardPage() {
       {/* VIEW: FOCUS & POMODORO STUDIO (DEEP WORK ANTI-DISTRACTION) */}
       {/* ------------------------------------------------------------- */}
       {currentView === "focus" && <FocusStudioView />}
+
+      {currentView === "skill-dna" && data && <SkillDNAView data={data} />}
+      {currentView === "assignment-autopsy" && data && <AssignmentAutopsyView data={data} />}
 
       {/* ------------------------------------------------------------- */}
       {/* VIEW 5: PROGRESS ANALYTICS (RECHARTS VISUALIZATION) */}

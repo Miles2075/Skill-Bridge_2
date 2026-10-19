@@ -72,6 +72,8 @@ export type StudentNavView =
   | "focus"
   | "progress"
   | "grades"
+  | "skill-dna"
+  | "assignment-autopsy"
   | "certificates"
   | "profile"
   | "settings";
@@ -265,6 +267,8 @@ function StudentRouteLayout() {
     },
     { id: "progress", label: "Progress", icon: TrendingUp },
     { id: "grades", label: "Grades / Results", icon: BarChart3 },
+    { id: "skill-dna", label: "Skill DNA", icon: Brain, badge: "Skills" },
+    { id: "assignment-autopsy", label: "Assignment Autopsy", icon: ClipboardList, badge: "Feedback" },
     {
       id: "certificates",
       label: "Certificates",
