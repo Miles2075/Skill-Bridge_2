@@ -2907,7 +2907,7 @@ function TeachDashboardPage() {
                 onChange={(e) => setSelectedCourseFilter(e.target.value)}
                 className="h-8.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700"
               >
-                <option value="all">All Cohorts</option>
+                <option value="all">All Courses</option>
                 {rows.map((r) => (
                   <option key={r.slug} value={r.slug}>
                     {r.title}
