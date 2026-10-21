@@ -1081,6 +1081,25 @@ function TeachDashboardPage() {
     }
   };
 
+  const handleDeleteAssignment = async (assignment: AssignmentDefinition) => {
+    const confirmed = window.confirm(
+      `Delete "${assignment.title}"? This also permanently removes its saved submissions and grading feedback. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    try {
+      const result = await lmsClient.deleteAssignment(assignment.id);
+      if (!result.success) throw new Error("The assignment could not be deleted.");
+      setAssignmentDefs((current) => current.filter((item) => item.id !== assignment.id));
+      setSubmissions((current) => current.filter((item) => item.assignmentId !== assignment.id));
+      setMsg({ text: `Assignment "${assignment.title}" deleted.` });
+      window.dispatchEvent(new CustomEvent("lms_data_updated"));
+      await loadInstructorData();
+    } catch (err: unknown) {
+      setMsg({ text: err instanceof Error ? err.message : "Failed to delete assignment", isError: true });
+    }
+  };
+
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAsgTitle.trim() || !newAsgDesc.trim()) {
@@ -2683,15 +2702,25 @@ function TeachDashboardPage() {
                           Submissions: <strong>{submissions.filter((submission) => submission.assignmentId === asg.id).length}</strong>
                         </span>
                       </span>
-                      <button
-                        onClick={() => {
-                          setSubmissionFilter("all");
-                          switchView("submissions");
-                        }}
-                        className="font-bold text-teal-700 hover:underline cursor-pointer"
-                      >
-                        Review Submissions ({submissions.filter((submission) => submission.assignment_id === asg.id).length}) →
-                      </button>
+                      <div className="flex items-center gap-4">
+                        <button
+                          onClick={() => {
+                            setSubmissionFilter("all");
+                            switchView("submissions");
+                          }}
+                          className="font-bold text-teal-700 hover:underline cursor-pointer"
+                        >
+                          Review Submissions ({submissions.filter((submission) => submission.assignmentId === asg.id).length}) →
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteAssignment(asg)}
+                          className="font-bold text-red-600 hover:text-red-700 hover:underline cursor-pointer"
+                          aria-label={`Delete assignment ${asg.title}`}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
