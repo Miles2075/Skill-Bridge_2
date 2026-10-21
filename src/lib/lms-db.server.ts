@@ -1587,7 +1587,8 @@ class DatabaseManager {
           description: course.description,
           thumbnail: course.thumbnail,
           hours: course.hours,
-          progress: Math.max(enr.completion_percentage, progressPct),
+          // Never trust a stale enrollment percentage over actual lesson completion.
+          progress: progressPct,
           lessonsDone,
           lessonsTotal: totalLessons,
           nextLesson,
