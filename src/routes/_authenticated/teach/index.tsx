@@ -435,7 +435,14 @@ function TeachDashboardPage() {
   // Create Assignment Form State
   const [newAsgTitle, setNewAsgTitle] = useState("");
   const [newAsgCourse, setNewAsgCourse] = useState("advanced-typescript");
-  const [newAsgDue, setNewAsgDue] = useState("2026-11-01");
+  const [newAsgDue, setNewAsgDue] = useState(() => {
+    const due = new Date();
+    due.setDate(due.getDate() + 7);
+    const year = due.getFullYear();
+    const month = String(due.getMonth() + 1).padStart(2, "0");
+    const day = String(due.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  });
   const [newAsgMaxScore, setNewAsgMaxScore] = useState(100);
   const [newAsgDesc, setNewAsgDesc] = useState("");
 
@@ -1108,17 +1115,35 @@ function TeachDashboardPage() {
     }
 
     try {
-      await lmsClient.saveAssignment({
+      const savedResult = await lmsClient.saveAssignment({
         courseId: newAsgCourse,
         title: newAsgTitle.trim(),
         description: newAsgDesc.trim(),
         dueDate: newAsgDue,
         maxScore: newAsgMaxScore,
       });
+      const saved = (savedResult?.assignment || {}) as Record<string, unknown>;
+      const savedId = String(saved.id || "");
+      if (!savedId) {
+        throw new Error("The server did not confirm that the assignment was saved. Please refresh and try again.");
+      }
 
+      const savedAssignment: AssignmentDefinition = {
+        id: savedId,
+        courseSlug: String(saved.course_slug || newAsgCourse),
+        courseTitle: String(saved.course_title || assignmentCourseOptions.find((course) => course.slug === newAsgCourse)?.title || "Course"),
+        title: String(saved.title || newAsgTitle.trim()),
+        description: String(saved.description || newAsgDesc.trim()),
+        dueDate: String(saved.due_date || newAsgDue),
+        maxScore: Number(saved.max_score ?? newAsgMaxScore),
+        submissionCount: 0,
+      };
+      setAssignmentDefs((current) =>
+        current.some((item) => item.id === savedId) ? current : [savedAssignment, ...current],
+      );
       setNewAsgTitle("");
       setNewAsgDesc("");
-      setMsg({ text: `Assignment "${newAsgTitle}" created and published to students!` });
+      setMsg({ text: `Assignment "${savedAssignment.title}" saved successfully.` });
       window.dispatchEvent(new CustomEvent("lms_data_updated"));
       await loadInstructorData();
       switchView("assignments");
