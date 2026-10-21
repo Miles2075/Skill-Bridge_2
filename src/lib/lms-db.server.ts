@@ -896,7 +896,9 @@ class DatabaseManager {
       const courseLessons = db.lessons.filter(
         (l) => l.course_id === c.id || l.course_id === c.slug,
       );
-      const lessonsCount = courseLessons.length > 0 ? courseLessons.length : videoUrls.length;
+      // Lecture counts must come from persisted lesson records, never video metadata.
+    // A course with no lesson records should display zero lectures and a pending syllabus.
+    const lessonsCount = courseLessons.length;
       const primaryVideoUrl = videoUrls.includes(c.video_url || "") ? c.video_url || "" : videoUrls[0] || "";
       const courseReviews = db.course_reviews.filter((review) => review.course_id === c.id);
       const rating = courseReviews.length
@@ -1569,14 +1571,9 @@ class DatabaseManager {
             (c.course_id === course.id || c.course_id === course.slug),
         );
 
-        const totalLessons =
-          lessons.length > 0
-            ? lessons.length
-            : course.video_urls && course.video_urls.length > 0
-              ? course.video_urls.length
-              : course.video_url
-                ? 1
-                : 3;
+        // Counts and progress are based only on persisted lesson rows.
+        // Video URLs are course metadata, not individual lectures.
+        const totalLessons = lessons.length;
 
         const lessonsDone = Math.min(completedLessonIds.size, totalLessons);
         const progressPct =
@@ -1595,7 +1592,9 @@ class DatabaseManager {
           lessonsTotal: totalLessons,
           nextLesson,
           status:
-            lessonsDone >= totalLessons || enr.status === "completed" ? "completed" : enr.status,
+            (totalLessons > 0 && lessonsDone >= totalLessons) || enr.status === "completed"
+              ? "completed"
+              : enr.status,
           enrolledAt: enr.enrolled_at,
           completedAt: enr.completed_at,
           certificateId: cert?.certificate_id || null,
