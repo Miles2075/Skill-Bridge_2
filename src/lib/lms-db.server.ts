@@ -1626,28 +1626,44 @@ class DatabaseManager {
     const submissionMap = new Map<string, AssignmentSubmission>();
     studentSubmissions.forEach((s) => submissionMap.set(s.assignment_id, s));
 
-    // Resolve assignment course references against canonical course records.
-    // Older records may store either the course ID or slug in either field.
-    // Only show assignments for courses the student is actually enrolled in.
+    // Resolve older assignment records that stored a legacy course ID, slug, or
+    // title. This keeps real published work visible after course records were
+    // normalized, without exposing assignments for courses the student hasn't joined.
+    const normalizeCourseKey = (value: unknown) =>
+      typeof value === "string" ? value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "") : "";
+    const resolveAssignmentCourse = (assignment: Assignment) =>
+      resolveCourseRef(assignment.course_id) ||
+      resolveCourseRef(assignment.course_slug) ||
+      db.courses.find((course) => {
+        const legacyKeys = [
+          course.title,
+          course.slug,
+          course.id,
+          courseAliases[course.id],
+        ].map(normalizeCourseKey);
+        return [
+          assignment.course_title,
+          assignment.course_slug,
+          assignment.course_id,
+        ].some((key) => normalizeCourseKey(key) && legacyKeys.includes(normalizeCourseKey(key)));
+      });
+
     const upcomingAssignments = db.assignments
       .filter((assignment) => {
-        const assignmentCourse =
-          resolveCourseRef(assignment.course_id) || resolveCourseRef(assignment.course_slug);
+        const assignmentCourse = resolveAssignmentCourse(assignment);
         if (!assignmentCourse) return false;
-        const enrolled = enrollments.some((enrollment) => {
+        return enrollments.some((enrollment) => {
           const enrolledCourse = resolveCourseRef(enrollment.course_id);
           return (
-            enrollment.course_id === assignmentCourse.id ||
-            enrollment.course_id === assignmentCourse.slug ||
             enrolledCourse?.id === assignmentCourse.id ||
-            enrolledCourse?.slug === assignmentCourse.slug
+            enrolledCourse?.slug === assignmentCourse.slug ||
+            normalizeCourseKey(enrollment.course_id) === normalizeCourseKey(assignmentCourse.title) ||
+            normalizeCourseKey(enrollment.course_id) === normalizeCourseKey(assignmentCourse.slug)
           );
         });
-        return enrolled;
       })
       .map((assignment) => {
-        const assignmentCourse =
-          resolveCourseRef(assignment.course_id) || resolveCourseRef(assignment.course_slug);
+        const assignmentCourse = resolveAssignmentCourse(assignment);
         const sub = submissionMap.get(assignment.id);
         return {
           id: assignment.id,
