@@ -236,6 +236,21 @@ function StudentDashboardPage() {
     [user, data],
   );
 
+  // Refresh persisted assignments when the student returns to this tab and
+  // periodically while it stays open, so instructor publishes appear without relogging.
+  useEffect(() => {
+    if (!user) return;
+    const refreshAssignments = () => void loadDashboard(true);
+    window.addEventListener("focus", refreshAssignments);
+    window.addEventListener("lms_data_updated", refreshAssignments);
+    const intervalId = window.setInterval(refreshAssignments, 30_000);
+    return () => {
+      window.removeEventListener("focus", refreshAssignments);
+      window.removeEventListener("lms_data_updated", refreshAssignments);
+      window.clearInterval(intervalId);
+    };
+  }, [user, loadDashboard]);
+
   const handleQuickEnroll = async (c: ClientCourse) => {
     if (!user) return;
     if (c.price_inr && c.price_inr > 0) {
