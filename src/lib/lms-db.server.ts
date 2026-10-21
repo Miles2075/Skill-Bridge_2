@@ -1746,7 +1746,32 @@ class DatabaseManager {
     const authorizedCourses = db.courses.filter(
       (c) => isAdmin || c.teacher_id === teacherId || c.teacher_id === null,
     );
+    const normalizeCourseKey = (value: unknown) =>
+      typeof value === "string" ? value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "") : "";
+    const courseAliases: Record<string, string> = {
+      "c-ts": "advanced-typescript",
+      "c-react": "react-performance",
+      "c-sys": "system-design",
+      "c-dsa": "dsa",
+    };
+    const resolveCourse = (ref: unknown) => {
+      if (typeof ref !== "string" || !ref.trim()) return undefined;
+      const key = ref.trim();
+      const alias = courseAliases[key] || key;
+      return db.courses.find(
+        (course) =>
+          course.id === key ||
+          course.slug === key ||
+          course.id === alias ||
+          course.slug === alias ||
+          normalizeCourseKey(course.title) === normalizeCourseKey(key),
+      );
+    };
     const authorizedCourseIds = new Set(authorizedCourses.map((c) => c.id));
+    const isAuthorizedCourseRef = (ref: unknown) => {
+      const course = resolveCourse(ref);
+      return !!course && authorizedCourseIds.has(course.id);
+    };
 
     // Enrolled students in instructor courses
     const studentRecords = db.enrollments
@@ -1823,7 +1848,7 @@ class DatabaseManager {
 
     // Submissions for authorized courses
     const submissions = db.submissions
-      .filter((s) => authorizedCourseIds.has(s.course_id))
+      .filter((submission) => isAuthorizedCourseRef(submission.course_id))
       .map((s) => {
         const asg = db.assignments.find((a) => a.id === s.assignment_id);
         const course = db.courses.find((c) => c.id === s.course_id);
@@ -1841,7 +1866,11 @@ class DatabaseManager {
       });
 
     // Assignments for authorized courses
-    const assignments = db.assignments.filter((a) => authorizedCourseIds.has(a.course_id));
+    const assignments = db.assignments.filter((assignment) =>
+      isAuthorizedCourseRef(assignment.course_id) ||
+      isAuthorizedCourseRef(assignment.course_slug) ||
+      isAuthorizedCourseRef(assignment.course_title),
+    );
 
     // Quizzes for authorized courses
     const quizzes = db.quizzes.filter((q) => authorizedCourseIds.has(q.course_id));
