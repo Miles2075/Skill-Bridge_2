@@ -1879,7 +1879,8 @@ class DatabaseManager {
     const assignments = db.assignments.filter((assignment) =>
       isAuthorizedCourseRef(assignment.course_id) ||
       isAuthorizedCourseRef(assignment.course_slug) ||
-      isAuthorizedCourseRef(assignment.course_title),
+      isAuthorizedCourseRef(assignment.course_title) ||
+      (!!teacherId && assignment.created_by === teacherId),
     );
 
     // Quizzes for authorized courses
