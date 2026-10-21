@@ -1611,18 +1611,50 @@ class DatabaseManager {
     const submissionMap = new Map<string, AssignmentSubmission>();
     studentSubmissions.forEach((s) => submissionMap.set(s.assignment_id, s));
 
+    // Resolve assignment course references against canonical course records.
+    // Older records may store either the course ID or slug in either field.
+    // Only show assignments for courses the student is actually enrolled in.
     const upcomingAssignments = db.assignments
-      .filter((a) => enrolledCourseIds.has(a.course_id) || enrolledCourseSlugs.has(a.course_slug))
-      .map((a) => {
-        const sub = submissionMap.get(a.id);
+      .filter((assignment) => {
+        const assignmentCourse = db.courses.find(
+          (course) =>
+            course.id === assignment.course_id ||
+            course.slug === assignment.course_id ||
+            course.id === assignment.course_slug ||
+            course.slug === assignment.course_slug,
+        );
+        if (!assignmentCourse) return false;
+        const enrolled = enrollments.some((enrollment) => {
+          const enrolledCourse = db.courses.find(
+            (course) =>
+              course.id === enrollment.course_id || course.slug === enrollment.course_id,
+          );
+          return (
+            enrollment.course_id === assignmentCourse.id ||
+            enrollment.course_id === assignmentCourse.slug ||
+            enrolledCourse?.id === assignmentCourse.id ||
+            enrolledCourse?.slug === assignmentCourse.slug
+          );
+        });
+        return enrolled;
+      })
+      .map((assignment) => {
+        const assignmentCourse = db.courses.find(
+          (course) =>
+            course.id === assignment.course_id ||
+            course.slug === assignment.course_id ||
+            course.id === assignment.course_slug ||
+            course.slug === assignment.course_slug,
+        );
+        const sub = submissionMap.get(assignment.id);
         return {
-          id: a.id,
-          title: a.title,
-          description: a.description,
-          course: a.course_title,
-          courseSlug: a.course_slug,
-          due: a.due_date,
-          maxScore: a.max_score,
+          id: assignment.id,
+          title: assignment.title,
+          description: assignment.description,
+          course: assignmentCourse?.title || assignment.course_title || "Course",
+          courseSlug: assignmentCourse?.slug || assignment.course_slug,
+          due: assignment.due_date,
+          maxScore: assignment.max_score,
           submissionStatus: sub ? sub.status : "unsubmitted",
           score: sub?.score ?? null,
           feedback: sub?.feedback ?? null,
