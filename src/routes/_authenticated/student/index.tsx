@@ -1158,7 +1158,7 @@ function StudentDashboardPage() {
                                     course.lessonsTotal) *
                                     100,
                                 )
-                              : Math.min(100, Math.max(0, course.progress || 0))}%
+                              : 0}%
                           </span>
                         </div>
                         <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
@@ -1171,7 +1171,7 @@ function StudentDashboardPage() {
                                       course.lessonsTotal) *
                                       100,
                                   )
-                                : Math.min(100, Math.max(0, course.progress || 0))}%`,
+                                : 0}%`,
                             }}
                           />
                         </div>
