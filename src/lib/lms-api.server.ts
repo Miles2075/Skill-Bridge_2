@@ -1411,6 +1411,25 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const body = await req.json();
       const course = lmsDB.getCourse(body.courseId || body.courseSlug);
       if (!course) return errorResponse("Course not found", 404);
+      if (
+        typeof course.title !== "string" ||
+        course.title.trim().length < 2 ||
+        /^\d+$/.test(course.title.trim()) ||
+        typeof course.slug !== "string" ||
+        !course.slug.trim() ||
+        /^\d+$/.test(course.slug.trim())
+      ) {
+        return errorResponse(
+          "This course has an invalid placeholder title or slug. Rename the course before publishing assignments.",
+          400,
+        );
+      }
+      if (typeof body.title !== "string" || !body.title.trim()) {
+        return errorResponse("Assignment title is required.", 400);
+      }
+      if (typeof body.description !== "string" || !body.description.trim()) {
+        return errorResponse("Assignment instructions are required.", 400);
+      }
 
       const asg = lmsDB.saveAssignment({
         id: body.id,
