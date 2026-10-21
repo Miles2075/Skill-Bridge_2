@@ -1542,10 +1542,25 @@ class DatabaseManager {
   getStudentDashboard(studentId: string) {
     const db = this.read();
     const enrollments = db.enrollments.filter((e) => e.student_id === studentId);
+    // Resolve legacy course aliases as well as canonical IDs and slugs. Older
+    // enrollments may retain IDs such as "c-ts" after course slugs were normalized.
+    const courseAliases: Record<string, string> = {
+      "c-ts": "advanced-typescript",
+      "c-react": "react-performance",
+      "c-sys": "system-design",
+      "c-dsa": "dsa",
+    };
+    const resolveCourseRef = (ref: string | null | undefined) => {
+      if (!ref) return undefined;
+      const canonical = courseAliases[ref] || ref;
+      return db.courses.find(
+        (course) => course.id === canonical || course.slug === canonical || course.id === ref || course.slug === ref,
+      );
+    };
 
     const enrolledCourses = enrollments
       .map((enr) => {
-        const course = db.courses.find((c) => c.id === enr.course_id || c.slug === enr.course_id);
+        const course = resolveCourseRef(enr.course_id);
         if (!course) return null;
         const lessons = db.lessons
           .filter((l) => l.course_id === course.id || l.course_id === course.slug)
@@ -1616,19 +1631,11 @@ class DatabaseManager {
     // Only show assignments for courses the student is actually enrolled in.
     const upcomingAssignments = db.assignments
       .filter((assignment) => {
-        const assignmentCourse = db.courses.find(
-          (course) =>
-            course.id === assignment.course_id ||
-            course.slug === assignment.course_id ||
-            course.id === assignment.course_slug ||
-            course.slug === assignment.course_slug,
-        );
+        const assignmentCourse =
+          resolveCourseRef(assignment.course_id) || resolveCourseRef(assignment.course_slug);
         if (!assignmentCourse) return false;
         const enrolled = enrollments.some((enrollment) => {
-          const enrolledCourse = db.courses.find(
-            (course) =>
-              course.id === enrollment.course_id || course.slug === enrollment.course_id,
-          );
+          const enrolledCourse = resolveCourseRef(enrollment.course_id);
           return (
             enrollment.course_id === assignmentCourse.id ||
             enrollment.course_id === assignmentCourse.slug ||
@@ -1639,13 +1646,8 @@ class DatabaseManager {
         return enrolled;
       })
       .map((assignment) => {
-        const assignmentCourse = db.courses.find(
-          (course) =>
-            course.id === assignment.course_id ||
-            course.slug === assignment.course_id ||
-            course.id === assignment.course_slug ||
-            course.slug === assignment.course_slug,
-        );
+        const assignmentCourse =
+          resolveCourseRef(assignment.course_id) || resolveCourseRef(assignment.course_slug);
         const sub = submissionMap.get(assignment.id);
         return {
           id: assignment.id,
