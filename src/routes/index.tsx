@@ -380,13 +380,12 @@ function useCommerceState(
       };
 
       const dynamicCourses: Course[] = publishedCourses.map((course: ClientCourse) => {
-        const videoCount = Array.isArray(course.video_urls)
-          ? course.video_urls.filter(Boolean).length
-          : course.video_url
-            ? 1
-            : 0;
+        // A video URL is not a lecture. Lecture totals must come exclusively
+        // from persisted lesson records returned by the LMS API.
         const totalLectures =
-          typeof course.lessons_count === "number" ? course.lessons_count : videoCount;
+          typeof course.lessons_count === "number" && Number.isFinite(course.lessons_count)
+            ? Math.max(0, course.lessons_count)
+            : 0;
 
         return {
           id: course.id,
