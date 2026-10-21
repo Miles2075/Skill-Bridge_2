@@ -1956,8 +1956,10 @@ function StudentDashboardPage() {
                 </span>
                 <h2 className="text-lg font-extrabold text-slate-900">{playerCourse.title}</h2>
                 <p className="text-xs text-slate-500">
-                  {playerCourse.instructor} · {playerCourse.hours} hours · {playerCourse.progress}%
-                  Completed
+                  {playerCourse.instructor} · {playerCourse.hours} hours ·{" "}
+                  {playerLessons.length > 0
+                    ? Math.round((playerLessons.filter((lesson) => lesson.completed).length / playerLessons.length) * 100)
+                    : 0}% Completed
                 </p>
               </div>
               <button
@@ -2018,7 +2020,8 @@ function StudentDashboardPage() {
                     )}
                   </div>
 
-                  {playerCourse.progress >= 100 && (
+                  {playerLessons.length > 0 &&
+                    playerLessons.every((lesson) => lesson.completed) && (
                     <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-800">
                       <span className="font-bold flex items-center gap-1.5">
                         <CheckCircle2 className="size-4 text-emerald-600" /> Course Completed • 100%
