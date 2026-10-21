@@ -1452,6 +1452,15 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const body = await req.json();
       const { id } = body;
       if (!id) return errorResponse("Missing id");
+      const snapshot = lmsDB.exportSnapshot();
+      const assignment = snapshot.assignments.find((item) => item.id === id);
+      if (!assignment) return jsonResponse({ success: false });
+      const course = lmsDB.getCourse(assignment.course_id) ||
+        lmsDB.getCourse(assignment.course_slug);
+      if (!course) return errorResponse("Assignment course not found.", 404);
+      if (!user.isAdmin && course.teacher_id && course.teacher_id !== user.userId) {
+        return errorResponse("You can only delete assignments for your own courses.", 403);
+      }
       const ok = lmsDB.deleteAssignment(id);
       return jsonResponse({ success: ok });
     }
