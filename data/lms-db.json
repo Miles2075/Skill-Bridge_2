@@ -11,11 +11,8 @@
       "status": "published",
       "price_inr": 999,
       "preview_minutes": 3,
-      "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-      "video_urls": [
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
-      ],
+      "video_url": "",
+      "video_urls": [],
       "hours": 16,
       "level": "Intermediate",
       "category": "Web Development",
@@ -24,7 +21,8 @@
       "learners": "31,764",
       "bestseller": false,
       "created_at": "2026-09-01T00:00:00.000Z",
-      "updated_at": "2026-10-07T07:19:45.149Z"
+      "updated_at": "2026-10-07T07:19:45.149Z",
+      "lessons_count": 0
     },
     {
       "id": "45c4dd4a-715b-4f7d-b508-9c7501f2a63b",
@@ -37,11 +35,8 @@
       "status": "published",
       "price_inr": 1299,
       "preview_minutes": 3,
-      "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-      "video_urls": [
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4"
-      ],
+      "video_url": "",
+      "video_urls": [],
       "hours": 18,
       "level": "Advanced",
       "category": "Web Development",
@@ -50,7 +45,8 @@
       "learners": "48,210",
       "bestseller": true,
       "created_at": "2026-09-01T00:00:00.000Z",
-      "updated_at": "2026-10-07T07:10:54.816Z"
+      "updated_at": "2026-10-07T07:10:54.816Z",
+      "lessons_count": 1
     },
     {
       "id": "ed458579-67a4-41bc-b426-ff10ce69551e",
@@ -63,10 +59,8 @@
       "status": "published",
       "price_inr": 1499,
       "preview_minutes": 2,
-      "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-      "video_urls": [
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
-      ],
+      "video_url": "",
+      "video_urls": [],
       "hours": 20,
       "level": "Intermediate",
       "category": "Software Architecture",
@@ -75,7 +69,8 @@
       "learners": "62,905",
       "bestseller": true,
       "created_at": "2026-09-01T00:00:00.000Z",
-      "updated_at": "2026-09-29T06:03:15.734Z"
+      "updated_at": "2026-09-29T06:03:15.734Z",
+      "lessons_count": 0
     },
     {
       "id": "1ac4b07c-8a19-4f77-a712-9bb1a665bc7e",
@@ -100,7 +95,8 @@
       "learners": "84,120",
       "bestseller": false,
       "created_at": "2026-09-01T00:00:00.000Z",
-      "updated_at": "2026-10-07T07:09:06.628Z"
+      "updated_at": "2026-10-07T07:09:06.628Z",
+      "lessons_count": 3
     },
     {
       "title": "1",
@@ -112,12 +108,8 @@
       "status": "published",
       "price_inr": 999,
       "preview_minutes": 5,
-      "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-      "video_urls": [
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
-      ],
+      "video_url": "",
+      "video_urls": [],
       "hours": 16,
       "level": "Intermediate",
       "category": "Development",
@@ -127,7 +119,7 @@
       "id": "4c74ff05-54da-4395-bcda-689b1649443d",
       "created_at": "2026-10-07T06:47:51.664Z",
       "updated_at": "2026-10-07T06:47:51.664Z",
-      "lessons_count": 3
+      "lessons_count": 0
     },
     {
       "title": "2",
@@ -151,75 +143,11 @@
       "learners": "0",
       "id": "786ab08d-6d6d-4190-a3c1-dc6514944d88",
       "created_at": "2026-10-13T11:13:02.090Z",
-      "updated_at": "2026-10-13T11:13:14.454Z"
+      "updated_at": "2026-10-13T11:13:14.454Z",
+      "lessons_count": 1
     }
   ],
   "lessons": [
-    {
-      "id": "les-react-1",
-      "course_id": "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
-      "title": "1. Profiling Renders with React DevTools",
-      "description": "Understand commit phase, flame graphs, and identify unnecessary re-renders.",
-      "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-      "duration": "18:40",
-      "lesson_order": 1,
-      "is_required": true,
-      "is_preview": true,
-      "created_at": "2026-09-01T00:00:00.000Z",
-      "updated_at": "2026-10-07T07:19:45.149Z"
-    },
-    {
-      "id": "les-react-2",
-      "course_id": "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
-      "title": "2. Strategic Memoization (useMemo, useCallback & React.memo)",
-      "description": "When memoization saves CPU cycles and when it costs more than re-running.",
-      "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-      "duration": "24:15",
-      "lesson_order": 2,
-      "is_required": true,
-      "is_preview": false,
-      "created_at": "2026-09-01T00:00:00.000Z",
-      "updated_at": "2026-10-07T07:19:45.149Z"
-    },
-    {
-      "id": "les-react-3",
-      "course_id": "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
-      "title": "3. Virtualization & DOM Pruning at Scale",
-      "description": "Building 100,000+ item infinite scrolls with dynamic windowing and zero lag.",
-      "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-      "duration": "28:50",
-      "lesson_order": 3,
-      "is_required": true,
-      "is_preview": false,
-      "created_at": "2026-09-01T00:00:00.000Z",
-      "updated_at": "2026-09-01T00:00:00.000Z"
-    },
-    {
-      "id": "les-ts-1",
-      "course_id": "45c4dd4a-715b-4f7d-b508-9c7501f2a63b",
-      "title": "1. Advanced Type Narrowing & Discriminated Unions",
-      "description": "Master pattern matching and compile-time exhaustiveness checking.",
-      "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-      "duration": "15:20",
-      "lesson_order": 1,
-      "is_required": true,
-      "is_preview": true,
-      "created_at": "2026-09-01T00:00:00.000Z",
-      "updated_at": "2026-09-01T00:00:00.000Z"
-    },
-    {
-      "id": "les-ts-2",
-      "course_id": "45c4dd4a-715b-4f7d-b508-9c7501f2a63b",
-      "title": "2. Template Literal Types & Key Remapping",
-      "description": "Create type-safe event buses and DSLs directly in TypeScript's type system.",
-      "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-      "duration": "21:30",
-      "lesson_order": 2,
-      "is_required": true,
-      "is_preview": false,
-      "created_at": "2026-09-01T00:00:00.000Z",
-      "updated_at": "2026-09-01T00:00:00.000Z"
-    },
     {
       "id": "les-ts-3",
       "course_id": "45c4dd4a-715b-4f7d-b508-9c7501f2a63b",
@@ -233,45 +161,6 @@
       "created_at": "2026-09-01T00:00:00.000Z",
       "updated_at": "2026-10-07T09:44:56.338Z",
       "videoUrl": "/uploads/videos/45c4dd4a-715b-4f7d-b508-9c7501f2a63b-1791366296147-c856fd8d-Screen-Recording-2026-09-06-003032.mp4"
-    },
-    {
-      "id": "les-sys-1",
-      "course_id": "ed458579-67a4-41bc-b426-ff10ce69551e",
-      "title": "1. High Availability & Load Balancing Strategies",
-      "description": "L4 vs L7 routing, consistent hashing, and failover topologies.",
-      "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-      "duration": "22:10",
-      "lesson_order": 1,
-      "is_required": true,
-      "is_preview": true,
-      "created_at": "2026-09-01T00:00:00.000Z",
-      "updated_at": "2026-09-01T00:00:00.000Z"
-    },
-    {
-      "id": "les-sys-2",
-      "course_id": "ed458579-67a4-41bc-b426-ff10ce69551e",
-      "title": "2. Distributed Caching & Cache Eviction (Redis / Memcached)",
-      "description": "Cache-aside, write-through, stampede prevention, and Redis clustering.",
-      "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-      "duration": "27:40",
-      "lesson_order": 2,
-      "is_required": true,
-      "is_preview": false,
-      "created_at": "2026-09-01T00:00:00.000Z",
-      "updated_at": "2026-09-01T00:00:00.000Z"
-    },
-    {
-      "id": "les-sys-3",
-      "course_id": "ed458579-67a4-41bc-b426-ff10ce69551e",
-      "title": "3. Database Sharding & Leaderless Replication",
-      "description": "Handling multi-terabyte writes with partitioning keys and quorum reads.",
-      "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-      "duration": "31:00",
-      "lesson_order": 3,
-      "is_required": true,
-      "is_preview": false,
-      "created_at": "2026-09-01T00:00:00.000Z",
-      "updated_at": "2026-09-01T00:00:00.000Z"
     },
     {
       "id": "les-dsa-1",
@@ -311,45 +200,6 @@
       "is_preview": false,
       "created_at": "2026-09-01T00:00:00.000Z",
       "updated_at": "2026-10-07T07:09:06.474Z"
-    },
-    {
-      "id": "les-c1-1",
-      "course_id": "4c74ff05-54da-4395-bcda-689b1649443d",
-      "title": "1. Core System Architecture & Setup",
-      "description": "Introduction to system architecture, dependencies, and build pipeline.",
-      "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-      "duration": "18:30",
-      "lesson_order": 1,
-      "is_required": true,
-      "is_preview": true,
-      "created_at": "2026-10-07T10:04:27.534Z",
-      "updated_at": "2026-10-07T10:04:27.534Z"
-    },
-    {
-      "id": "les-c1-2",
-      "course_id": "4c74ff05-54da-4395-bcda-689b1649443d",
-      "title": "2. Deep Dive & Core Engineering Modules",
-      "description": "Comprehensive implementation of backend services and high-scale patterns.",
-      "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
-      "duration": "25:45",
-      "lesson_order": 2,
-      "is_required": true,
-      "is_preview": false,
-      "created_at": "2026-10-07T10:04:27.534Z",
-      "updated_at": "2026-10-07T10:04:27.534Z"
-    },
-    {
-      "id": "les-c1-3",
-      "course_id": "4c74ff05-54da-4395-bcda-689b1649443d",
-      "title": "3. Production Hardening & Capstone Project",
-      "description": "Zero-downtime deployment, distributed telemetry, and capstone review.",
-      "video_url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-      "duration": "32:10",
-      "lesson_order": 3,
-      "is_required": true,
-      "is_preview": false,
-      "created_at": "2026-10-07T10:04:27.534Z",
-      "updated_at": "2026-10-07T10:04:27.534Z"
     }
   ],
   "enrollments": [
@@ -480,33 +330,6 @@
       "completed": true,
       "completed_at": "2026-10-07T07:15:16.810Z",
       "updated_at": "2026-10-07T07:15:16.810Z"
-    },
-    {
-      "id": "prog_1791357654272_4ljm",
-      "student_id": "00000000-0000-4000-a000-000000000001",
-      "course_id": "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
-      "lesson_id": "les-react-1",
-      "completed": true,
-      "completed_at": "2026-10-13T10:57:33.280Z",
-      "updated_at": "2026-10-13T10:57:33.280Z"
-    },
-    {
-      "id": "prog_1791357660345_h3b1",
-      "student_id": "00000000-0000-4000-a000-000000000001",
-      "course_id": "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
-      "lesson_id": "les-react-2",
-      "completed": true,
-      "completed_at": "2026-10-13T10:57:40.117Z",
-      "updated_at": "2026-10-13T10:57:40.117Z"
-    },
-    {
-      "id": "prog_1791357664814_evve",
-      "student_id": "00000000-0000-4000-a000-000000000001",
-      "course_id": "0f1f297a-5fd3-4266-b6e7-e88f90939b1a",
-      "lesson_id": "les-react-3",
-      "completed": true,
-      "completed_at": "2026-10-07T07:21:04.814Z",
-      "updated_at": "2026-10-07T07:21:04.814Z"
     }
   ],
   "assignments": [

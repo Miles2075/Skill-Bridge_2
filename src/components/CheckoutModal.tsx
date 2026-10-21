@@ -4,9 +4,6 @@ import {
   ShieldCheck,
   Lock,
   CheckCircle2,
-  Sparkles,
-  CreditCard,
-  QrCode,
   Loader2,
   Award,
   Code2,
@@ -16,7 +13,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createCourseOrder, verifyCoursePayment } from "@/lib/payments.functions";
-import { lmsClient } from "@/lib/lms-client";
 
 interface CheckoutCourseInfo {
   id?: string;
@@ -68,21 +64,10 @@ export function CheckoutModal({
   userId,
   displayName,
 }: CheckoutModalProps) {
-  const [selectedMethod, setSelectedMethod] = useState<"instant" | "upi" | "card" | "gateway">(
-    "instant",
-  );
   const [processing, setProcessing] = useState(false);
   const [statusText, setStatusText] = useState("");
   const [completed, setCompleted] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  // Form states
-  const [upiId, setUpiId] = useState(
-    userEmail ? `${userEmail.split("@")[0]}@okhdfcbank` : "student@okhdfcbank",
-  );
-  const [cardNumber, setCardNumber] = useState("4242 •••• •••• 4242");
-  const [cardExpiry, setCardExpiry] = useState("12/28");
-  const [cardCvv, setCardCvv] = useState("888");
 
   if (!isOpen || !course) return null;
 
@@ -113,147 +98,99 @@ export function CheckoutModal({
   };
 
   const handleCompletePayment = async () => {
-    if (processing) return;
+    if (processing || !course) return;
     setProcessing(true);
     setErrorMsg(null);
-    setStatusText("Initiating secure order verification…");
+    setStatusText("Creating secure Razorpay order…");
 
     const targetCourseId = course.id || course.slug;
     const learnerName = displayName || userEmail?.split("@")[0] || "Student Learner";
     const learnerEmail = userEmail || "student@skillbridge.edu";
-    const effectiveUserId = userId || `usr_${Date.now()}`;
 
     try {
-      // 1. Create order on server
       const order = await createCourseOrder({
-        data: {
-          courseId: targetCourseId,
-          userId: effectiveUserId,
-          userEmail: learnerEmail,
-        },
+        data: { courseId: targetCourseId, userId: userId || undefined, userEmail: learnerEmail },
       });
 
-      // Handle Razorpay gateway flow if selected
-      if (selectedMethod === "gateway" && order.isLive && order.keyId) {
-        setStatusText("Opening Razorpay Secure Gateway…");
-        const loaded = await loadRazorpayScript();
-        if (loaded && window.Razorpay) {
-          try {
-            const rzp = new window.Razorpay({
-              key: order.keyId,
-              amount: order.amount,
-              currency: order.currency || "INR",
-              name: "Skillbridge",
-              description: course.title,
-              order_id: order.orderId,
-              prefill: {
-                name: learnerName,
-                email: learnerEmail,
-              },
-              theme: { color: "#4f46e5" },
-              handler: async (response: Record<string, string>) => {
-                setStatusText("Verifying payment signature with banking network…");
-                await verifyCoursePayment({
-                  data: {
-                    courseId: targetCourseId,
-                    orderId: response["razorpay_order_id"] || order.orderId,
-                    paymentId: response["razorpay_payment_id"] || `pay_${Date.now()}`,
-                    signature: response["razorpay_signature"] || "sig_verified",
-                    userId: effectiveUserId,
-                    userEmail: learnerEmail,
-                    userName: learnerName,
-                  },
-                });
-
-                await lmsClient
-                  .enroll(targetCourseId, learnerName, learnerEmail, effectiveUserId)
-                  .catch(() => {});
-
-                markCourseEnrolledLocally(targetCourseId, course.slug);
-                window.dispatchEvent(new CustomEvent("lms_data_updated"));
-
-                setCompleted(true);
-                setStatusText("Payment verified successfully!");
-                setTimeout(() => {
-                  onSuccess(targetCourseId, course.slug);
-                  onClose();
-                  setCompleted(false);
-                  setProcessing(false);
-                }, 1200);
-              },
-              modal: {
-                ondismiss: () => {
-                  setProcessing(false);
-                  setStatusText("");
-                },
-              },
-            });
-            rzp.open();
-            return;
-          } catch (rzpErr) {
-            console.warn("Razorpay window open fallback:", rzpErr);
-            // Proceed to automatic fallback below
-          }
-        }
+      if (!order.isLive || !order.keyId) {
+        throw new Error("Razorpay is not configured yet. No payment was taken and the course remains locked.");
+      }
+      setStatusText("Opening Razorpay secure checkout…");
+      const loaded = await loadRazorpayScript();
+      if (!loaded || !window.Razorpay) {
+        throw new Error("Razorpay checkout could not load. Please check your connection and try again.");
       }
 
-      // Default: Fast, verified direct processing
-      const orderId = order?.orderId || `order_sim_${Date.now()}`;
-      const paymentId = `pay_${selectedMethod}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      const signature = `sig_${selectedMethod}_${Date.now()}`;
+      const razorpay = new window.Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency || "INR",
+        name: "Skillbridge",
+        description: course.title,
+        order_id: order.orderId,
+        prefill: { name: learnerName, email: learnerEmail },
+        theme: { color: "#4f46e5" },
+        handler: async (response: Record<string, string>) => {
+          try {
+            const verifiedOrderId = response["razorpay_order_id"];
+            const verifiedPaymentId = response["razorpay_payment_id"];
+            const verifiedSignature = response["razorpay_signature"];
+            if (!verifiedOrderId || !verifiedPaymentId || !verifiedSignature) {
+              throw new Error("Razorpay returned incomplete payment details. Course access has not been granted.");
+            }
 
-      setStatusText("Confirming payment authorization with banking network…");
-      await new Promise((r) => setTimeout(r, 600));
+            setStatusText("Verifying payment with Razorpay…");
+            const verification = await verifyCoursePayment({
+              data: {
+                courseId: targetCourseId,
+                orderId: verifiedOrderId,
+                paymentId: verifiedPaymentId,
+                signature: verifiedSignature,
+                userName: learnerName,
+                userEmail: learnerEmail,
+              },
+            });
+            if (!verification.ok) {
+              throw new Error("Payment could not be verified. The course remains locked.");
+            }
 
-      // 2. Verify payment on server
-      await verifyCoursePayment({
-        data: {
-          courseId: targetCourseId,
-          orderId,
-          paymentId,
-          signature,
-          userId: effectiveUserId,
-          userEmail: learnerEmail,
-          userName: learnerName,
+            // The server has verified the HMAC and confirmed a captured payment,
+            // then recorded the purchase and enrolled the authenticated student.
+            markCourseEnrolledLocally(targetCourseId, course.slug);
+            window.dispatchEvent(new CustomEvent("lms_data_updated"));
+            setCompleted(true);
+            setStatusText(
+              verification.isTest
+                ? "Test payment verified. Course access unlocked."
+                : "Payment verified. Course access unlocked.",
+            );
+            window.setTimeout(() => {
+              onSuccess(targetCourseId, course.slug);
+              onClose();
+              setCompleted(false);
+              setProcessing(false);
+              setStatusText("");
+            }, 900);
+          } catch (error: unknown) {
+            setCompleted(false);
+            setErrorMsg(error instanceof Error ? error.message : "Payment verification failed. Course access remains locked.");
+            setStatusText("");
+            setProcessing(false);
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setProcessing(false);
+            setStatusText("");
+          },
         },
       });
-
-      setStatusText("Provisioning LMS enrollment & unlocking syllabus…");
-
-      // 3. Register real LMS database enrollment
-      await lmsClient
-        .enroll(targetCourseId, learnerName, learnerEmail, effectiveUserId)
-        .catch((err) => {
-          console.warn("LMS enrollment registration notice:", err);
-        });
-
-      // 4. Save to local storage cache for instant unlock
-      markCourseEnrolledLocally(targetCourseId, course.slug);
-
-      window.dispatchEvent(new CustomEvent("lms_data_updated"));
-
-      setCompleted(true);
-      setStatusText("Payment verified successfully!");
-
-      setTimeout(() => {
-        onSuccess(targetCourseId, course.slug);
-        onClose();
-        setCompleted(false);
-        setProcessing(false);
-      }, 1000);
-    } catch (err: unknown) {
-      console.error("Checkout fallback handler:", err);
-      // Guarantee student is ALWAYS enrolled and never blocked
-      markCourseEnrolledLocally(targetCourseId, course.slug);
-      window.dispatchEvent(new CustomEvent("lms_data_updated"));
-      setCompleted(true);
-      setStatusText("Payment confirmed! Unlocking course…");
-      setTimeout(() => {
-        onSuccess(targetCourseId, course.slug);
-        onClose();
-        setCompleted(false);
-        setProcessing(false);
-      }, 1000);
+      razorpay.open();
+    } catch (error: unknown) {
+      setCompleted(false);
+      setErrorMsg(error instanceof Error ? error.message : "Unable to start secure checkout.");
+      setStatusText("");
+      setProcessing(false);
     }
   };
 
@@ -349,153 +286,21 @@ export function CheckoutModal({
             </div>
           </div>
 
-          {/* Payment Method Selector */}
-          <div>
-            <label className="text-xs font-bold text-slate-700 block mb-2">
-              Select Payment Method
-            </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <button
-                type="button"
-                onClick={() => setSelectedMethod("instant")}
-                className={`rounded-xl border p-2.5 text-left transition-all cursor-pointer ${
-                  selectedMethod === "instant"
-                    ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-2 ring-indigo-500/20"
-                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <Sparkles className="size-4 text-indigo-600" />
-                  <span className="text-[9px] font-bold text-indigo-600 bg-indigo-100 rounded px-1">
-                    Fast
-                  </span>
-                </div>
-                <div className="font-bold text-xs">1-Click Pay</div>
-                <div className="text-[10px] text-slate-500">Instant pass</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedMethod("upi")}
-                className={`rounded-xl border p-2.5 text-left transition-all cursor-pointer ${
-                  selectedMethod === "upi"
-                    ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-2 ring-indigo-500/20"
-                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <QrCode className="size-4 text-indigo-600" />
-                  <span className="text-[9px] font-bold text-slate-500">UPI</span>
-                </div>
-                <div className="font-bold text-xs">UPI / QR</div>
-                <div className="text-[10px] text-slate-500">GPay, PhonePe</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedMethod("card")}
-                className={`rounded-xl border p-2.5 text-left transition-all cursor-pointer ${
-                  selectedMethod === "card"
-                    ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-2 ring-indigo-500/20"
-                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <CreditCard className="size-4 text-indigo-600" />
-                  <span className="text-[9px] font-bold text-slate-500">Card</span>
-                </div>
-                <div className="font-bold text-xs">Cards</div>
-                <div className="text-[10px] text-slate-500">Visa, RuPay</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSelectedMethod("gateway")}
-                className={`rounded-xl border p-2.5 text-left transition-all cursor-pointer ${
-                  selectedMethod === "gateway"
-                    ? "border-indigo-600 bg-indigo-50/70 text-indigo-900 ring-2 ring-indigo-500/20"
-                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1">
-                  <ExternalLink className="size-4 text-indigo-600" />
-                  <span className="text-[9px] font-bold text-sky-600 bg-sky-100 rounded px-1">
-                    Gateway
-                  </span>
-                </div>
-                <div className="font-bold text-xs">Razorpay</div>
-                <div className="text-[10px] text-slate-500">Bank Gateway</div>
-              </button>
+          {/* Payments are processed by the real Razorpay checkout only. */}
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 p-4 space-y-2">
+            <div className="flex items-center gap-2 text-sm font-bold text-indigo-950">
+              <ExternalLink className="size-4 text-indigo-600" />
+              Secure checkout with Razorpay
+            </div>
+            <p className="text-xs leading-relaxed text-slate-600">
+              Choose UPI, cards, netbanking, or another available payment method inside Razorpay.
+              Skillbridge unlocks the course only after the server verifies the signed, captured payment.
+            </p>
+            <div className="flex items-center gap-2 text-[11px] text-slate-500">
+              <Lock className="size-3.5" />
+              Your payment details are entered on Razorpay, not stored by Skillbridge.
             </div>
           </div>
-
-          {/* Payment Method Details Preview */}
-          {selectedMethod === "upi" && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-600 font-semibold">Virtual Payment Address (UPI)</span>
-                <span className="text-[11px] text-emerald-600 font-bold">Auto-Verified</span>
-              </div>
-              <input
-                type="text"
-                value={upiId}
-                onChange={(e) => setUpiId(e.target.value)}
-                placeholder="username@okhdfcbank"
-                className="w-full bg-white rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <div className="flex items-center gap-2 text-[10px] text-slate-500 pt-1">
-                <span className="font-semibold text-slate-700">Supported:</span>
-                <span>Google Pay · PhonePe · Paytm · BHIM UPI · CRED</span>
-              </div>
-            </div>
-          )}
-
-          {selectedMethod === "card" && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-600 font-semibold">Card Details</span>
-                <span className="text-[11px] text-indigo-600 font-semibold">Test Mode Active</span>
-              </div>
-              <input
-                type="text"
-                value={cardNumber}
-                onChange={(e) => setCardNumber(e.target.value)}
-                placeholder="4242 4242 4242 4242"
-                className="w-full bg-white rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  value={cardExpiry}
-                  onChange={(e) => setCardExpiry(e.target.value)}
-                  placeholder="MM/YY"
-                  className="bg-white rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-                <input
-                  type="password"
-                  value={cardCvv}
-                  onChange={(e) => setCardCvv(e.target.value)}
-                  placeholder="CVV"
-                  className="bg-white rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-            </div>
-          )}
-
-          {selectedMethod === "gateway" && (
-            <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3 text-xs space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-indigo-900">Razorpay Unified Gateway</span>
-                <span className="rounded bg-indigo-200/70 px-1.5 py-0.5 text-[10px] font-bold text-indigo-800">
-                  Live / Sandbox
-                </span>
-              </div>
-              <p className="text-[11px] text-slate-600">
-                Opens the official Razorpay checkout interface. Supports Netbanking, Wallets, and
-                international cards.
-              </p>
-            </div>
-          )}
 
           {/* Pricing Total Summary */}
           <div className="border-t border-slate-100 pt-3 space-y-1.5 text-xs text-slate-600">
@@ -535,7 +340,7 @@ export function CheckoutModal({
               ) : (
                 <>
                   <ShieldCheck className="size-4" />
-                  <span>Pay {formattedPrice} & Unlock Course Immediately</span>
+                  <span>Continue to Razorpay · Pay {formattedPrice}</span>
                   <ArrowRight className="size-3.5" />
                 </>
               )}

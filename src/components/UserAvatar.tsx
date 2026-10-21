@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export function UserAvatar({
   src,
@@ -14,6 +14,12 @@ export function UserAvatar({
   badge?: React.ReactNode;
 }) {
   const [imgError, setImgError] = useState(false);
+
+  // Retry the image whenever its URL changes; stale failures must not keep
+  // rendering initials after profile data has refreshed.
+  useEffect(() => {
+    setImgError(false);
+  }, [src]);
 
   const displayInitials =
     initials ||

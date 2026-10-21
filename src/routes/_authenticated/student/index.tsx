@@ -45,6 +45,8 @@ import { CodeLabView } from "@/components/student/CodeLabView";
 import { RecallDecksView } from "@/components/student/RecallDecksView";
 import { FocusStudioView } from "@/components/student/FocusStudioView";
 import { AnalyticsView } from "@/components/student/AnalyticsView";
+import { SkillDNAView } from "@/components/student/SkillDNAView";
+import { AssignmentAutopsyView } from "@/components/student/AssignmentAutopsyView";
 import { ProfileEditor } from "@/components/ProfileEditor";
 
 import tsThumb from "@/assets/course-typescript.jpg";
@@ -206,8 +208,21 @@ function StudentDashboardPage() {
           lmsClient.getStudentDashboard(),
           lmsClient.getCourses().catch(() => ({ courses: [] })),
         ]);
-        setData(res);
-        const enrolledIds = new Set((res?.enrolledCourses || []).flatMap((c) => [c.id, c.slug]));
+        // Reconcile enrollment progress with the canonical course catalog so cover images
+        // and uploaded video URLs come from the latest saved course record.
+        const enrolledCourses = (res?.enrolledCourses || []).map((enrolled) => {
+          const canonical = (catalog?.courses || []).find(
+            (course) => course.id === enrolled.id || course.slug === enrolled.slug,
+          );
+          return {
+            ...enrolled,
+            thumbnail: canonical?.thumbnail || enrolled.thumbnail || "",
+            videoUrl: canonical?.video_url || canonical?.video_urls?.[0] || enrolled.videoUrl || "",
+          };
+        });
+        const dashboard = { ...res, enrolledCourses };
+        setData(dashboard);
+        const enrolledIds = new Set((dashboard?.enrolledCourses || []).flatMap((c) => [c.id, c.slug]));
         const unEnrolled = (catalog?.courses || []).filter(
           (c) => c.status === "published" && !enrolledIds.has(c.id) && !enrolledIds.has(c.slug),
         );
@@ -220,6 +235,21 @@ function StudentDashboardPage() {
     },
     [user, data],
   );
+
+  // Refresh persisted assignments when the student returns to this tab and
+  // periodically while it stays open, so instructor publishes appear without relogging.
+  useEffect(() => {
+    if (!user) return;
+    const refreshAssignments = () => void loadDashboard(true);
+    window.addEventListener("focus", refreshAssignments);
+    window.addEventListener("lms_data_updated", refreshAssignments);
+    const intervalId = window.setInterval(refreshAssignments, 30_000);
+    return () => {
+      window.removeEventListener("focus", refreshAssignments);
+      window.removeEventListener("lms_data_updated", refreshAssignments);
+      window.clearInterval(intervalId);
+    };
+  }, [user, loadDashboard]);
 
   const handleQuickEnroll = async (c: ClientCourse) => {
     if (!user) return;
@@ -241,12 +271,28 @@ function StudentDashboardPage() {
         title: c.title,
         instructor: c.instructor || "Instructor",
         description: c.description || "",
-        thumbnail: getCourseImage(c.slug),
+        thumbnail: c.thumbnail || getCourseImage(c.slug),
         hours: c.hours || 10,
         progress: 0,
         lessonsDone: 0,
-        lessonsTotal: c.lessons_count || 3,
-        nextLesson: "1. Course Overview & Master Lecture",
+        lessonsTotal:
+          typeof c.lessons_count === "number"
+            ? c.lessons_count
+            : Array.isArray(c.video_urls)
+              ? c.video_urls.filter(Boolean).length
+              : c.video_url
+                ? 1
+                : 0,
+        nextLesson:
+          (typeof c.lessons_count === "number"
+            ? c.lessons_count
+            : Array.isArray(c.video_urls)
+              ? c.video_urls.filter(Boolean).length
+              : c.video_url
+                ? 1
+                : 0) > 0
+            ? `1. ${c.title}`
+            : "No lessons added yet",
         status: "enrolled",
         enrolledAt: new Date().toISOString(),
         completedAt: null,
@@ -863,6 +909,9 @@ function StudentDashboardPage() {
           {/* Continue Learning Course Hero */}
           {currentContinueCourse ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+              {((currentContinueCourse.lessonsTotal ?? 0) <= 0) && (currentContinueCourse.progress || 0) > 0 && (
+                <span className="sr-only">Progress is unavailable until lessons are added.</span>
+              )}
               <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2">
                   <Play className="size-4 text-indigo-600 fill-indigo-600" />
@@ -871,15 +920,15 @@ function StudentDashboardPage() {
                 <span className="text-xs text-slate-500">
                   {Math.min(
                     currentContinueCourse.lessonsDone,
-                    currentContinueCourse.lessonsTotal || 3,
+                    currentContinueCourse.lessonsTotal ?? 0,
                   )}{" "}
-                  of {currentContinueCourse.lessonsTotal || 3} Lessons Completed
+                  of {currentContinueCourse.lessonsTotal ?? 0} Lessons Completed
                 </span>
               </div>
 
               <div className="flex flex-col md:flex-row gap-5 items-center">
                 <img
-                  src={getCourseImage(currentContinueCourse.slug)}
+                  src={currentContinueCourse.thumbnail || getCourseImage(currentContinueCourse.slug)}
                   alt={currentContinueCourse.title}
                   className="w-full md:w-56 h-32 rounded-xl object-cover"
                 />
@@ -887,17 +936,31 @@ function StudentDashboardPage() {
                 <div className="flex-1 space-y-2 w-full">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-600 font-medium">
-                      Next: {currentContinueCourse.nextLesson}
+                      {(currentContinueCourse.lessonsTotal ?? 0) > 0
+                        ? `Next: ${currentContinueCourse.nextLesson}`
+                        : "No lectures have been added to this course yet."}
                     </span>
                     <span className="font-bold text-indigo-600">
-                      {currentContinueCourse.progress}% Completed
+                      {(currentContinueCourse.lessonsTotal ?? 0) > 0
+                        ? Math.round(
+                            (Math.min(Math.max(currentContinueCourse.lessonsDone || 0, 0), currentContinueCourse.lessonsTotal ?? 0) /
+                              (currentContinueCourse.lessonsTotal ?? 1)) * 100,
+                          )
+                        : 0}% Completed
                     </span>
                   </div>
 
                   <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
                     <div
                       className="h-full bg-indigo-600 rounded-full transition-all duration-500"
-                      style={{ width: `${currentContinueCourse.progress}%` }}
+                      style={{
+                        width: `${(currentContinueCourse.lessonsTotal ?? 0) > 0
+                          ? Math.round(
+                              (Math.min(Math.max(currentContinueCourse.lessonsDone || 0, 0), currentContinueCourse.lessonsTotal ?? 0) /
+                                (currentContinueCourse.lessonsTotal ?? 1)) * 100,
+                            )
+                          : 0}%`,
+                      }}
                     />
                   </div>
 
@@ -908,12 +971,14 @@ function StudentDashboardPage() {
                       · {currentContinueCourse.hours} hrs total
                     </span>
 
-                    <button
-                      onClick={() => setPlayerCourse(currentContinueCourse)}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors cursor-pointer"
-                    >
-                      <Play className="size-3 fill-white" /> Continue Course
-                    </button>
+                    {(currentContinueCourse.lessonsTotal ?? 0) > 0 && (
+                      <button
+                        onClick={() => setPlayerCourse(currentContinueCourse)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors cursor-pointer"
+                      >
+                        <Play className="size-3 fill-white" /> Continue Course
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1098,7 +1163,7 @@ function StudentDashboardPage() {
                   >
                     <div className="relative h-44 w-full bg-slate-900">
                       <img
-                        src={getCourseImage(course.slug)}
+                        src={course.thumbnail || getCourseImage(course.slug)}
                         alt={course.title}
                         className="h-full w-full object-cover opacity-90"
                       />
@@ -1117,15 +1182,31 @@ function StudentDashboardPage() {
                       <div>
                         <div className="flex items-center justify-between text-xs mb-1.5">
                           <span className="text-slate-500">
-                            Progress ({Math.min(course.lessonsDone, course.lessonsTotal || 3)}/
-                            {course.lessonsTotal || 3} Lessons)
+                            Progress ({Math.min(Math.max(course.lessonsDone || 0, 0), course.lessonsTotal ?? 0)}/
+                            {course.lessonsTotal ?? 0} Lessons)
                           </span>
-                          <span className="font-bold text-indigo-600">{course.progress}%</span>
+                          <span className="font-bold text-indigo-600">
+                            {course.lessonsTotal > 0
+                              ? Math.round(
+                                  (Math.min(Math.max(course.lessonsDone || 0, 0), course.lessonsTotal) /
+                                    course.lessonsTotal) *
+                                    100,
+                                )
+                              : 0}%
+                          </span>
                         </div>
                         <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
                           <div
                             className="h-full bg-indigo-600 rounded-full transition-all"
-                            style={{ width: `${course.progress}%` }}
+                            style={{
+                              width: `${course.lessonsTotal > 0
+                                ? Math.round(
+                                    (Math.min(Math.max(course.lessonsDone || 0, 0), course.lessonsTotal) /
+                                      course.lessonsTotal) *
+                                      100,
+                                  )
+                                : 0}%`,
+                            }}
                           />
                         </div>
                       </div>
@@ -1206,7 +1287,7 @@ function StudentDashboardPage() {
                     <div>
                       <div className="relative h-28 w-full rounded-lg bg-slate-900 overflow-hidden mb-3">
                         <img
-                          src={getCourseImage(c.slug)}
+                          src={c.thumbnail || getCourseImage(c.slug)}
                           alt={c.title}
                           className="h-full w-full object-cover opacity-80"
                         />
@@ -1496,6 +1577,9 @@ function StudentDashboardPage() {
       {/* VIEW: FOCUS & POMODORO STUDIO (DEEP WORK ANTI-DISTRACTION) */}
       {/* ------------------------------------------------------------- */}
       {currentView === "focus" && <FocusStudioView />}
+
+      {currentView === "skill-dna" && data && <SkillDNAView data={data} />}
+      {currentView === "assignment-autopsy" && data && <AssignmentAutopsyView data={data} />}
 
       {/* ------------------------------------------------------------- */}
       {/* VIEW 5: PROGRESS ANALYTICS (RECHARTS VISUALIZATION) */}
@@ -1887,8 +1971,10 @@ function StudentDashboardPage() {
                 </span>
                 <h2 className="text-lg font-extrabold text-slate-900">{playerCourse.title}</h2>
                 <p className="text-xs text-slate-500">
-                  {playerCourse.instructor} · {playerCourse.hours} hours · {playerCourse.progress}%
-                  Completed
+                  {playerCourse.instructor} · {playerCourse.hours} hours ·{" "}
+                  {playerLessons.length > 0
+                    ? Math.round((playerLessons.filter((lesson) => lesson.completed).length / playerLessons.length) * 100)
+                    : 0}% Completed
                 </p>
               </div>
               <button
@@ -1949,7 +2035,8 @@ function StudentDashboardPage() {
                     )}
                   </div>
 
-                  {playerCourse.progress >= 100 && (
+                  {playerLessons.length > 0 &&
+                    playerLessons.every((lesson) => lesson.completed) && (
                     <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-800">
                       <span className="font-bold flex items-center gap-1.5">
                         <CheckCircle2 className="size-4 text-emerald-600" /> Course Completed • 100%
@@ -2038,11 +2125,11 @@ function StudentDashboardPage() {
                 <div className="lg:col-span-2 flex flex-col space-y-3">
                   <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                     <span className="text-xs font-bold text-slate-900">
-                      Curriculum Syllabus ({playerLessons.length || 3} Lessons)
+                      Curriculum Syllabus ({playerLessons.length} Lessons)
                     </span>
                     <span className="text-[11px] font-semibold text-indigo-600">
                       {playerLessons.filter((l) => l.completed).length} /{" "}
-                      {playerLessons.length || 3} Completed
+                      {playerLessons.length} Completed
                     </span>
                   </div>
 

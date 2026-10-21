@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Clock,
+  ChevronDown,
   ExternalLink,
   FilePlus,
   FolderKanban,
@@ -18,6 +19,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   PlusCircle,
+  Pencil,
   Save,
   Search,
   Settings,
@@ -209,6 +211,22 @@ interface LessonItem {
   isPreview: boolean;
 }
 
+function titleFromVideoFileName(fileName: string): string {
+  const base = fileName.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "") || "";
+  const readable = base.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  return readable || "Untitled video";
+}
+
+function titleFromVideoUrl(url: string, index = 0): string {
+  try {
+    const fileName = decodeURIComponent(new URL(url).pathname.split("/").pop() || "");
+    const title = titleFromVideoFileName(fileName);
+    return title && title !== "Untitled video" ? title : `Video ${index + 1}`;
+  } catch {
+    return `Video ${index + 1}`;
+  }
+}
+
 const DEFAULT_LESSONS: LessonItem[] = [
   {
     id: "les-1",
@@ -323,6 +341,14 @@ function TeachDashboardPage() {
   const [selectedCourseFilter, setSelectedCourseFilter] = useState("all");
   const [submissionFilter, setSubmissionFilter] = useState<"all" | "pending" | "approved">("all");
   const [selectedContentCourse, setSelectedContentCourse] = useState("advanced-typescript");
+  const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
+  const [editingLessonTitle, setEditingLessonTitle] = useState("");
+  // Per-course title editor for the student-facing videos in Course Portfolio.
+  const [videoTitleEditorCourse, setVideoTitleEditorCourse] = useState<string | null>(null);
+  const [videoTitleLessons, setVideoTitleLessons] = useState<Record<string, LessonItem[]>>({});
+  const [videoTitleDrafts, setVideoTitleDrafts] = useState<Record<string, string>>({});
+  const [loadingVideoTitleCourse, setLoadingVideoTitleCourse] = useState<string | null>(null);
+  const [savingVideoTitleId, setSavingVideoTitleId] = useState<string | null>(null);
 
   // Grading modal state
   const [gradingSub, setGradingSub] = useState<AssignmentSubmission | null>(null);
@@ -336,19 +362,17 @@ function TeachDashboardPage() {
   const [newPrice, setNewPrice] = useState(999);
   const [newPreview, setNewPreview] = useState(5);
   const [newHours, setNewHours] = useState(16);
-  const [newVideoUrl, setNewVideoUrl] = useState(
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-  );
+  const [newVideoUrl, setNewVideoUrl] = useState("");
   const [newVideoFile, setNewVideoFile] = useState<File | null>(null);
   const [newVideoFiles, setNewVideoFiles] = useState<File[]>([]);
-  const [newVideoUrls, setNewVideoUrls] = useState<string[]>([
-    "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-  ]);
+  const [newVideoTitles, setNewVideoTitles] = useState<string[]>([]);
+  const [newVideoUrls, setNewVideoUrls] = useState<string[]>([]);
   const [newUrlInput, setNewUrlInput] = useState("");
   const [isUploadingCourseVideo, setIsUploadingCourseVideo] = useState(false);
   const [uploadProgressText, setUploadProgressText] = useState<string | null>(null);
   const [newStatus, setNewStatus] = useState<"published" | "draft">("published");
   const [newThumbnail, setNewThumbnail] = useState<string>(PRESET_THUMBNAILS[0].url);
+  const [newThumbnailFile, setNewThumbnailFile] = useState<File | null>(null);
 
   const handleThumbnailFileChange = (file: File, onSuccess: (dataUrl: string) => void) => {
     if (!file) return;
@@ -356,13 +380,53 @@ function TeachDashboardPage() {
       setMsg({ text: "Image file is too large (max 10MB)", isError: true });
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        onSuccess(reader.result);
+
+    // Store a compact thumbnail instead of a large original image data URL.
+    // Large base64 thumbnails can make course-update requests exceed Vercel's
+    // request-body limit and return HTTP 413.
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const maxDimension = 1200;
+      const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      const context = canvas.getContext("2d");
+      if (!context) {
+        setMsg({ text: "Could not process this image. Please choose another file.", isError: true });
+        return;
       }
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            setMsg({ text: "Could not compress this image. Please choose another file.", isError: true });
+            return;
+          }
+          if (blob.size > 900 * 1024) {
+            setMsg({ text: "Image is still too large after compression. Please choose a smaller image.", isError: true });
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => {
+            if (typeof reader.result === "string") onSuccess(reader.result);
+          };
+          reader.onerror = () => {
+            setMsg({ text: "Could not read the processed image.", isError: true });
+          };
+          reader.readAsDataURL(blob);
+        },
+        "image/jpeg",
+        0.78,
+      );
     };
-    reader.readAsDataURL(file);
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      setMsg({ text: "This image could not be opened. Please choose another file.", isError: true });
+    };
+    image.src = objectUrl;
   };
 
   // Per-row additional URL input state in Courses management table
@@ -371,7 +435,14 @@ function TeachDashboardPage() {
   // Create Assignment Form State
   const [newAsgTitle, setNewAsgTitle] = useState("");
   const [newAsgCourse, setNewAsgCourse] = useState("advanced-typescript");
-  const [newAsgDue, setNewAsgDue] = useState("2026-11-01");
+  const [newAsgDue, setNewAsgDue] = useState(() => {
+    const due = new Date();
+    due.setDate(due.getDate() + 7);
+    const year = due.getFullYear();
+    const month = String(due.getMonth() + 1).padStart(2, "0");
+    const day = String(due.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  });
   const [newAsgMaxScore, setNewAsgMaxScore] = useState(100);
   const [newAsgDesc, setNewAsgDesc] = useState("");
 
@@ -418,9 +489,51 @@ function TeachDashboardPage() {
         );
       }
       setStudents(data.students as unknown as EnrolledStudent[]);
-      setSubmissions(data.submissions as unknown as AssignmentSubmission[]);
+      // The API returns persisted DB rows in snake_case; normalize them once at the
+      // boundary so the instructor UI, counts, and grading actions use real values.
+      setSubmissions(
+        (data.submissions || []).map((raw: Record<string, unknown>) => ({
+          id: String(raw.id || ""),
+          courseSlug: String(raw.courseSlug || raw.course_slug || ""),
+          courseTitle: String(raw.courseTitle || raw.course_title || "Course"),
+          assignmentId: String(raw.assignmentId || raw.assignment_id || ""),
+          assignmentTitle: String(raw.assignmentTitle || raw.assignment_title || "Assignment"),
+          studentId: String(raw.studentId || raw.student_id || ""),
+          studentName: String(raw.studentName || raw.student_name || "Student"),
+          studentEmail: String(raw.studentEmail || raw.student_email || ""),
+          githubUrl: String(raw.githubUrl || raw.github_url || ""),
+          solutionNotes: String(raw.solutionNotes || raw.solution_notes || ""),
+          submittedAt: String(raw.submittedAt || raw.submitted_at || ""),
+          status:
+            raw.status === "resubmission_required"
+              ? "needs_revision"
+              : raw.status === "reviewed"
+                ? "approved"
+                : (raw.status as AssignmentSubmission["status"]) || "pending",
+          score: typeof raw.score === "number" ? raw.score : undefined,
+          maxScore: Number(raw.maxScore ?? raw.max_score ?? 100),
+          feedback: typeof raw.feedback === "string" ? raw.feedback : undefined,
+          gradedAt: String(raw.gradedAt || raw.graded_at || "") || undefined,
+          gradedBy: String(raw.gradedBy || raw.graded_by || "") || undefined,
+          studentAvatar: String(raw.studentAvatar || raw.avatar_url || "") || undefined,
+        })) as AssignmentSubmission[],
+      );
       setQuizzes(data.quizzes as unknown as Quiz[]);
-      setAssignmentDefs(data.assignments as unknown as AssignmentDefinition[]);
+      setAssignmentDefs(
+        (data.assignments || []).map((raw: Record<string, unknown>) => ({
+          id: String(raw.id || ""),
+          courseSlug: String(raw.courseSlug || raw.course_slug || ""),
+          courseTitle: String(raw.courseTitle || raw.course_title || "Course"),
+          title: String(raw.title || "Assignment"),
+          description: String(raw.description || ""),
+          dueDate: String(raw.dueDate || raw.due_date || ""),
+          maxScore: Number(raw.maxScore ?? raw.max_score ?? 100),
+          submissionCount: (data.submissions || []).filter(
+            (submission: Record<string, unknown>) =>
+              (submission.assignmentId || submission.assignment_id) === raw.id,
+          ).length,
+        })) as AssignmentDefinition[],
+      );
     } catch (e) {
       console.error("Failed to load instructor data:", e);
     }
@@ -448,6 +561,83 @@ function TeachDashboardPage() {
     }
   };
 
+  const toggleRowVideoTitleEditor = async (row: CourseRow) => {
+    if (videoTitleEditorCourse === row.id) {
+      setVideoTitleEditorCourse(null);
+      return;
+    }
+
+    setLoadingVideoTitleCourse(row.id);
+    setMsg(null);
+    try {
+      // Load persistent lesson records by course ID, so duplicate course slugs
+      // cannot cause a teacher to rename another course's video.
+      const { lessons: courseLessons } = await lmsClient.getCourse(row.id);
+      const loadedLessons: LessonItem[] = (courseLessons || [])
+        .filter((lesson) => Boolean(lesson.video_url))
+        .map((lesson) => ({
+          id: lesson.id,
+          courseSlug: row.slug,
+          title: lesson.title,
+          duration: lesson.duration,
+          videoUrl: lesson.video_url,
+          isPreview: lesson.is_preview,
+        }));
+
+      setVideoTitleLessons((previous) => ({ ...previous, [row.id]: loadedLessons }));
+      setVideoTitleDrafts((previous) => ({
+        ...previous,
+        ...Object.fromEntries(loadedLessons.map((lesson) => [lesson.id, lesson.title])),
+      }));
+      setVideoTitleEditorCourse(row.id);
+      if (loadedLessons.length === 0) {
+        setMsg({ text: `No uploaded video lessons found for "${row.title}". Upload a video first.`, isError: true });
+      }
+    } catch (error) {
+      setMsg({
+        text: error instanceof Error ? error.message : "Could not load video titles.",
+        isError: true,
+      });
+    } finally {
+      setLoadingVideoTitleCourse(null);
+    }
+  };
+
+  const saveRowVideoTitle = async (rowId: string, lesson: LessonItem) => {
+    const title = (videoTitleDrafts[lesson.id] || "").trim();
+    if (!title) {
+      setMsg({ text: "Enter a video title before saving.", isError: true });
+      return;
+    }
+
+    setSavingVideoTitleId(lesson.id);
+    setMsg(null);
+    try {
+      const { lesson: savedLesson } = await lmsClient.updateLesson(lesson.id, { title });
+      setVideoTitleLessons((previous) => ({
+        ...previous,
+        [rowId]: (previous[rowId] || []).map((item) =>
+          item.id === lesson.id ? { ...item, title: savedLesson.title } : item,
+        ),
+      }));
+      setVideoTitleDrafts((previous) => ({ ...previous, [lesson.id]: savedLesson.title }));
+      setLessons((previous) =>
+        previous.map((item) =>
+          item.id === lesson.id ? { ...item, title: savedLesson.title } : item,
+        ),
+      );
+      setMsg({ text: `Saved video title: "${savedLesson.title}". Students will see this name in the course player.` });
+      window.dispatchEvent(new CustomEvent("lms_data_updated"));
+    } catch (error) {
+      setMsg({
+        text: error instanceof Error ? error.message : "Could not save video title.",
+        isError: true,
+      });
+    } finally {
+      setSavingVideoTitleId(null);
+    }
+  };
+
   useEffect(() => {
     loadInstructorData();
     loadLessons(selectedContentCourse);
@@ -467,12 +657,46 @@ function TeachDashboardPage() {
     setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   };
 
+  // Save cover changes immediately. Previously the preview changed locally,
+  // but the thumbnail reached Neon only if the separate course-save action ran.
+  const handleRowThumbnailChange = async (rowId: string, thumbnail: string) => {
+    setMsg(null);
+    try {
+      const { course } = await lmsClient.updateCourse(rowId, { thumbnail });
+      updateRow(rowId, { thumbnail: course.thumbnail || thumbnail });
+      setMsg({ text: "Course cover saved and available to students." });
+      window.dispatchEvent(new CustomEvent("lms_data_updated"));
+    } catch (err) {
+      setMsg({
+        text: err instanceof Error ? err.message : "Could not save course cover.",
+        isError: true,
+      });
+    }
+  };
+
+  const handleRowThumbnailUpload = async (rowId: string, file: File) => {
+    if (!file) return;
+    setMsg(null);
+    try {
+      const { thumbnailUrl } = await lmsClient.uploadThumbnail(rowId, file);
+      await handleRowThumbnailChange(rowId, thumbnailUrl);
+    } catch (err) {
+      setMsg({
+        text: err instanceof Error ? err.message : "Could not upload course cover.",
+        isError: true,
+      });
+    }
+  };
+
   const handleUploadRowVideos = async (row: CourseRow, files: FileList | File[] | File) => {
     const fileList = files instanceof File ? [files] : Array.from(files);
     if (fileList.length === 0) return;
     setUploadingRowId(row.id);
     setMsg(null);
     try {
+      // Materialize any older URL-only course videos before appending new ones,
+      // preserving their existing curriculum order and names.
+      await lmsClient.getCourse(row.id).catch(() => null);
       let currentUrls =
         row.video_urls && Array.isArray(row.video_urls)
           ? [...row.video_urls]
@@ -480,6 +704,7 @@ function TeachDashboardPage() {
             ? [row.video_url]
             : [];
 
+      const uploadedItems: Array<{ url: string; title: string }> = [];
       for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i]!;
         setUploadProgressText(`Uploading ${i + 1} of ${fileList.length}: ${file.name}…`);
@@ -487,14 +712,30 @@ function TeachDashboardPage() {
         if (!currentUrls.includes(uploaded.videoUrl)) {
           currentUrls = [...currentUrls, uploaded.videoUrl];
         }
+        uploadedItems.push({ url: uploaded.videoUrl, title: titleFromVideoFileName(file.name) });
       }
 
+      // Save a named lesson for every upload. The title comes from the filename
+      // by default and can be renamed in the Curriculum Lesson Sequence below.
+      for (const item of uploadedItems) {
+        await lmsClient.addLesson(row.id, {
+          title: item.title,
+          description: "",
+          videoUrl: item.url,
+          isRequired: true,
+          isPreview: false,
+        });
+      }
+
+      // Keep every uploaded stream, but point the primary player at the most
+      // recently uploaded video instead of silently retaining the starter/sample URL.
+      const primaryVideoUrl = currentUrls[currentUrls.length - 1] || "";
       updateRow(row.id, {
-        video_url: currentUrls[0] || "",
+        video_url: primaryVideoUrl,
         video_urls: currentUrls,
       });
       await lmsClient.updateCourse(row.id, {
-        video_url: currentUrls[0] || "",
+        video_url: primaryVideoUrl,
         video_urls: currentUrls,
       });
       setMsg({
@@ -519,15 +760,16 @@ function TeachDashboardPage() {
     if (!trimmed) return;
     const targetRow = rows.find((r) => r.id === rowId);
     if (!targetRow) return;
+    // Keep existing URL-only assets as real lessons before adding another video.
+    await lmsClient.getCourse(rowId).catch(() => null);
     const currentUrls =
       targetRow.video_urls && Array.isArray(targetRow.video_urls)
         ? [...targetRow.video_urls]
         : targetRow.video_url
           ? [targetRow.video_url]
           : [];
-    if (!currentUrls.includes(trimmed)) {
-      currentUrls.push(trimmed);
-    }
+    const isNewVideoUrl = !currentUrls.includes(trimmed);
+    if (isNewVideoUrl) currentUrls.push(trimmed);
     updateRow(rowId, {
       video_urls: currentUrls,
       video_url: targetRow.video_url || currentUrls[0] || "",
@@ -537,7 +779,16 @@ function TeachDashboardPage() {
         video_urls: currentUrls,
         video_url: targetRow.video_url || currentUrls[0] || "",
       });
-      setMsg({ text: "Added video stream URL to course!" });
+      if (isNewVideoUrl) {
+        await lmsClient.addLesson(rowId, {
+          title: titleFromVideoUrl(trimmed, currentUrls.length - 1),
+          description: "",
+          videoUrl: trimmed,
+          isRequired: true,
+          isPreview: false,
+        });
+      }
+      setMsg({ text: "Added video URL and saved its curriculum title. Rename it in Course Content if needed." });
       window.dispatchEvent(new CustomEvent("lms_data_updated"));
     } catch (err) {
       console.warn("Failed to update course video urls:", err);
@@ -714,9 +965,12 @@ function TeachDashboardPage() {
     }
 
     try {
+      const thumbnailFileToUpload = newThumbnailFile;
       const filesToUpload = [...newVideoFiles];
+      const fileTitles = [...newVideoTitles];
       if (newVideoFile && !filesToUpload.includes(newVideoFile)) {
         filesToUpload.push(newVideoFile);
+        fileTitles.push(titleFromVideoFileName(newVideoFile.name));
       }
       setIsUploadingCourseVideo(filesToUpload.length > 0);
 
@@ -730,7 +984,9 @@ function TeachDashboardPage() {
         slug: newSlug.trim().toLowerCase().replace(/\s+/g, "-"),
         price_inr: newPrice,
         preview_minutes: newPreview,
-        thumbnail: newThumbnail.trim() || PRESET_THUMBNAILS[0].url,
+        thumbnail: thumbnailFileToUpload
+          ? PRESET_THUMBNAILS[0].url
+          : newThumbnail.trim() || PRESET_THUMBNAILS[0].url,
         video_url: initialUrls[0] || "",
         video_urls: initialUrls,
         hours: newHours,
@@ -739,6 +995,20 @@ function TeachDashboardPage() {
       });
 
       let createdCourse = course as unknown as CourseRow;
+
+      if (thumbnailFileToUpload) {
+        try {
+          setUploadProgressText(`Uploading course thumbnail: ${thumbnailFileToUpload.name}…`);
+          const { thumbnailUrl } = await lmsClient.uploadThumbnail(createdCourse.id, thumbnailFileToUpload);
+          const updated = await lmsClient.updateCourse(createdCourse.id, { thumbnail: thumbnailUrl });
+          createdCourse = updated.course as unknown as CourseRow;
+        } catch (thumbnailErr) {
+          await lmsClient.deleteCourse(createdCourse.id).catch(() => {});
+          throw new Error(
+            `Course thumbnail upload failed: ${thumbnailErr instanceof Error ? thumbnailErr.message : "Upload error"}`,
+          );
+        }
+      }
 
       if (filesToUpload.length > 0) {
         try {
@@ -750,12 +1020,20 @@ function TeachDashboardPage() {
             );
             const uploaded = await lmsClient.uploadVideo(createdCourse.id, file);
             uploadedUrls.push(uploaded.videoUrl);
+            await lmsClient.addLesson(createdCourse.id, {
+              title: fileTitles[i]?.trim() || titleFromVideoFileName(file.name),
+              description: "",
+              videoUrl: uploaded.videoUrl,
+              lessonOrder: i + 1,
+              isRequired: true,
+              isPreview: i === 0,
+            });
           }
           const allUrls = [...uploadedUrls, ...initialUrls];
           const updated = await lmsClient.updateCourse(createdCourse.id, {
             video_url: allUrls[0] || "",
             video_urls: allUrls,
-            thumbnail: createdCourse.thumbnail || newThumbnail,
+            thumbnail: createdCourse.thumbnail || PRESET_THUMBNAILS[0].url,
           });
           createdCourse = updated.course as unknown as CourseRow;
         } catch (uploadErr) {
@@ -767,18 +1045,35 @@ function TeachDashboardPage() {
         }
       }
 
+      // External video URLs also become named curriculum lessons so students
+      // see a real title rather than the course title or a generic placeholder.
+      for (let i = 0; i < initialUrls.length; i++) {
+        const url = initialUrls[i]!;
+        await lmsClient.addLesson(createdCourse.id, {
+          title: titleFromVideoUrl(url, i),
+          description: "",
+          videoUrl: url,
+          lessonOrder: filesToUpload.length + i + 1,
+          isRequired: true,
+          isPreview: filesToUpload.length === 0 && i === 0,
+        });
+      }
+
       setRows((prev) => [createdCourse, ...prev]);
       setNewTitle("");
       setNewSlug("");
       setNewVideoFile(null);
       setNewVideoFiles([]);
-      setNewVideoUrls([
-        "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
-      ]);
+      setNewVideoTitles([]);
+      setNewVideoUrl("");
+      setNewVideoUrls([]);
       setNewUrlInput("");
       setNewThumbnail(PRESET_THUMBNAILS[0].url);
+      setNewThumbnailFile(null);
+      const savedVideoCount =
+        createdCourse.video_urls?.length ?? (createdCourse.video_url ? 1 : 0);
       setMsg({
-        text: `Course "${createdCourse.title}" successfully created with ${createdCourse.video_urls?.length || 1} video(s)!`,
+        text: `Course "${createdCourse.title}" successfully created with ${savedVideoCount} video(s)!`,
       });
       window.dispatchEvent(new CustomEvent("lms_data_updated"));
       switchView("courses");
@@ -793,6 +1088,25 @@ function TeachDashboardPage() {
     }
   };
 
+  const handleDeleteAssignment = async (assignment: AssignmentDefinition) => {
+    const confirmed = window.confirm(
+      `Delete "${assignment.title}"? This also permanently removes its saved submissions and grading feedback. This cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    try {
+      const result = await lmsClient.deleteAssignment(assignment.id);
+      if (!result.success) throw new Error("The assignment could not be deleted.");
+      setAssignmentDefs((current) => current.filter((item) => item.id !== assignment.id));
+      setSubmissions((current) => current.filter((item) => item.assignmentId !== assignment.id));
+      setMsg({ text: `Assignment "${assignment.title}" deleted.` });
+      window.dispatchEvent(new CustomEvent("lms_data_updated"));
+      await loadInstructorData();
+    } catch (err: unknown) {
+      setMsg({ text: err instanceof Error ? err.message : "Failed to delete assignment", isError: true });
+    }
+  };
+
   const handleCreateAssignment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAsgTitle.trim() || !newAsgDesc.trim()) {
@@ -801,17 +1115,35 @@ function TeachDashboardPage() {
     }
 
     try {
-      await lmsClient.saveAssignment({
+      const savedResult = await lmsClient.saveAssignment({
         courseId: newAsgCourse,
         title: newAsgTitle.trim(),
         description: newAsgDesc.trim(),
         dueDate: newAsgDue,
         maxScore: newAsgMaxScore,
       });
+      const saved = (savedResult?.assignment || {}) as Record<string, unknown>;
+      const savedId = String(saved.id || "");
+      if (!savedId) {
+        throw new Error("The server did not confirm that the assignment was saved. Please refresh and try again.");
+      }
 
+      const savedAssignment: AssignmentDefinition = {
+        id: savedId,
+        courseSlug: String(saved.course_slug || newAsgCourse),
+        courseTitle: String(saved.course_title || assignmentCourseOptions.find((course) => course.slug === newAsgCourse)?.title || "Course"),
+        title: String(saved.title || newAsgTitle.trim()),
+        description: String(saved.description || newAsgDesc.trim()),
+        dueDate: String(saved.due_date || newAsgDue),
+        maxScore: Number(saved.max_score ?? newAsgMaxScore),
+        submissionCount: 0,
+      };
+      setAssignmentDefs((current) =>
+        current.some((item) => item.id === savedId) ? current : [savedAssignment, ...current],
+      );
       setNewAsgTitle("");
       setNewAsgDesc("");
-      setMsg({ text: `Assignment "${newAsgTitle}" created and published to students!` });
+      setMsg({ text: `Assignment "${savedAssignment.title}" saved successfully.` });
       window.dispatchEvent(new CustomEvent("lms_data_updated"));
       await loadInstructorData();
       switchView("assignments");
@@ -940,6 +1272,29 @@ function TeachDashboardPage() {
     }
   };
 
+  const handleSaveLessonTitle = async (lesson: LessonItem) => {
+    const title = editingLessonTitle.trim();
+    if (!title) {
+      setMsg({ text: "Enter a lesson title before saving.", isError: true });
+      return;
+    }
+    try {
+      const { lesson: updatedLesson } = await lmsClient.updateLesson(lesson.id, { title });
+      setLessons((prev) =>
+        prev.map((item) => item.id === lesson.id ? { ...item, title: updatedLesson.title } : item),
+      );
+      setEditingLessonId(null);
+      setEditingLessonTitle("");
+      setMsg({ text: `Saved video title: "${updatedLesson.title}"` });
+      window.dispatchEvent(new CustomEvent("lms_data_updated"));
+    } catch (err: unknown) {
+      setMsg({
+        text: err instanceof Error ? err.message : "Could not save the video title.",
+        isError: true,
+      });
+    }
+  };
+
   const handleOpenGrading = (sub: AssignmentSubmission) => {
     setGradingSub(sub);
     setGradeScore(sub.score ?? 95);
@@ -969,6 +1324,17 @@ function TeachDashboardPage() {
   const pendingAssignments = submissions.filter((s) => s.status === "pending").length;
   const publishedCount = rows.filter((r) => r.status !== "draft").length;
   const draftCount = rows.filter((r) => r.status === "draft").length;
+  // Don't offer malformed numeric placeholder courses (e.g. "2") when creating assignments.
+  // Keep their existing records untouched so no learner data is lost.
+  const assignmentCourseOptions = rows.filter(
+    (course) =>
+      typeof course.title === "string" &&
+      course.title.trim().length > 1 &&
+      !/^\d+$/.test(course.title.trim()) &&
+      typeof course.slug === "string" &&
+      course.slug.trim().length > 0 &&
+      !/^\d+$/.test(course.slug.trim()),
+  );
   const avgCompletion = students.length
     ? Math.round(students.reduce((acc, s) => acc + s.progress, 0) / students.length)
     : 0;
@@ -999,7 +1365,7 @@ function TeachDashboardPage() {
               : "bg-teal-50 text-teal-800 border border-teal-200"
           }`}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             {msg.isError ? (
               <AlertCircle className="size-4 shrink-0" />
             ) : (
@@ -1020,52 +1386,29 @@ function TeachDashboardPage() {
       {/* VIEW 1: DASHBOARD (PRIMARY INSTRUCTOR OPERATIONS DESK) */}
       {/* ------------------------------------------------------------- */}
       {currentView === "dashboard" && (
-        <div className="space-y-6">
-          {/* Executive Header Banner */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div className="space-y-4">
+          {/* Compact dashboard header */}
+          <div className="relative overflow-hidden rounded-2xl border border-teal-500/25 bg-gradient-to-r from-slate-900 via-slate-900 to-teal-950 px-6 py-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-lg shadow-teal-950/20"><div className="pointer-events-none absolute -right-8 -top-14 size-44 rounded-full bg-teal-400/10 blur-3xl" />
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-teal-700">
-                Faculty Operations Hub
-              </span>
-              <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
-                Welcome, {displayName}
-              </h1>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Manage curriculum assets, evaluate student project submissions, and monitor revenue
-                velocity.
+              <h1 className="text-2xl font-bold tracking-tight text-white">Welcome back, {displayName} <span className="inline-block">✦</span></h1>
+              <p className="text-sm text-slate-300 mt-1">
+                Your courses, learners, and reviews at a glance.
               </p>
             </div>
-
-            {/* Quick Actions Bar */}
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={() => switchView("create-course")}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-teal-700 px-3 py-2 text-xs font-bold text-white hover:bg-teal-800 transition-colors cursor-pointer"
-              >
-                <PlusCircle className="size-3.5" />
-                <span>Create Course</span>
-              </button>
-              <button
-                onClick={() => switchView("assignments")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
-              >
-                <Layers className="size-3.5 text-teal-700" />
-                <span>Create Assignment</span>
-              </button>
-              <button
-                onClick={() => switchView("submissions")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-teal-200 bg-teal-50/70 px-3 py-2 text-xs font-bold text-teal-800 hover:bg-teal-100 transition-colors cursor-pointer"
-              >
-                <span>Review Submissions ({pendingAssignments})</span>
-              </button>
-            </div>
+            <button
+              onClick={() => switchView("create-course")}
+              className="relative inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-cyan-500 px-4 py-2.5 text-xs font-bold text-slate-950 shadow-md shadow-teal-500/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-teal-500/30 cursor-pointer"
+            >
+              <PlusCircle className="size-3.5" />
+              <span>Create Course</span>
+            </button>
           </div>
 
           {/* Operational Metrics Cards */}
-          <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500">Total Courses</span>
-              <p className="mt-1 text-2xl font-bold text-slate-900">{rows.length}</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="group relative overflow-hidden rounded-2xl border border-teal-500/20 bg-white dark:bg-slate-900/80 p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-teal-400/50 hover:shadow-lg hover:shadow-teal-950/30"><div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-teal-400 to-cyan-400" />
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Total Courses</span>
+              <p className="mt-1 text-xl font-bold text-slate-900 dark:text-white">{rows.length}</p>
               <div className="mt-1 flex items-center gap-2 text-[11px] text-slate-500">
                 <span className="text-emerald-700 font-semibold">{publishedCount} Published</span>
                 <span>·</span>
@@ -1073,16 +1416,16 @@ function TeachDashboardPage() {
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500">Enrolled Students</span>
-              <p className="mt-1 text-2xl font-bold text-slate-900">{totalStudents}</p>
-              <span className="text-[11px] text-teal-700 font-medium">
+            <div className="group relative overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/80 p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-indigo-400/50 hover:shadow-lg hover:shadow-indigo-950/30"><div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-400 to-violet-500" />
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Enrolled Students</span>
+              <p className="mt-1 text-2xl font-bold text-slate-900 dark:text-white">{totalStudents}</p>
+              <span className="text-[11px] text-teal-700 dark:text-teal-400 font-medium">
                 {avgCompletion}% avg completion
               </span>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500">Pending Review Queue</span>
+            <div className="group relative overflow-hidden rounded-2xl border border-amber-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/80 p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-amber-400/50 hover:shadow-lg hover:shadow-amber-950/10"><div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-amber-400 to-orange-500" />
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Pending Review Queue</span>
               <p className="mt-1 text-2xl font-bold text-slate-900">{pendingAssignments}</p>
               <span
                 className={`text-[11px] font-bold ${pendingAssignments > 0 ? "text-amber-700" : "text-emerald-700"}`}
@@ -1091,46 +1434,47 @@ function TeachDashboardPage() {
               </span>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500">Gross Tuition Revenue</span>
+            <div className="group relative overflow-hidden rounded-2xl border border-fuchsia-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/80 p-4 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:border-fuchsia-400/50 hover:shadow-lg hover:shadow-fuchsia-950/10"><div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-fuchsia-400 to-pink-500" />
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Gross Tuition Revenue</span>
               <p className="mt-1 text-2xl font-bold text-slate-900">
                 ₹{totalRevenue.toLocaleString("en-IN")}
               </p>
-              <span className="text-[11px] text-emerald-700 font-medium">+18.4% this cycle</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Recorded tuition</span>
             </div>
           </div>
 
           {/* Review Queue Spotlight & Quick Grading */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="rounded-2xl border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/80 p-5 space-y-3 shadow-sm">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-3">
               <div className="flex items-center gap-2">
                 <ClipboardCheck className="size-4 text-teal-700" />
-                <h3 className="font-bold text-sm text-slate-900">
-                  Submissions Requiring Faculty Evaluation
+                <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                  Needs review
                 </h3>
               </div>
               <button
                 onClick={() => switchView("submissions")}
-                className="text-xs font-semibold text-teal-700 hover:underline cursor-pointer"
+                className="text-xs font-semibold text-teal-700 dark:text-teal-400 transition-colors hover:text-teal-600 dark:hover:text-teal-300 hover:underline cursor-pointer"
               >
-                Open Full Workbench ({submissions.length})
+                View all
               </button>
             </div>
 
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-slate-100 dark:divide-slate-700">
               {submissions
                 .filter((s) => s.status === "pending")
+                .slice(0, 3)
                 .map((sub) => (
                   <div
                     key={sub.id}
-                    className="py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+                    className="py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
                   >
                     <div>
                       <div className="flex items-center gap-2 text-xs">
                         <span className="font-bold text-slate-900">{sub.studentName}</span>
-                        <span className="text-slate-400">({sub.studentEmail})</span>
+                        <span className="text-slate-500 dark:text-slate-400">({sub.studentEmail})</span>
                         <span className="text-slate-300">·</span>
-                        <span className="text-teal-700 font-semibold">{sub.courseTitle}</span>
+                        <span className="text-teal-700 dark:text-teal-400 font-semibold">{sub.courseTitle}</span>
                       </div>
                       <p className="text-xs text-slate-600 font-medium mt-0.5">
                         {sub.assignmentTitle}
@@ -1170,7 +1514,7 @@ function TeachDashboardPage() {
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <Users className="size-4 text-teal-700" />
-                <h3 className="font-bold text-sm text-slate-900">Recent Student Cohort Activity</h3>
+                <h3 className="font-bold text-sm text-slate-900">Recent students</h3>
               </div>
               <button
                 onClick={() => switchView("students")}
@@ -1191,16 +1535,16 @@ function TeachDashboardPage() {
                     <th className="pb-2 text-right">Fee</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 text-slate-700">
+                <tbody className="divide-y divide-slate-100 text-slate-700 dark:divide-slate-700 dark:text-slate-200">
                   {students.slice(0, 4).map((s) => (
-                    <tr key={s.id} className="hover:bg-slate-50">
+                    <tr key={s.id} className="transition-colors hover:bg-teal-50/70 dark:hover:bg-slate-800/80">
                       <td className="py-2.5 font-bold text-slate-900">{s.studentName}</td>
                       <td className="py-2.5 text-teal-700 font-medium">{s.courseTitle}</td>
                       <td className="py-2.5">
                         <div className="flex items-center gap-2">
                           <div className="h-1.5 w-16 bg-slate-100 rounded-full overflow-hidden">
                             <div
-                              className="h-full bg-teal-700 rounded-full"
+                              className="h-full bg-gradient-to-r from-teal-500 to-cyan-400 rounded-full"
                               style={{ width: `${s.progress}%` }}
                             />
                           </div>
@@ -1229,8 +1573,7 @@ function TeachDashboardPage() {
             <div>
               <h1 className="text-xl font-extrabold text-slate-900">Course Portfolio & Pricing</h1>
               <p className="text-xs text-slate-500">
-                Configure pricing in ₹ INR, free preview minutes, total duration hours, and video
-                streams.
+                Manage course pricing, publication status, and media.
               </p>
             </div>
             <button
@@ -1245,7 +1588,7 @@ function TeachDashboardPage() {
             {rows.map((row) => (
               <div
                 key={row.id || row.slug}
-                className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs"
+                className="rounded-xl border border-slate-200 bg-white p-4"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
@@ -1281,13 +1624,13 @@ function TeachDashboardPage() {
                     onClick={() => saveCourse(row)}
                     className="self-start sm:self-center bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold gap-1.5 cursor-pointer shrink-0"
                   >
-                    <Save className="size-3.5" /> Save Changes
+                    <Save className="size-3.5" /> Save
                   </Button>
                 </div>
 
-                <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-4 text-xs">
+                <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4 text-xs">
                   <div>
-                    <label className="font-semibold text-slate-700 block mb-1">Fee (₹ INR)</label>
+                    <label className="font-semibold text-slate-700 block mb-1">Fee (₹)</label>
                     <Input
                       type="number"
                       min={1}
@@ -1295,13 +1638,13 @@ function TeachDashboardPage() {
                       onChange={(e) =>
                         updateRow(row.id, { price_inr: Math.max(1, Number(e.target.value)) })
                       }
-                      className="text-xs"
+                      className="h-9 text-xs"
                     />
                   </div>
 
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">
-                      Preview Limit (0–30 min)
+                      Preview (min)
                     </label>
                     <Input
                       type="number"
@@ -1313,13 +1656,13 @@ function TeachDashboardPage() {
                           preview_minutes: Math.min(30, Math.max(0, Number(e.target.value))),
                         })
                       }
-                      className="text-xs"
+                      className="h-9 text-xs"
                     />
                   </div>
 
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">
-                      Duration (Hours)
+                      Duration (hrs)
                     </label>
                     <Input
                       type="number"
@@ -1329,20 +1672,20 @@ function TeachDashboardPage() {
                       onChange={(e) =>
                         updateRow(row.id, { hours: Math.max(1, Number(e.target.value)) })
                       }
-                      className="text-xs"
+                      className="h-9 text-xs"
                     />
                   </div>
 
                   <div>
                     <label className="font-semibold text-slate-700 block mb-1">
-                      Publication Status
+                      Status
                     </label>
                     <select
                       value={row.status || "published"}
                       onChange={(e) =>
                         updateRow(row.id, { status: e.target.value as "published" | "draft" })
                       }
-                      className="w-full h-8.5 rounded-md border border-slate-200 bg-white px-2 text-xs"
+                      className="w-full h-9 rounded-md border border-slate-200 bg-white px-2 text-xs"
                     >
                       <option value="published">Published</option>
                       <option value="draft">Draft Mode</option>
@@ -1350,8 +1693,16 @@ function TeachDashboardPage() {
                   </div>
                 </div>
 
+                <details className="group mt-3 border-t border-slate-100 pt-3">
+                  <summary className="flex cursor-pointer list-none items-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+                    <Film className="size-4 text-indigo-600" />
+                    <span>Media & videos</span>
+                    <span className="text-xs font-normal text-slate-400">Cover, uploads and links</span>
+                    <ChevronDown className="ml-auto size-4 text-slate-400 transition-transform group-open:rotate-180" />
+                  </summary>
+                  <div className="space-y-4 px-1 pt-2">
                 {/* Course Cover Thumbnail Option */}
-                <div className="mt-3 pt-3 border-t border-slate-100 space-y-2 text-xs">
+                <div className="space-y-2 text-xs">
                   <div className="flex items-center justify-between">
                     <label className="font-semibold text-slate-700 flex items-center gap-1.5">
                       <ImageIcon className="size-3.5 text-teal-600" />
@@ -1367,9 +1718,7 @@ function TeachDashboardPage() {
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            handleThumbnailFileChange(file, (dataUrl) =>
-                              updateRow(row.id, { thumbnail: dataUrl }),
-                            );
+                            void handleRowThumbnailUpload(row.id, file);
                           }
                           e.target.value = "";
                         }}
@@ -1387,18 +1736,13 @@ function TeachDashboardPage() {
                         <button
                           key={`p_${row.id}_${p.url}`}
                           type="button"
-                          onClick={() => updateRow(row.id, { thumbnail: p.url })}
+                          onClick={() => void handleRowThumbnailChange(row.id, p.url)}
                           className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] font-medium transition-all cursor-pointer ${
                             isSelected
                               ? "border-teal-600 bg-teal-50 text-teal-800 font-bold shadow-2xs"
                               : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                           }`}
                         >
-                          <img
-                            src={p.url}
-                            alt={p.label}
-                            className="size-3.5 rounded object-cover shrink-0"
-                          />
                           <span>{p.label}</span>
                         </button>
                       );
@@ -1410,6 +1754,10 @@ function TeachDashboardPage() {
                       placeholder="Or enter custom image URL (https://...)"
                       value={row.thumbnail || ""}
                       onChange={(e) => updateRow(row.id, { thumbnail: e.target.value })}
+                      onBlur={(e) => {
+                        const value = e.currentTarget.value.trim();
+                        if (value) void handleRowThumbnailChange(row.id, value);
+                      }}
                       className="text-xs font-mono h-7.5"
                     />
                   </div>
@@ -1423,7 +1771,7 @@ function TeachDashboardPage() {
                         ? [row.video_url]
                         : [];
                   return (
-                    <div className="mt-3 pt-3 border-t border-slate-100 space-y-2.5">
+                    <div className="space-y-2.5">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
                           <Film className="size-3.5 text-indigo-600" />
@@ -1455,6 +1803,90 @@ function TeachDashboardPage() {
                           />
                         </label>
                       </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => void toggleRowVideoTitleEditor(row)}
+                          disabled={loadingVideoTitleCourse === row.id}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-60 cursor-pointer"
+                        >
+                          {loadingVideoTitleCourse === row.id ? (
+                            <Loader2 className="size-3 animate-spin" />
+                          ) : (
+                            <Pencil className="size-3" />
+                          )}
+                          {loadingVideoTitleCourse === row.id
+                            ? "Loading titles…"
+                            : videoTitleEditorCourse === row.id
+                              ? "Hide video titles"
+                              : "Rename video titles"}
+                        </button>
+                      </div>
+
+                      {videoTitleEditorCourse === row.id && (
+                        <div className="space-y-2 rounded-lg border border-indigo-100 bg-indigo-50/50 p-3">
+                          <div>
+                            <p className="text-xs font-bold text-slate-800">Student-facing video names</p>
+                            <p className="mt-0.5 text-[10px] text-slate-500">
+                              Rename a video here. The saved title appears in the course player; the video file stays unchanged.
+                            </p>
+                          </div>
+                          {(videoTitleLessons[row.id] || []).length === 0 ? (
+                            <p className="rounded-md border border-dashed border-slate-200 bg-white p-3 text-[11px] text-slate-500">
+                              No video lessons are available to rename yet.
+                            </p>
+                          ) : (
+                            (videoTitleLessons[row.id] || []).map((lesson, lessonIndex) => (
+                              <div
+                                key={lesson.id}
+                                className="flex flex-col gap-2 rounded-md border border-slate-200 bg-white p-2.5 sm:flex-row sm:items-center"
+                              >
+                                <div className="min-w-0 sm:w-40 shrink-0">
+                                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                                    Video {lessonIndex + 1}
+                                  </p>
+                                  <p className="truncate text-[10px] text-slate-400" title={lesson.videoUrl}>
+                                    {lesson.videoUrl}
+                                  </p>
+                                </div>
+                                <Input
+                                  value={videoTitleDrafts[lesson.id] ?? lesson.title}
+                                  onChange={(event) =>
+                                    setVideoTitleDrafts((previous) => ({
+                                      ...previous,
+                                      [lesson.id]: event.target.value,
+                                    }))
+                                  }
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter") {
+                                      event.preventDefault();
+                                      void saveRowVideoTitle(row.id, lesson);
+                                    }
+                                  }}
+                                  aria-label={`Title for video ${lessonIndex + 1}`}
+                                  placeholder="Enter a student-facing video title"
+                                  className="h-8 flex-1 text-xs"
+                                />
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  onClick={() => void saveRowVideoTitle(row.id, lesson)}
+                                  disabled={savingVideoTitleId === lesson.id}
+                                  className="h-8 shrink-0 bg-indigo-600 px-3 text-[11px] font-semibold text-white hover:bg-indigo-700"
+                                >
+                                  {savingVideoTitleId === lesson.id ? (
+                                    <Loader2 className="size-3 animate-spin" />
+                                  ) : (
+                                    <Save className="size-3" />
+                                  )}
+                                  Save name
+                                </Button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      )}
 
                       {/* Video URLs list */}
                       <div className="space-y-1.5">
@@ -1537,6 +1969,8 @@ function TeachDashboardPage() {
                     </div>
                   );
                 })()}
+                  </div>
+                </details>
               </div>
             ))}
           </div>
@@ -1648,7 +2082,10 @@ function TeachDashboardPage() {
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        handleThumbnailFileChange(file, setNewThumbnail);
+                        handleThumbnailFileChange(file, (dataUrl) => {
+                          setNewThumbnail(dataUrl);
+                          setNewThumbnailFile(file);
+                        });
                       }
                       e.target.value = "";
                     }}
@@ -1685,18 +2122,16 @@ function TeachDashboardPage() {
                         <button
                           key={`new_p_${p.url}`}
                           type="button"
-                          onClick={() => setNewThumbnail(p.url)}
+                          onClick={() => {
+                            setNewThumbnail(p.url);
+                            setNewThumbnailFile(null);
+                          }}
                           className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-[11px] text-left transition-all cursor-pointer truncate ${
                             isSelected
                               ? "border-teal-600 bg-teal-50 text-teal-800 font-bold shadow-2xs"
                               : "border-slate-200 bg-slate-50/50 text-slate-600 hover:bg-slate-100"
                           }`}
                         >
-                          <img
-                            src={p.url}
-                            alt={p.label}
-                            className="size-3.5 rounded object-cover shrink-0"
-                          />
                           <span className="truncate">{p.label}</span>
                         </button>
                       );
@@ -1707,7 +2142,10 @@ function TeachDashboardPage() {
                     <Input
                       placeholder="Or paste custom image URL (https://...)"
                       value={newThumbnail}
-                      onChange={(e) => setNewThumbnail(e.target.value)}
+                      onChange={(e) => {
+                        setNewThumbnail(e.target.value);
+                        setNewThumbnailFile(null);
+                      }}
                       className="text-xs font-mono h-7.5"
                     />
                   </div>
@@ -1727,8 +2165,8 @@ function TeachDashboardPage() {
                     </span>
                   </label>
                   <p className="text-[11px] text-slate-500">
-                    Select one or multiple video files to upload for this course (MP4, WebM, MOV,
-                    max 500 MB each).
+                    Select one or multiple video files (MP4, WebM, MOV, max 500 MB each). Set each
+                    curriculum title below before publishing; you can rename it later.
                   </p>
                 </div>
                 <label className="inline-flex items-center gap-1.5 rounded-lg bg-teal-50 border border-teal-200 px-3 py-1.5 text-xs font-semibold text-teal-700 hover:bg-teal-100 cursor-pointer transition-colors shrink-0">
@@ -1743,6 +2181,10 @@ function TeachDashboardPage() {
                       const files = Array.from(e.target.files || []);
                       if (files.length > 0) {
                         setNewVideoFiles((prev) => [...prev, ...files]);
+                        setNewVideoTitles((prev) => [
+                          ...prev,
+                          ...files.map((file) => titleFromVideoFileName(file.name)),
+                        ]);
                         if (!newVideoFile) setNewVideoFile(files[0] ?? null);
                       }
                       e.target.value = "";
@@ -1757,29 +2199,45 @@ function TeachDashboardPage() {
                   {newVideoFiles.map((f, idx) => (
                     <div
                       key={`new_v_file_${idx}_${f.name}`}
-                      className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs"
+                      className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs"
                     >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="font-bold text-slate-500 text-[10px] shrink-0">
-                          #{idx + 1}
-                        </span>
-                        <Video className="size-3.5 text-teal-600 shrink-0" />
-                        <span className="font-mono text-[11px] text-slate-800 truncate">
-                          {f.name}
-                        </span>
-                        <span className="text-[10px] text-slate-500 shrink-0">
-                          ({(f.size / (1024 * 1024)).toFixed(1)} MB)
-                        </span>
-                        {idx === 0 && (
-                          <span className="rounded bg-teal-100 px-1.5 py-0.5 text-[9px] font-bold text-teal-700 uppercase shrink-0">
-                            Primary
+                      <div className="flex-1 min-w-0 space-y-1.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-bold text-slate-500 text-[10px] shrink-0">
+                            #{idx + 1}
                           </span>
-                        )}
+                          <Video className="size-3.5 text-teal-600 shrink-0" />
+                          <span className="font-mono text-[11px] text-slate-800 truncate">
+                            {f.name}
+                          </span>
+                          <span className="text-[10px] text-slate-500 shrink-0">
+                            ({(f.size / (1024 * 1024)).toFixed(1)} MB)
+                          </span>
+                          {idx === 0 && (
+                            <span className="rounded bg-teal-100 px-1.5 py-0.5 text-[9px] font-bold text-teal-700 uppercase shrink-0">
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                        <Input
+                          value={newVideoTitles[idx] ?? titleFromVideoFileName(f.name)}
+                          onChange={(e) =>
+                            setNewVideoTitles((prev) => {
+                              const next = [...prev];
+                              next[idx] = e.target.value;
+                              return next;
+                            })
+                          }
+                          placeholder="Enter the title students will see"
+                          className="h-8 text-xs"
+                          aria-label={`Title for video ${idx + 1}`}
+                        />
                       </div>
                       <button
                         type="button"
                         onClick={() => {
                           setNewVideoFiles((prev) => prev.filter((_, i) => i !== idx));
+                          setNewVideoTitles((prev) => prev.filter((_, i) => i !== idx));
                           if (newVideoFile === f) {
                             setNewVideoFile(newVideoFiles.filter((_, i) => i !== idx)[0] ?? null);
                           }
@@ -1984,8 +2442,61 @@ function TeachDashboardPage() {
                         <span className="grid size-6 shrink-0 place-items-center rounded bg-slate-100 font-bold text-xs text-slate-600">
                           {idx + 1}
                         </span>
-                        <div className="min-w-0">
-                          <p className="text-xs font-bold text-slate-900 truncate">{les.title}</p>
+                        <div className="min-w-0 flex-1">
+                          {editingLessonId === les.id ? (
+                            <div className="flex items-center gap-1.5">
+                              <Input
+                                value={editingLessonTitle}
+                                onChange={(e) => setEditingLessonTitle(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    void handleSaveLessonTitle(les);
+                                  }
+                                  if (e.key === "Escape") {
+                                    setEditingLessonId(null);
+                                    setEditingLessonTitle("");
+                                  }
+                                }}
+                                className="h-8 text-xs"
+                                aria-label="Video lesson title"
+                                autoFocus
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveLessonTitle(les)}
+                                className="rounded-md p-1.5 text-emerald-700 hover:bg-emerald-50 cursor-pointer"
+                                title="Save video title"
+                              >
+                                <Save className="size-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingLessonId(null);
+                                  setEditingLessonTitle("");
+                                }}
+                                className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 cursor-pointer"
+                                title="Cancel title edit"
+                              >
+                                <X className="size-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2 min-w-0">
+                              <p className="text-xs font-bold text-slate-900 truncate">{les.title}</p>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingLessonId(les.id);
+                                  setEditingLessonTitle(les.title);
+                                }}
+                                className="shrink-0 text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer"
+                              >
+                                Rename
+                              </button>
+                            </div>
+                          )}
                           <p className="text-[11px] text-slate-500 font-mono mt-0.5">
                             Duration: {les.duration}
                             {les.videoUrl ? (
@@ -2212,13 +2723,29 @@ function TeachDashboardPage() {
                     <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                       <span>
                         Max Marks: <strong>{asg.maxScore}</strong>
+                        <span className="ml-3">
+                          Submissions: <strong>{submissions.filter((submission) => submission.assignmentId === asg.id).length}</strong>
+                        </span>
                       </span>
-                      <button
-                        onClick={() => switchView("submissions")}
-                        className="font-bold text-teal-700 hover:underline cursor-pointer"
-                      >
-                        Grade Submissions →
-                      </button>
+                      <div className="flex items-center gap-4">
+                        <button
+                          onClick={() => {
+                            setSubmissionFilter("all");
+                            switchView("submissions");
+                          }}
+                          className="font-bold text-teal-700 hover:underline cursor-pointer"
+                        >
+                          Review Submissions ({submissions.filter((submission) => submission.assignmentId === asg.id).length}) →
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteAssignment(asg)}
+                          className="font-bold text-red-600 hover:text-red-700 hover:underline cursor-pointer"
+                          aria-label={`Delete assignment ${asg.title}`}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -2236,11 +2763,17 @@ function TeachDashboardPage() {
                     onChange={(e) => setNewAsgCourse(e.target.value)}
                     className="w-full h-8.5 rounded-md border border-slate-200 bg-white px-2 text-xs"
                   >
-                    {rows.map((r) => (
-                      <option key={r.slug} value={r.slug}>
-                        {r.title}
+                    {assignmentCourseOptions.length === 0 ? (
+                      <option value="" disabled>
+                        No valid courses available
                       </option>
-                    ))}
+                    ) : (
+                      assignmentCourseOptions.map((r) => (
+                        <option key={r.slug} value={r.slug}>
+                          {r.title}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
 
@@ -2493,7 +3026,7 @@ function TeachDashboardPage() {
                 onChange={(e) => setSelectedCourseFilter(e.target.value)}
                 className="h-8.5 rounded-md border border-slate-200 bg-white px-2.5 text-xs text-slate-700"
               >
-                <option value="all">All Cohorts</option>
+                <option value="all">All Courses</option>
                 {rows.map((r) => (
                   <option key={r.slug} value={r.slug}>
                     {r.title}
@@ -2503,11 +3036,11 @@ function TeachDashboardPage() {
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xs">
-            <table className="w-full text-left text-xs">
-              <thead className="border-b border-slate-200 bg-slate-50 text-slate-600 font-semibold">
+          <div className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <table className="w-full table-fixed text-left text-[11px] sm:text-xs">
+              <thead className="border-b border-slate-200 bg-slate-50 text-slate-600 font-semibold dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 <tr>
-                  <th className="px-4 py-3">Learner</th>
+                  <th className="break-words px-2 py-3 sm:px-3">Learner</th>
                   <th className="px-4 py-3">Certificates Earned</th>
                   <th className="px-4 py-3">Course</th>
                   <th className="px-4 py-3">Progress</th>
@@ -2523,8 +3056,8 @@ function TeachDashboardPage() {
                 {filteredStudents.length > 0 ? (
                   filteredStudents.map((s) => (
                     <tr key={s.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2.5">
+                      <td className="break-words px-2 py-3 sm:px-3">
+                        <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
                           <UserAvatar
                             src={
                               (s as unknown as Record<string, string>)["studentAvatar"] ||
@@ -2534,8 +3067,8 @@ function TeachDashboardPage() {
                             className="size-8 text-xs border border-slate-200 shadow-2xs"
                           />
                           <div>
-                            <div className="font-bold text-slate-900">{s.studentName}</div>
-                            <div className="text-[11px] text-slate-500">{s.studentEmail}</div>
+                            <div className="break-words font-bold text-slate-900 dark:text-white">{s.studentName}</div>
+                            <div className="break-all text-[10px] text-slate-500 dark:text-slate-400">{s.studentEmail}</div>
                           </div>
                         </div>
                       </td>
@@ -2548,10 +3081,10 @@ function TeachDashboardPage() {
                           }
                         </span>
                       </td>
-                      <td className="px-4 py-3 font-semibold text-teal-800">{s.courseTitle}</td>
+                      <td className="break-words px-2 py-3 font-semibold text-teal-800 dark:text-teal-300 sm:px-3">{s.courseTitle}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <div className="h-1.5 w-14 bg-slate-100 rounded-full overflow-hidden">
+                          <div className="h-1.5 w-10 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden sm:w-14">
                             <div
                               className="h-full bg-teal-700 rounded-full"
                               style={{ width: `${s.progress}%` }}
@@ -2560,13 +3093,13 @@ function TeachDashboardPage() {
                           <span className="font-bold">{s.progress}%</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-slate-600 font-medium">
+                      <td className="break-words px-2 py-3 text-slate-600 font-medium dark:text-slate-300 sm:px-3">
                         {s.completedLessons ?? s.completedLectures ?? 0} /{" "}
                         {s.totalRequiredLessons ?? s.totalLectures ?? 3}
                       </td>
                       <td className="px-4 py-3">
                         <span
-                          className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold ${
                             s.progress >= 100 || s.status === "completed"
                               ? "bg-emerald-100 text-emerald-800"
                               : "bg-amber-100 text-amber-800"
@@ -2577,16 +3110,16 @@ function TeachDashboardPage() {
                             : "In Progress"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-500 text-[11px]">
+                      <td className="break-words px-2 py-3 text-slate-500 text-[11px] dark:text-slate-400 sm:px-3">
                         {s.completedAt ? new Date(s.completedAt).toLocaleDateString() : "—"}
                       </td>
-                      <td className="px-4 py-3 text-slate-600 text-[11px]">
+                      <td className="break-words px-2 py-3 text-slate-600 text-[11px] dark:text-slate-300 sm:px-3">
                         {s.assignmentStatus || "No submissions"}
                       </td>
                       <td className="px-4 py-3 text-slate-600 text-[11px]">
                         {s.quizStatus || "No quizzes"}
                       </td>
-                      <td className="px-4 py-3 font-mono text-[11px]">
+                      <td className="break-words px-2 py-3 font-mono text-[11px] sm:px-3">
                         {s.certificateEarned || s.certificateId ? (
                           <span className="text-amber-700 font-bold">
                             {s.certificateId || "Earned"}
