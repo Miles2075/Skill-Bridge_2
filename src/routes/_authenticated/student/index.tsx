@@ -894,6 +894,9 @@ function StudentDashboardPage() {
           {/* Continue Learning Course Hero */}
           {currentContinueCourse ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+              {((currentContinueCourse.lessonsTotal ?? 0) <= 0) && (currentContinueCourse.progress || 0) > 0 && (
+                <span className="sr-only">Progress is unavailable until lessons are added.</span>
+              )}
               <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2">
                   <Play className="size-4 text-indigo-600 fill-indigo-600" />
@@ -918,17 +921,31 @@ function StudentDashboardPage() {
                 <div className="flex-1 space-y-2 w-full">
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-600 font-medium">
-                      Next: {currentContinueCourse.nextLesson}
+                      {(currentContinueCourse.lessonsTotal ?? 0) > 0
+                        ? `Next: ${currentContinueCourse.nextLesson}`
+                        : "No lectures have been added to this course yet."}
                     </span>
                     <span className="font-bold text-indigo-600">
-                      {currentContinueCourse.progress}% Completed
+                      {(currentContinueCourse.lessonsTotal ?? 0) > 0
+                        ? Math.round(
+                            (Math.min(Math.max(currentContinueCourse.lessonsDone || 0, 0), currentContinueCourse.lessonsTotal ?? 0) /
+                              (currentContinueCourse.lessonsTotal ?? 1)) * 100,
+                          )
+                        : 0}% Completed
                     </span>
                   </div>
 
                   <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
                     <div
                       className="h-full bg-indigo-600 rounded-full transition-all duration-500"
-                      style={{ width: `${currentContinueCourse.progress}%` }}
+                      style={{
+                        width: `${(currentContinueCourse.lessonsTotal ?? 0) > 0
+                          ? Math.round(
+                              (Math.min(Math.max(currentContinueCourse.lessonsDone || 0, 0), currentContinueCourse.lessonsTotal ?? 0) /
+                                (currentContinueCourse.lessonsTotal ?? 1)) * 100,
+                            )
+                          : 0}%`,
+                      }}
                     />
                   </div>
 
@@ -939,12 +956,14 @@ function StudentDashboardPage() {
                       · {currentContinueCourse.hours} hrs total
                     </span>
 
-                    <button
-                      onClick={() => setPlayerCourse(currentContinueCourse)}
-                      className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors cursor-pointer"
-                    >
-                      <Play className="size-3 fill-white" /> Continue Course
-                    </button>
+                    {(currentContinueCourse.lessonsTotal ?? 0) > 0 && (
+                      <button
+                        onClick={() => setPlayerCourse(currentContinueCourse)}
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 transition-colors cursor-pointer"
+                      >
+                        <Play className="size-3 fill-white" /> Continue Course
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
