@@ -482,9 +482,51 @@ function TeachDashboardPage() {
         );
       }
       setStudents(data.students as unknown as EnrolledStudent[]);
-      setSubmissions(data.submissions as unknown as AssignmentSubmission[]);
+      // The API returns persisted DB rows in snake_case; normalize them once at the
+      // boundary so the instructor UI, counts, and grading actions use real values.
+      setSubmissions(
+        (data.submissions || []).map((raw: Record<string, unknown>) => ({
+          id: String(raw.id || ""),
+          courseSlug: String(raw.courseSlug || raw.course_slug || ""),
+          courseTitle: String(raw.courseTitle || raw.course_title || "Course"),
+          assignmentId: String(raw.assignmentId || raw.assignment_id || ""),
+          assignmentTitle: String(raw.assignmentTitle || raw.assignment_title || "Assignment"),
+          studentId: String(raw.studentId || raw.student_id || ""),
+          studentName: String(raw.studentName || raw.student_name || "Student"),
+          studentEmail: String(raw.studentEmail || raw.student_email || ""),
+          githubUrl: String(raw.githubUrl || raw.github_url || ""),
+          solutionNotes: String(raw.solutionNotes || raw.solution_notes || ""),
+          submittedAt: String(raw.submittedAt || raw.submitted_at || ""),
+          status:
+            raw.status === "resubmission_required"
+              ? "needs_revision"
+              : raw.status === "reviewed"
+                ? "approved"
+                : (raw.status as AssignmentSubmission["status"]) || "pending",
+          score: typeof raw.score === "number" ? raw.score : undefined,
+          maxScore: Number(raw.maxScore ?? raw.max_score ?? 100),
+          feedback: typeof raw.feedback === "string" ? raw.feedback : undefined,
+          gradedAt: String(raw.gradedAt || raw.graded_at || "") || undefined,
+          gradedBy: String(raw.gradedBy || raw.graded_by || "") || undefined,
+          studentAvatar: String(raw.studentAvatar || raw.avatar_url || "") || undefined,
+        })) as AssignmentSubmission[],
+      );
       setQuizzes(data.quizzes as unknown as Quiz[]);
-      setAssignmentDefs(data.assignments as unknown as AssignmentDefinition[]);
+      setAssignmentDefs(
+        (data.assignments || []).map((raw: Record<string, unknown>) => ({
+          id: String(raw.id || ""),
+          courseSlug: String(raw.courseSlug || raw.course_slug || ""),
+          courseTitle: String(raw.courseTitle || raw.course_title || "Course"),
+          title: String(raw.title || "Assignment"),
+          description: String(raw.description || ""),
+          dueDate: String(raw.dueDate || raw.due_date || ""),
+          maxScore: Number(raw.maxScore ?? raw.max_score ?? 100),
+          submissionCount: (data.submissions || []).filter(
+            (submission: Record<string, unknown>) =>
+              (submission.assignmentId || submission.assignment_id) === raw.id,
+          ).length,
+        })) as AssignmentDefinition[],
+      );
     } catch (e) {
       console.error("Failed to load instructor data:", e);
     }
@@ -2638,7 +2680,7 @@ function TeachDashboardPage() {
                       <span>
                         Max Marks: <strong>{asg.maxScore}</strong>
                         <span className="ml-3">
-                          Submissions: <strong>{submissions.filter((submission) => submission.assignment_id === asg.id).length}</strong>
+                          Submissions: <strong>{submissions.filter((submission) => submission.assignmentId === asg.id).length}</strong>
                         </span>
                       </span>
                       <button
