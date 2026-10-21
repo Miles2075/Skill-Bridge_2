@@ -1148,15 +1148,31 @@ function StudentDashboardPage() {
                       <div>
                         <div className="flex items-center justify-between text-xs mb-1.5">
                           <span className="text-slate-500">
-                            Progress ({Math.min(course.lessonsDone, course.lessonsTotal ?? 0)}/
+                            Progress ({Math.min(Math.max(course.lessonsDone || 0, 0), course.lessonsTotal ?? 0)}/
                             {course.lessonsTotal ?? 0} Lessons)
                           </span>
-                          <span className="font-bold text-indigo-600">{course.progress}%</span>
+                          <span className="font-bold text-indigo-600">
+                            {course.lessonsTotal > 0
+                              ? Math.round(
+                                  (Math.min(Math.max(course.lessonsDone || 0, 0), course.lessonsTotal) /
+                                    course.lessonsTotal) *
+                                    100,
+                                )
+                              : Math.min(100, Math.max(0, course.progress || 0))}%
+                          </span>
                         </div>
                         <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
                           <div
                             className="h-full bg-indigo-600 rounded-full transition-all"
-                            style={{ width: `${course.progress}%` }}
+                            style={{
+                              width: `${course.lessonsTotal > 0
+                                ? Math.round(
+                                    (Math.min(Math.max(course.lessonsDone || 0, 0), course.lessonsTotal) /
+                                      course.lessonsTotal) *
+                                      100,
+                                  )
+                                : Math.min(100, Math.max(0, course.progress || 0))}%`,
+                            }}
                           />
                         </div>
                       </div>
