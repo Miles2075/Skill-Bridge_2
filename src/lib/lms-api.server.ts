@@ -1354,8 +1354,23 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const { assignmentId, courseId, githubUrl = "", solutionNotes = "" } = body;
       if (!assignmentId || !courseId) return errorResponse("Missing assignmentId or courseId");
 
-      const course = lmsDB.getCourse(courseId);
-      if (!course) return errorResponse("Course not found", 404);
+      // Only accept assignments that actually exist on one of this student's
+      // enrolled courses. This prevents fabricated IDs or cross-course submissions.
+      const dashboard = lmsDB.getStudentDashboard(user.userId);
+      const assignment = dashboard.upcomingAssignments.find((item) => item.id === assignmentId);
+      if (!assignment) {
+        return errorResponse("Assignment not found for your enrolled courses.", 404);
+      }
+
+      const assignedCourse = lmsDB.getCourse(assignment.courseSlug);
+      if (
+        !assignedCourse ||
+        (courseId !== assignment.courseSlug && courseId !== assignedCourse.id)
+      ) {
+        return errorResponse("This assignment does not belong to the selected course.", 400);
+      }
+
+      const course = assignedCourse;
 
       const submission = lmsDB.submitAssignment({
         assignment_id: assignmentId,
