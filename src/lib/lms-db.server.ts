@@ -1553,9 +1553,19 @@ class DatabaseManager {
     const resolveCourseRef = (ref: string | null | undefined) => {
       if (!ref) return undefined;
       const canonical = courseAliases[ref] || ref;
-      return db.courses.find(
-        (course) => course.id === canonical || course.slug === canonical || course.id === ref || course.slug === ref,
-      );
+      const normalizedRef = canonical.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+      return db.courses.find((course) => {
+        const courseKeys = [course.id, course.slug, course.title]
+          .filter((value): value is string => typeof value === "string")
+          .map((value) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ""));
+        return (
+          course.id === canonical ||
+          course.slug === canonical ||
+          course.id === ref ||
+          course.slug === ref ||
+          courseKeys.includes(normalizedRef)
+        );
+      });
     };
 
     const enrolledCourses = enrollments
