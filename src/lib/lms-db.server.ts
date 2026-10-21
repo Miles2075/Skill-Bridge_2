@@ -1662,13 +1662,32 @@ class DatabaseManager {
       .filter((assignment) => {
         const assignmentCourse = resolveAssignmentCourse(assignment);
         if (!assignmentCourse) return false;
-        return enrollments.some((enrollment) => {
-          const enrolledCourse = resolveCourseRef(enrollment.course_id);
+
+        // Compare against the canonical enrolled-course records, not only the raw
+        // enrollment.course_id. Legacy enrollments can keep an old ID while the
+        // published assignment stores the current course ID/slug.
+        const assignmentKeys = [
+          assignment.course_id,
+          assignment.course_slug,
+          assignment.course_title,
+          assignmentCourse.id,
+          assignmentCourse.slug,
+          assignmentCourse.title,
+          courseAliases[assignmentCourse.id],
+        ].map(normalizeCourseKey).filter(Boolean);
+
+        return enrolledCourses.some((enrolledCourse) => {
+          const enrolledKeys = [
+            enrolledCourse.id,
+            enrolledCourse.slug,
+            enrolledCourse.title,
+            courseAliases[enrolledCourse.id],
+          ].map(normalizeCourseKey).filter(Boolean);
+
           return (
-            enrolledCourse?.id === assignmentCourse.id ||
-            enrolledCourse?.slug === assignmentCourse.slug ||
-            normalizeCourseKey(enrollment.course_id) === normalizeCourseKey(assignmentCourse.title) ||
-            normalizeCourseKey(enrollment.course_id) === normalizeCourseKey(assignmentCourse.slug)
+            enrolledCourse.id === assignmentCourse.id ||
+            enrolledCourse.slug === assignmentCourse.slug ||
+            assignmentKeys.some((key) => enrolledKeys.includes(key))
           );
         });
       })
