@@ -196,9 +196,11 @@ function MyLearningPage() {
   );
   const selectedCourse = selectedCourseId ? courses[selectedCourseId] : undefined;
   const activeLesson = lessons.find((l) => l.id === activeLessonId) || lessons[0];
-  // Course-level uploads update the primary stream URL. Prefer it over
-  // stale seeded lesson URLs so students see the instructor's latest upload.
-  const activeVideoUrl = selectedCourse?.video_url || activeLesson?.video_url;
+  // A course-level video URL is metadata, not proof that a lecture exists.
+  // Only show a playable stream when a persisted lesson is present.
+  const activeVideoUrl = activeLesson
+    ? activeLesson.video_url || selectedCourse?.video_url || ""
+    : "";
 
   return (
     <div className="space-y-6">
@@ -259,10 +261,18 @@ function MyLearningPage() {
               {selectedCourse?.title || "Course"}
             </h2>
             <div className="mt-2 text-sm text-slate-500">
-              {selectedEnrollment?.completion_percentage ?? 0}% complete ·{" "}
-              {progress.filter((item) => item.completed).length}/
-              {lessons.filter((lesson) => lesson.required).length || lessons.length || 0} required
-              lessons
+              {lessons.length > 0
+                ? Math.round(
+                    (Math.min(
+                      progress.filter((item) => item.completed && lessons.some((lesson) => lesson.id === item.lesson_id)).length,
+                      lessons.length,
+                    ) / lessons.length) * 100,
+                  )
+                : 0}% complete ·{" "}
+              {Math.min(
+                progress.filter((item) => item.completed && lessons.some((lesson) => lesson.id === item.lesson_id)).length,
+                lessons.length,
+              )}/{lessons.length} lessons
             </div>
           </div>
 
