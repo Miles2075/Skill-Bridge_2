@@ -1238,6 +1238,17 @@ function TeachDashboardPage() {
   const pendingAssignments = submissions.filter((s) => s.status === "pending").length;
   const publishedCount = rows.filter((r) => r.status !== "draft").length;
   const draftCount = rows.filter((r) => r.status === "draft").length;
+  // Don't offer malformed numeric placeholder courses (e.g. "2") when creating assignments.
+  // Keep their existing records untouched so no learner data is lost.
+  const assignmentCourseOptions = rows.filter(
+    (course) =>
+      typeof course.title === "string" &&
+      course.title.trim().length > 1 &&
+      !/^\d+$/.test(course.title.trim()) &&
+      typeof course.slug === "string" &&
+      course.slug.trim().length > 0 &&
+      !/^\d+$/.test(course.slug.trim()),
+  );
   const avgCompletion = students.length
     ? Math.round(students.reduce((acc, s) => acc + s.progress, 0) / students.length)
     : 0;
@@ -2626,12 +2637,18 @@ function TeachDashboardPage() {
                     <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                       <span>
                         Max Marks: <strong>{asg.maxScore}</strong>
+                        <span className="ml-3">
+                          Submissions: <strong>{submissions.filter((submission) => submission.assignment_id === asg.id).length}</strong>
+                        </span>
                       </span>
                       <button
-                        onClick={() => switchView("submissions")}
+                        onClick={() => {
+                          setSubmissionFilter("all");
+                          switchView("submissions");
+                        }}
                         className="font-bold text-teal-700 hover:underline cursor-pointer"
                       >
-                        Grade Submissions →
+                        Review Submissions ({submissions.filter((submission) => submission.assignment_id === asg.id).length}) →
                       </button>
                     </div>
                   </div>
@@ -2650,11 +2667,17 @@ function TeachDashboardPage() {
                     onChange={(e) => setNewAsgCourse(e.target.value)}
                     className="w-full h-8.5 rounded-md border border-slate-200 bg-white px-2 text-xs"
                   >
-                    {rows.map((r) => (
-                      <option key={r.slug} value={r.slug}>
-                        {r.title}
+                    {assignmentCourseOptions.length === 0 ? (
+                      <option value="" disabled>
+                        No valid courses available
                       </option>
-                    ))}
+                    ) : (
+                      assignmentCourseOptions.map((r) => (
+                        <option key={r.slug} value={r.slug}>
+                          {r.title}
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
 
