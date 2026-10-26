@@ -1692,9 +1692,17 @@ class DatabaseManager {
         };
       });
 
-    // Submissions for authorized courses
+    // Assignments owned by this instructor are reviewable even when their course
+    // is shared or has a different teacher_id. Submissions are associated with
+    // the assignment's course, not trusted to the course id sent by the student.
+    const authorizedAssignments = db.assignments.filter(
+      (a) => isAdmin || authorizedCourseIds.has(a.course_id) || a.created_by === teacherId,
+    );
+    const authorizedAssignmentIds = new Set(authorizedAssignments.map((a) => a.id));
+
+    // Submissions for authorized courses or assignments created by this instructor.
     const submissions = db.submissions
-      .filter((s) => authorizedCourseIds.has(s.course_id))
+      .filter((s) => authorizedCourseIds.has(s.course_id) || authorizedAssignmentIds.has(s.assignment_id))
       .map((s) => {
         const asg = db.assignments.find((a) => a.id === s.assignment_id);
         const course = db.courses.find((c) => c.id === s.course_id);
@@ -1711,8 +1719,8 @@ class DatabaseManager {
         };
       });
 
-    // Assignments for authorized courses
-    const assignments = db.assignments.filter((a) => authorizedCourseIds.has(a.course_id));
+    // Include instructor-owned assignments even when the selected course is shared.
+    const assignments = authorizedAssignments;
 
     // Quizzes for authorized courses
     const quizzes = db.quizzes.filter((q) => authorizedCourseIds.has(q.course_id));
@@ -1800,6 +1808,11 @@ class DatabaseManager {
     db.quiz_attempts.push(attempt);
     this.write();
     return attempt;
+  }
+
+  getAssignment(id: string): Assignment | null {
+    const db = this.read();
+    return db.assignments.find((assignment) => assignment.id === id) || null;
   }
 
   saveAssignment(
