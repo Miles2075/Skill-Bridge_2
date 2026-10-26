@@ -30,7 +30,7 @@ async function parseUserContext(req: Request): Promise<UserContext> {
     if (localSession) {
       const role = localSession.roles.includes("admin")
         ? "admin"
-        : localSession.roles.includes("teacher")
+        : (localSession.roles.includes("teacher") || localSession.roles.includes("instructor"))
           ? "teacher"
           : "student";
       return {
@@ -109,7 +109,7 @@ async function parseUserContext(req: Request): Promise<UserContext> {
       );
       const primaryRole = validated.roles.includes("admin")
         ? "admin"
-        : validated.roles.includes("teacher")
+        : (validated.roles.includes("teacher") || validated.roles.includes("instructor"))
           ? "teacher"
           : "student";
       roleStr = primaryRole;
