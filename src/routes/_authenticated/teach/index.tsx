@@ -639,16 +639,25 @@ function TeachDashboardPage() {
   };
 
   useEffect(() => {
-    loadInstructorData();
-    loadLessons(selectedContentCourse);
+    // Load submissions immediately, then refresh when the instructor returns to
+    // the tab and periodically so submissions made in a student's separate
+    // browser/device appear in the grading queue without a manual reload.
+    void loadInstructorData();
+    void loadLessons(selectedContentCourse);
 
     const handleUpdate = () => {
-      loadInstructorData();
-      loadLessons(selectedContentCourse);
+      void loadInstructorData();
+      void loadLessons(selectedContentCourse);
     };
+    const refreshTimer = window.setInterval(() => {
+      void loadInstructorData();
+    }, 15000);
     window.addEventListener("lms_data_updated", handleUpdate);
+    window.addEventListener("focus", handleUpdate);
     return () => {
+      window.clearInterval(refreshTimer);
       window.removeEventListener("lms_data_updated", handleUpdate);
+      window.removeEventListener("focus", handleUpdate);
     };
   }, [selectedContentCourse]);
 
