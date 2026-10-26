@@ -616,6 +616,8 @@ function StudentDashboardPage() {
   const currentContinueCourse = inProgressCourses[0] || enrolledCourses[0] || null;
   const overallProgress = data?.overallProgress ?? 0;
   const upcomingAssignments = data?.upcomingAssignments || [];
+  const availableAssignments = upcomingAssignments.filter((a) => !a.submissionStatus || a.submissionStatus === "unsubmitted");
+  const submittedAssignments = upcomingAssignments.filter((a) => Boolean(a.submissionStatus && a.submissionStatus !== "unsubmitted"));
   const studentQuizzes = data?.studentQuizzes || [];
   const grades = data?.grades || [];
   const certificates = data?.certificates || [];
@@ -1335,88 +1337,35 @@ function StudentDashboardPage() {
 
       {/* ------------------------------------------------------------- */}
       {/* VIEW 3: ASSIGNMENTS */}
-      {/* ------------------------------------------------------------- */}
       {currentView === "assignments" && (
-        <div className="space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-            <div>
-              <h1 className="text-xl font-extrabold text-slate-900">Assignments & Milestones</h1>
-              <p className="text-xs text-slate-500">
-                Submit project repositories for instructor code reviews and grading.
-              </p>
-            </div>
+        <div className="space-y-8">
+          <div className="border-b border-slate-200 pb-3">
+            <h1 className="text-xl font-extrabold text-slate-900">Assignments & Capstone Projects</h1>
+            <p className="text-xs text-slate-500">Submit solutions and track instructor reviews, grades, and feedback.</p>
           </div>
-
-          <div className="grid gap-4">
-            {upcomingAssignments.length > 0 ? (
-              upcomingAssignments.map((asg) => (
-                <div
-                  key={asg.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-5 shadow-2xs"
-                >
-                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="font-bold text-indigo-700">{asg.course}</span>
-                        <span className="text-slate-300">·</span>
-                        <span className="text-slate-500">
-                          Due: {new Date(asg.due).toLocaleDateString()}
-                        </span>
-                        <span className="text-slate-300">·</span>
-                        <span className="text-slate-500 font-semibold">
-                          {asg.maxScore} Max Marks
-                        </span>
-                      </div>
-                      <h3 className="text-base font-bold text-slate-900 mt-1">{asg.title}</h3>
-                      <p className="text-xs text-slate-600 mt-1 max-w-2xl">{asg.description}</p>
-                    </div>
-
-                    <div className="self-start">
-                      {asg.submissionStatus !== "unsubmitted" ? (
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-bold ${
-                              asg.submissionStatus === "approved"
-                                ? "bg-emerald-100 text-emerald-800"
-                                : "bg-amber-100 text-amber-800"
-                            }`}
-                          >
-                            {asg.submissionStatus === "approved" ? "✓ Graded" : "In Review"}
-                          </span>
-                        </div>
-                      ) : (
-                        <button
-                          onClick={() => handleOpenSubmit(asg)}
-                          className="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-bold text-white hover:bg-indigo-700 transition-colors cursor-pointer"
-                        >
-                          Submit Solution
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {asg.score !== null && (
-                    <div className="mt-4 rounded-xl bg-emerald-50 border border-emerald-100 p-3 text-xs text-emerald-900 flex items-center justify-between">
-                      <span>
-                        Score: {asg.score} / {asg.maxScore}
-                      </span>
-                      {asg.feedback && (
-                        <span className="italic font-normal">Feedback: "{asg.feedback}"</span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))
-            ) : (
-              <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500 bg-white">
-                No assignments currently assigned.
+          <section className="space-y-3">
+            <h2 className="text-base font-bold text-slate-900">Available Course Assignments</h2>
+            {availableAssignments.length ? availableAssignments.map((asg) => (
+              <div key={asg.id} className="rounded-2xl border border-slate-200 bg-white p-5 mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div><p className="text-xs font-bold text-indigo-700">{asg.course}</p><h3 className="mt-1 font-bold text-slate-900">{asg.title}</h3><p className="mt-1 text-xs text-slate-600">{asg.description}</p><p className="mt-2 text-xs text-slate-500">Due {asg.due ? new Date(asg.due).toLocaleDateString() : "No due date"} · {asg.maxScore} max marks</p></div>
+                <Button onClick={() => handleOpenSubmit(asg)}>Submit Solution</Button>
               </div>
-            )}
-          </div>
+            )) : <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">No new assignments to submit. New assignments for your enrolled courses will appear here.</div>}
+          </section>
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-base font-bold text-slate-900">My Submissions & Instructor Reviews ({submittedAssignments.length})</h2><span className="text-xs text-slate-500">Synced with Instructor Studio</span></div>
+            {submittedAssignments.length ? submittedAssignments.map((asg) => (
+              <article key={asg.id} className="rounded-2xl border border-slate-200 bg-white p-5 mb-3">
+                <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-bold text-slate-900">{asg.title}</h3><p className="mt-1 text-xs text-slate-500">{asg.course} · Submitted {asg.submittedAt ? new Date(asg.submittedAt).toLocaleDateString() : "successfully"}</p></div><span className="rounded-full px-3 py-1 text-xs font-bold bg-amber-100 text-amber-800">{asg.submissionStatus === "approved" ? "Graded · Approved" : asg.submissionStatus === "needs_revision" || asg.submissionStatus === "resubmission_required" ? "Revision Requested" : "Under Instructor Review"}</span></div>
+                {asg.score !== null && asg.score !== undefined && <p className="mt-3 text-sm font-semibold text-slate-800">Score: {asg.score} / {asg.maxScore}</p>}
+                {asg.feedback && <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-700">Instructor feedback</p><p className="mt-1 text-sm text-slate-600">{asg.feedback}</p></div>}
+                {(asg.submissionStatus === "needs_revision" || asg.submissionStatus === "resubmission_required") && <Button className="mt-3" onClick={() => handleOpenSubmit(asg)}>Resubmit Solution</Button>}
+              </article>
+            )) : <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">Your submitted assignments and instructor feedback will appear here.</div>}
+          </section>
         </div>
       )}
 
-      {/* ------------------------------------------------------------- */}
       {/* VIEW 4: ASSESSMENTS / QUIZZES */}
       {/* ------------------------------------------------------------- */}
       {currentView === "assessments" && (
