@@ -929,18 +929,24 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const { assignmentId, courseId, githubUrl = "", solutionNotes = "" } = body;
       if (!assignmentId || !courseId) return errorResponse("Missing assignmentId or courseId");
 
-      const course = lmsDB.getCourse(courseId);
-      if (!course) return errorResponse("Course not found", 404);
+      // Resolve the assignment on the server and use its canonical course.
+      // The client can have stale enrollment/course data; trusting its courseId
+      // can save a valid submission under the wrong course and hide it from grading.
+      const assignment = lmsDB.getAssignment(assignmentId);
+      if (!assignment) return errorResponse("Assignment not found or no longer available", 404);
+
+      const course = lmsDB.getCourse(assignment.course_id);
+      if (!course) return errorResponse("The course for this assignment was not found", 404);
 
       const submission = lmsDB.submitAssignment({
-        assignment_id: assignmentId,
-        course_id: course.id,
+        assignment_id: assignment.id,
+        course_id: assignment.course_id,
         student_id: user.userId,
         student_name: user.name || body.studentName || "Student",
         student_email: user.email || body.studentEmail || "student@example.com",
-        github_url: githubUrl,
-        solution_notes: solutionNotes,
-        max_score: Number(body.maxScore) || 100,
+        github_url,
+        solution_notes,
+        max_score: assignment.max_score,
       });
 
       return jsonResponse({ submission });
