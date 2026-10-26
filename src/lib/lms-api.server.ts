@@ -236,7 +236,7 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
   // the video bytes themselves go directly from the browser to Blob, avoiding
   // Vercel Functions' 4.5 MB request-body limit.
   if (path === "upload-thumbnail-token" && method === "POST") {
-    const blobToken = process.env["BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
+    const blobToken = process.env["BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
     if (!blobToken) return errorResponse("Vercel Blob is not configured. Add BLOB_READ_WRITE_TOKEN in Vercel.", 503);
 
     let body: HandleUploadBody;
@@ -304,7 +304,7 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
   }
 
   if (path === "upload-video-token" && method === "POST") {
-    const blobToken = process.env["BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
+    const blobToken = process.env["BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
     if (!blobToken) return errorResponse("Vercel Blob is not configured. Add BLOB_READ_WRITE_TOKEN in Vercel.", 503);
 
     let body: HandleUploadBody;
@@ -1224,7 +1224,7 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       };
 
       try {
-        const blobToken = process.env["BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
+        const blobToken = process.env["BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
         if (blobToken) {
           const blob = await put("courses/" + course.id + "/videos/" + uniqueName, req.body, {
             access: "public",
