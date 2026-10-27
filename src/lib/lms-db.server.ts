@@ -1819,6 +1819,11 @@ class DatabaseManager {
     return attempt;
   }
 
+  getAssignment(id: string): Assignment | null {
+    const db = this.read();
+    return db.assignments.find((assignment) => assignment.id === id) || null;
+  }
+
   saveAssignment(
     asg: Omit<Assignment, "id" | "created_at" | "updated_at"> & { id?: string },
   ): Assignment {
