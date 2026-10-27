@@ -461,6 +461,7 @@ class LocalSupabaseAuth {
 
   async updateUser(attributes: {
     data?: Record<string, unknown>;
+    email?: string;
     password?: string;
   }): Promise<{
     data: { user: LocalAuthUser | null };
@@ -518,11 +519,17 @@ class LocalSupabaseAuth {
       };
     }
 
+    const updatedEmail = attributes.email?.trim().toLowerCase();
+    if (updatedEmail && !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(updatedEmail)) {
+      return { data: { user: null }, error: { message: "Enter a valid email address." } };
+    }
     const updatedUser: LocalAuthUser = {
       ...session.user,
+      ...(updatedEmail ? { email: updatedEmail } : {}),
       user_metadata: {
         ...session.user.user_metadata,
         ...(attributes.data || {}),
+        ...(updatedEmail ? { email: updatedEmail } : {}),
       },
       updated_at: new Date().toISOString(),
     };
