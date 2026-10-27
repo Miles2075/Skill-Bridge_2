@@ -1658,48 +1658,49 @@ class DatabaseManager {
         ].some((key) => normalizeCourseKey(key) && legacyKeys.includes(normalizeCourseKey(key)));
       });
 
-    const upcomingAssignments = db.assignments
-      .filter((assignment) => {
-        const assignmentCourse = resolveAssignmentCourse(assignment);
-        if (!assignmentCourse) return false;
+    const findEnrolledCourseForAssignment = (assignment: Assignment) => {
+      const assignmentCourse = resolveAssignmentCourse(assignment);
+      const assignmentKeys = [
+        assignment.course_id,
+        assignment.course_slug,
+        assignment.course_title,
+        assignmentCourse?.id,
+        assignmentCourse?.slug,
+        assignmentCourse?.title,
+        assignmentCourse ? courseAliases[assignmentCourse.id] : undefined,
+      ].map(normalizeCourseKey).filter(Boolean);
 
-        // Compare against the canonical enrolled-course records, not only the raw
-        // enrollment.course_id. Legacy enrollments can keep an old ID while the
-        // published assignment stores the current course ID/slug.
-        const assignmentKeys = [
-          assignment.course_id,
-          assignment.course_slug,
-          assignment.course_title,
-          assignmentCourse.id,
-          assignmentCourse.slug,
-          assignmentCourse.title,
-          courseAliases[assignmentCourse.id],
+      // Match the assignment against each enrolled course directly. This handles
+      // older records where the assignment points at a duplicate/legacy course ID
+      // but the course title is the same as the student's enrolled course.
+      return enrolledCourses.find((enrolledCourse) => {
+        const enrolledKeys = [
+          enrolledCourse.id,
+          enrolledCourse.slug,
+          enrolledCourse.title,
+          courseAliases[enrolledCourse.id],
         ].map(normalizeCourseKey).filter(Boolean);
+        return assignmentKeys.some((key) => enrolledKeys.includes(key));
+      });
+    };
 
-        return enrolledCourses.some((enrolledCourse) => {
-          const enrolledKeys = [
-            enrolledCourse.id,
-            enrolledCourse.slug,
-            enrolledCourse.title,
-            courseAliases[enrolledCourse.id],
-          ].map(normalizeCourseKey).filter(Boolean);
-
-          return (
-            enrolledCourse.id === assignmentCourse.id ||
-            enrolledCourse.slug === assignmentCourse.slug ||
-            assignmentKeys.some((key) => enrolledKeys.includes(key))
-          );
-        });
-      })
-      .map((assignment) => {
-        const assignmentCourse = resolveAssignmentCourse(assignment);
+    const upcomingAssignments = db.assignments
+      .map((assignment) => ({
+        assignment,
+        enrolledCourse: findEnrolledCourseForAssignment(assignment),
+      }))
+      .filter(
+        (item): item is { assignment: Assignment; enrolledCourse: (typeof enrolledCourses)[number] } =>
+          Boolean(item.enrolledCourse),
+      )
+      .map(({ assignment, enrolledCourse }) => {
         const sub = submissionMap.get(assignment.id);
         return {
           id: assignment.id,
           title: assignment.title,
           description: assignment.description,
-          course: assignmentCourse?.title || assignment.course_title || "Course",
-          courseSlug: assignmentCourse?.slug || assignment.course_slug,
+          course: enrolledCourse.title || assignment.course_title || "Course",
+          courseSlug: enrolledCourse.slug || assignment.course_slug,
           due: assignment.due_date,
           maxScore: assignment.max_score,
           submissionStatus: sub ? sub.status : "unsubmitted",
