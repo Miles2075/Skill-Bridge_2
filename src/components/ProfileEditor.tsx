@@ -82,12 +82,14 @@ export function ProfileEditor({
   onSaved?: () => void;
 }) {
   const [name, setName] = useState(user.user_metadata?.display_name || "");
+  const [email, setEmail] = useState(user.email || "");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(user.user_metadata?.avatar_url || null);
 
   useEffect(() => {
     setName(user.user_metadata?.display_name || "");
+    setEmail(user.email || "");
     setAvatarUrl(user.user_metadata?.avatar_url || null);
-  }, [user.id, user.user_metadata?.display_name, user.user_metadata?.avatar_url]);
+  }, [user.id, user.email, user.user_metadata?.display_name, user.user_metadata?.avatar_url]);
   const [customUrlInput, setCustomUrlInput] = useState("");
   const [showUrlField, setShowUrlField] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -170,8 +172,14 @@ export function ProfileEditor({
 
   async function save() {
     const displayName = name.trim();
+    const cleanEmail = email.trim().toLowerCase();
     if (!displayName) {
       setMessage("Please enter your name.");
+      setMsgType("error");
+      return;
+    }
+    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(cleanEmail)) {
+      setMessage("Please enter a valid email address.");
       setMsgType("error");
       return;
     }
@@ -179,9 +187,10 @@ export function ProfileEditor({
     setSaving(true);
     setMessage("");
     try {
-      await lmsClient.updateProfile({ displayName, avatarUrl });
-      updateLocalSessionProfile({ displayName, avatarUrl });
-      setMessage("Profile and avatar updated successfully!");
+      await lmsClient.updateProfile({ displayName, avatarUrl, email: cleanEmail });
+      updateLocalSessionProfile({ displayName, avatarUrl, email: cleanEmail });
+      setEmail(cleanEmail);
+      setMessage("Profile, email, and avatar updated successfully!");
       setMsgType("success");
       window.dispatchEvent(new CustomEvent("local_auth_changed"));
       window.dispatchEvent(new Event("storage"));
@@ -370,10 +379,17 @@ export function ProfileEditor({
         <div>
           <label className="text-xs font-bold text-foreground">Email Address</label>
           <Input
-            value={user.email}
-            disabled
-            className="mt-1.5 bg-secondary text-muted-foreground"
+            type="email"
+            value={email}
+            maxLength={254}
+            autoComplete="email"
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            className="mt-1.5"
           />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Use an email address you can access. It must not already belong to another account.
+          </p>
         </div>
 
         {/* Save Bar */}
