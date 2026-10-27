@@ -1,3 +1,4 @@
+import { createClient } from "@supabase/supabase-js";
 import { createMiddleware } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { lmsDB } from "@/lib/lms-db.server";
@@ -12,41 +13,56 @@ export const requireSupabaseAuth = createMiddleware({ type: "function" }).server
     }
 
     const authHeader = request.headers.get("authorization") || "";
-    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    const token = authHeader.replace(/^Bearer\\s+/i, "").trim();
+    if (!token) {
+      throw new Error("Unauthorized");
+    }
 
     let userId: string | null = null;
     let claims: Record<string, unknown> = {};
 
-    if (token) {
-      const validated = lmsDB.validateSession(token);
-      if (validated) {
-        userId = validated.user.id;
-        claims = {
-          sub: validated.user.id,
-          email: validated.user.email,
-          role: validated.roles[0] || "student",
-        };
-      } else if (token.split(".").length === 3) {
+    // Local LMS sessions are opaque, server-issued tokens. validateSession
+    // must never treat an unverified JWT payload as an authenticated session.
+    const validated = lmsDB.validateSession(token);
+    if (validated) {
+      userId = validated.user.id;
+      claims = {
+        sub: validated.user.id,
+        email: validated.user.email,
+        role: validated.roles.includes("admin")
+          ? "admin"
+          : validated.roles.includes("teacher") || validated.roles.includes("instructor")
+            ? "teacher"
+            : "student",
+      };
+    } else {
+      // If this deployment uses Supabase Auth, ask Supabase to verify the token.
+      // Do not decode claims locally and do not trust user_metadata for privileges.
+      const supabaseUrl = process.env["SUPABASE_URL"] || process.env["VITE_SUPABASE_URL"];
+      const supabaseAnonKey = process.env["SUPABASE_ANON_KEY"] || process.env["VITE_SUPABASE_ANON_KEY"];
+      if (supabaseUrl && supabaseAnonKey) {
         try {
-          const payloadStr = Buffer.from(token.split(".")[1]!, "base64url").toString("utf-8");
-          const payload = JSON.parse(payloadStr);
-          if (payload?.sub) {
-            userId = payload.sub;
-            claims = payload;
+          const authClient = createClient(supabaseUrl, supabaseAnonKey, {
+            auth: { persistSession: false, autoRefreshToken: false },
+          });
+          const { data, error } = await authClient.auth.getUser(token);
+          if (!error && data.user) {
+            userId = data.user.id;
+            const role = data.user.app_metadata?.role;
+            claims = {
+              sub: data.user.id,
+              email: data.user.email,
+              role: role === "admin" || role === "teacher" || role === "instructor" ? role : "student",
+            };
           }
         } catch {
-          // ignore
+          // Fail closed below when token verification is unavailable.
         }
       }
     }
 
-    // Default fallback to demo student if no valid token (to ensure tests/dev previews always succeed)
     if (!userId) {
-      const demoStudent =
-        lmsDB.findUserByEmail("student@skillbridge.edu") ||
-        lmsDB.findUserByEmail("student@skillbridge.dev");
-      userId = demoStudent ? demoStudent.id : "00000000-0000-4000-a000-000000000001";
-      claims = { sub: userId, role: "student" };
+      throw new Error("Unauthorized");
     }
 
     return next({
