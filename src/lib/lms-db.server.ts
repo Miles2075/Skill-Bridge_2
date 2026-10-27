@@ -1687,39 +1687,27 @@ class DatabaseManager {
       });
 
     const findEnrolledCourseForAssignment = (assignment: Assignment) => {
+      // Resolve the assignment's own canonical course first. Do not combine all
+      // of its identifiers into one set: a stale course_id (for example c-ts)
+      // can conflict with a valid course_slug (for example react-performance)
+      // and incorrectly attach the assignment to the first enrolled course.
       const assignmentCourse = resolveAssignmentCourse(assignment);
-      const assignmentKeys = [
-        assignment.course_id,
-        assignment.course_slug,
-        assignment.course_title,
-        assignmentCourse?.id,
-        assignmentCourse?.slug,
-        assignmentCourse?.title,
-        assignmentCourse ? courseAliases[assignmentCourse.id] : undefined,
-        courseAliases[assignment.course_id],
-      ].map(canonicalCourseKey).filter(Boolean);
+      if (!assignmentCourse) return undefined;
 
-      // Match against the enrollment's original reference as well as its resolved
-      // course. Prefer slug/title when stale IDs collide with a different course.
-      const matchesEnrollment = assignmentKeys.some((key) => enrolledCourseKeys.has(key));
-      if (!matchesEnrollment) return undefined;
-      return enrolledCourses.find((enrolledCourse) => {
-        const enrolledKeys = [
-          enrolledCourse.id,
-          enrolledCourse.slug,
-          enrolledCourse.title,
-          courseAliases[enrolledCourse.id],
-        ].map(canonicalCourseKey).filter(Boolean);
-        return assignmentKeys.some((key) => enrolledKeys.includes(key));
-      }) || enrolledCourses.find((enrolledCourse) => {
-        const keys = [
-          enrolledCourse.id,
-          enrolledCourse.slug,
-          enrolledCourse.title,
-          courseAliases[enrolledCourse.id],
-        ].map(canonicalCourseKey).filter(Boolean);
-        return keys.some((key) => assignmentKeys.includes(key));
-      });
+      // Course IDs/slugs are authoritative after resolution. Use title only as a
+      // last-resort bridge for duplicate legacy course rows with the same title.
+      const exactMatch = enrolledCourses.find(
+        (enrolledCourse) =>
+          enrolledCourse.id === assignmentCourse.id ||
+          enrolledCourse.slug === assignmentCourse.slug,
+      );
+      if (exactMatch) return exactMatch;
+
+      const assignmentTitleKey = canonicalCourseKey(assignmentCourse.title);
+      if (!assignmentTitleKey) return undefined;
+      return enrolledCourses.find(
+        (enrolledCourse) => canonicalCourseKey(enrolledCourse.title) === assignmentTitleKey,
+      );
     };
 
     const upcomingAssignments = db.assignments
