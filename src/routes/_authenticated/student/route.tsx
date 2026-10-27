@@ -236,13 +236,6 @@ function StudentRouteLayout() {
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "courses", label: "My Courses", icon: BookOpen, badge: `${enrolledCoursesCount} Active` },
     {
-      id: "assignments",
-      label: "Assignments",
-      icon: ClipboardList,
-      badge: pendingAssignments > 0 ? `${pendingAssignments} Due` : undefined,
-      badgeColor: "bg-amber-100 text-amber-800",
-    },
-    {
       id: "assessments",
       label: "Assessments / Quizzes",
       icon: Target,
