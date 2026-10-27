@@ -2125,11 +2125,23 @@ class DatabaseManager {
 
   updateUserProfile(
     userId: string,
-    params: { displayName?: string; avatarUrl?: string | null },
+    params: { displayName?: string; avatarUrl?: string | null; email?: string },
   ): LocalUser | null {
     const db = this.read();
     const user = db.users.find((candidate) => candidate.id === userId);
     if (!user) return null;
+
+    if (params.email !== undefined) {
+      const email = params.email.trim().toLowerCase();
+      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) throw new Error("Enter a valid email address.");
+      if (email.length > 254) throw new Error("Email address is too long.");
+      const duplicate = db.users.find((candidate) => candidate.id !== userId && candidate.email.toLowerCase() === email);
+      if (duplicate) throw new Error("That email address is already in use.");
+      user.email = email;
+      user.user_metadata.email = email;
+      const profile = db.profiles.find((item) => item.id === userId);
+      if (profile) profile.email = email;
+    }
 
     if (params.displayName !== undefined) {
       const displayName = params.displayName.trim();
