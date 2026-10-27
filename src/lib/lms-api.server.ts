@@ -222,6 +222,9 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
           const course = lmsDB.getCourse(courseId);
           if (!course) throw new Error("Course not found.");
+          if (!uploadUser.isAdmin && course.teacher_id !== uploadUser.userId) {
+            throw new Error("You can only upload media to courses assigned to your account.");
+          }
 
           const segments = pathname.split("/");
           if (segments.length !== 4 || segments[0] !== "courses" || segments[1] !== courseId || segments[2] !== "thumbnails" || segments[3].includes("..")) {
@@ -291,6 +294,9 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
           const course = lmsDB.getCourse(courseId);
           if (!course) throw new Error("Course not found.");
+          if (!uploadUser.isAdmin && course.teacher_id !== uploadUser.userId) {
+            throw new Error("You can only upload media to courses assigned to your account.");
+          }
 
           const segments = pathname.split("/");
           if (segments.length !== 4 || segments[0] !== "courses" || segments[1] !== courseId || segments[2] !== "videos" || segments[3].includes("..")) {
@@ -1132,7 +1138,15 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         return errorResponse("You can only edit courses assigned to your account.", 403);
       }
 
-      const updated = lmsDB.updateCourse(existing.id, body);
+      const allowedUpdates: Record<string, unknown> = {};
+      for (const key of [
+        "title", "slug", "description", "instructor", "thumbnail", "status",
+        "price_inr", "preview_minutes", "video_url", "video_urls", "lessons_count",
+        "hours", "level", "category",
+      ]) {
+        if (Object.prototype.hasOwnProperty.call(body, key)) allowedUpdates[key] = body[key];
+      }
+      const updated = lmsDB.updateCourse(existing.id, allowedUpdates);
       return jsonResponse({ course: updated });
     }
 
