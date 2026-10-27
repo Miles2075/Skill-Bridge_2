@@ -172,10 +172,7 @@ function StudentRouteLayout() {
   }, []);
 
   const switchView = (v: StudentNavView) => {
-    if (v === "assignments") {
-      window.location.assign("/student/assignments");
-      return;
-    }
+    if (v === "assignments") v = "dashboard";
     setActiveView(v);
     setMobileMenuOpen(false);
     if (typeof window !== "undefined") {
