@@ -1348,7 +1348,13 @@ function StudentDashboardPage() {
             {availableAssignments.length ? availableAssignments.map((asg) => (
               <div key={asg.id} className="rounded-2xl border border-slate-200 bg-white p-5 mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div><p className="text-xs font-bold text-indigo-700">{asg.course}</p><h3 className="mt-1 font-bold text-slate-900">{asg.title}</h3><p className="mt-1 text-xs text-slate-600">{asg.description}</p><p className="mt-2 text-xs text-slate-500">Due {asg.due ? new Date(asg.due).toLocaleDateString() : "No due date"} · {asg.maxScore} max marks</p></div>
-                <Button onClick={() => handleOpenSubmit(asg)}>Submit Solution</Button>
+                {asg.submissionStatus && asg.submissionStatus !== "unsubmitted" ? (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800">
+                    <CheckCircle2 className="size-4" /> Submitted to teacher
+                  </span>
+                ) : (
+                  <Button onClick={() => handleOpenSubmit(asg)}>Submit Assignment</Button>
+                )}
               </div>
             )) : <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">No new assignments to submit. New assignments for your enrolled courses will appear here.</div>}
           </section>
