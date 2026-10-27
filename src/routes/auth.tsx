@@ -169,15 +169,24 @@ function AuthPage() {
           password,
         });
 
-        if (error) {
-          setMsg(error.message || "Sign-in failed. Check your email and password.");
+        if (error || !data?.session) {
+          const response = await fetch("/api/lms/auth/login", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: cleanEmail, password }), cache: "no-store",
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || !result?.session?.access_token || !result?.user) {
+            setMsg(result?.error || error?.message || "Sign-in failed. Check your email and password.");
+            return;
+          }
+          const session = { ...result.session, user: result.user, token_type: "bearer" };
+          localStorage.setItem("skillbridge_local_session", JSON.stringify(result.user));
+          for (const key of ["skillbridge_local_auth_session", "sb-local-auth-token", "sb-csjygxumpnonfupobhih-auth-token"]) localStorage.setItem(key, JSON.stringify(session));
+          window.dispatchEvent(new Event("local_auth_changed"));
+          const role = Array.isArray(result.roles) ? result.roles[0] : result.user.user_metadata?.role;
+          window.location.replace(getRedirectRoute(role || "student"));
           return;
         }
-        if (!data?.session) {
-          setMsg("Sign-in did not return a valid session. Please try again.");
-          return;
-        }
-
         const userMetaRole = (data.session.user.user_metadata?.role as string) || "student";
         window.location.replace(getRedirectRoute(userMetaRole));
         return;
@@ -190,15 +199,24 @@ function AuthPage() {
           },
         });
 
-        if (error) {
-          setMsg(error.message || "Registration failed. Please try again.");
+        if (error || !data?.session) {
+          const response = await fetch("/api/lms/auth/signup", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email: cleanEmail, password, metadata: { display_name: name.trim() || cleanEmail.split("@")[0] } }),
+            cache: "no-store",
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok || !result?.session?.access_token || !result?.user) {
+            setMsg(result?.error || error?.message || "Registration failed. Please try again.");
+            return;
+          }
+          const session = { ...result.session, user: result.user, token_type: "bearer" };
+          localStorage.setItem("skillbridge_local_session", JSON.stringify(result.user));
+          for (const key of ["skillbridge_local_auth_session", "sb-local-auth-token", "sb-csjygxumpnonfupobhih-auth-token"]) localStorage.setItem(key, JSON.stringify(session));
+          window.dispatchEvent(new Event("local_auth_changed"));
+          window.location.replace(getRedirectRoute("student"));
           return;
         }
-        if (!data?.session) {
-          setMsg("Registration did not return a valid session. Please try again.");
-          return;
-        }
-
         window.location.replace(getRedirectRoute(role));
         return;
       }
