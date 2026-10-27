@@ -1459,7 +1459,13 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const course = lmsDB.getCourse(assignment.course_id) ||
         lmsDB.getCourse(assignment.course_slug);
       if (!course) return errorResponse("Assignment course not found.", 404);
-      if (!user.isAdmin && course.teacher_id && course.teacher_id !== user.userId) {
+      const createdByCurrentTeacher = assignment.created_by === user.userId;
+      if (
+        !user.isAdmin &&
+        course.teacher_id &&
+        course.teacher_id !== user.userId &&
+        !createdByCurrentTeacher
+      ) {
         return errorResponse("You can only delete assignments for your own courses.", 403);
       }
       const ok = lmsDB.deleteAssignment(id);
