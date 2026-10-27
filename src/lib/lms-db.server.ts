@@ -1635,6 +1635,32 @@ class DatabaseManager {
     const enrolledCourseIds = new Set(enrolledCourses.map((c) => c.id));
     const enrolledCourseSlugs = new Set(enrolledCourses.map((c) => c.slug));
 
+    // Build a canonical identity index from both the enrollment rows and resolved
+    // course records. Some older enrollments store a legacy ID while newer
+    // assignments store the canonical UUID, slug, or title.
+    const normalizeCourseKey = (value: unknown) =>
+      typeof value === "string" ? value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "") : "";
+    const canonicalCourseKey = (value: unknown) => {
+      if (typeof value !== "string" || !value.trim()) return "";
+      const trimmed = value.trim();
+      return normalizeCourseKey(courseAliases[trimmed] || trimmed);
+    };
+    const enrolledCourseKeys = new Set<string>();
+    for (const enrollment of enrollments) {
+      const resolved = resolveCourseRef(enrollment.course_id);
+      for (const value of [
+        enrollment.course_id,
+        resolved?.id,
+        resolved?.slug,
+        resolved?.title,
+        resolved ? courseAliases[resolved.id] : undefined,
+        courseAliases[enrollment.course_id],
+      ]) {
+        const key = canonicalCourseKey(value);
+        if (key) enrolledCourseKeys.add(key);
+      }
+    }
+
     const studentSubmissions = db.submissions.filter((s) => s.student_id === studentId);
     const submissionMap = new Map<string, AssignmentSubmission>();
     studentSubmissions.forEach((s) => submissionMap.set(s.assignment_id, s));
@@ -1642,23 +1668,22 @@ class DatabaseManager {
     // Resolve older assignment records that stored a legacy course ID, slug, or
     // title. This keeps real published work visible after course records were
     // normalized, without exposing assignments for courses the student hasn't joined.
-    const normalizeCourseKey = (value: unknown) =>
-      typeof value === "string" ? value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "") : "";
     const resolveAssignmentCourse = (assignment: Assignment) =>
-      resolveCourseRef(assignment.course_id) ||
       resolveCourseRef(assignment.course_slug) ||
+      resolveCourseRef(assignment.course_title) ||
+      resolveCourseRef(assignment.course_id) ||
       db.courses.find((course) => {
         const legacyKeys = [
           course.title,
           course.slug,
           course.id,
           courseAliases[course.id],
-        ].map(normalizeCourseKey);
+        ].map(canonicalCourseKey);
         return [
           assignment.course_title,
           assignment.course_slug,
           assignment.course_id,
-        ].some((key) => normalizeCourseKey(key) && legacyKeys.includes(normalizeCourseKey(key)));
+        ].some((key) => canonicalCourseKey(key) && legacyKeys.includes(canonicalCourseKey(key)));
       });
 
     const findEnrolledCourseForAssignment = (assignment: Assignment) => {
@@ -1671,19 +1696,29 @@ class DatabaseManager {
         assignmentCourse?.slug,
         assignmentCourse?.title,
         assignmentCourse ? courseAliases[assignmentCourse.id] : undefined,
-      ].map(normalizeCourseKey).filter(Boolean);
+        courseAliases[assignment.course_id],
+      ].map(canonicalCourseKey).filter(Boolean);
 
-      // Match the assignment against each enrolled course directly. This handles
-      // older records where the assignment points at a duplicate/legacy course ID
-      // but the course title is the same as the student's enrolled course.
+      // Match against the enrollment's original reference as well as its resolved
+      // course. Prefer slug/title when stale IDs collide with a different course.
+      const matchesEnrollment = assignmentKeys.some((key) => enrolledCourseKeys.has(key));
+      if (!matchesEnrollment) return undefined;
       return enrolledCourses.find((enrolledCourse) => {
         const enrolledKeys = [
           enrolledCourse.id,
           enrolledCourse.slug,
           enrolledCourse.title,
           courseAliases[enrolledCourse.id],
-        ].map(normalizeCourseKey).filter(Boolean);
+        ].map(canonicalCourseKey).filter(Boolean);
         return assignmentKeys.some((key) => enrolledKeys.includes(key));
+      }) || enrolledCourses.find((enrolledCourse) => {
+        const keys = [
+          enrolledCourse.id,
+          enrolledCourse.slug,
+          enrolledCourse.title,
+          courseAliases[enrolledCourse.id],
+        ].map(canonicalCourseKey).filter(Boolean);
+        return keys.some((key) => assignmentKeys.includes(key));
       });
     };
 
