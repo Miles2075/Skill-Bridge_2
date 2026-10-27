@@ -133,6 +133,10 @@ function StudentDashboardPage() {
   }, []);
 
   const switchView = (v: StudentNavView) => {
+    if (v === "assignments") {
+      navigate({ to: "/student/assignments" });
+      return;
+    }
     setCurrentView(v);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
