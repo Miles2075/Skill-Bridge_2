@@ -931,8 +931,10 @@ class DatabaseManager {
     const target = aliasMap[idOrSlug] || idOrSlug;
     const c =
       db.courses.find((x) => x.id === target || x.slug === target) ||
-      db.courses.find((x) => x.id === idOrSlug || x.slug === idOrSlug) ||
-      db.courses[0];
+      db.courses.find((x) => x.id === idOrSlug || x.slug === idOrSlug);
+    // Never silently attach new content to the first course when the supplied
+    // course reference is invalid; that makes teacher assignments appear on the
+    // wrong course and disappear from the intended students' dashboard.
     if (!c) return null;
     let videoUrls =
       c.video_urls && Array.isArray(c.video_urls)
