@@ -1875,9 +1875,22 @@ class DatabaseManager {
         };
       });
 
-    // Submissions for authorized courses
+    // Submissions must follow the same access rules as the published assignments
+    // shown in Instructor Studio. Legacy submissions can have a stale course_id
+    // even when their assignment is visible to this teacher; filtering only by the
+    // submission's course_id made those submissions disappear from the workbench.
     const submissions = db.submissions
-      .filter((submission) => isAuthorizedCourseRef(submission.course_id))
+      .filter((submission) => {
+        const assignment = db.assignments.find((a) => a.id === submission.assignment_id);
+        return (
+          isAuthorizedCourseRef(submission.course_id) ||
+          (!!teacherId && assignment?.created_by === teacherId) ||
+          (!!assignment &&
+            (isAuthorizedCourseRef(assignment.course_id) ||
+              isAuthorizedCourseRef(assignment.course_slug) ||
+              isAuthorizedCourseRef(assignment.course_title)))
+        );
+      })
       .map((s) => {
         const asg = db.assignments.find((a) => a.id === s.assignment_id);
         const course = db.courses.find((c) => c.id === s.course_id);
