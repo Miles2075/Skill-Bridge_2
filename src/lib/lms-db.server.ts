@@ -1912,10 +1912,12 @@ class DatabaseManager {
           isAuthorizedCourseRef(assignment.course_slug) ||
           isAuthorizedCourseRef(assignment.course_title) ||
           (!!teacherId && assignment.created_by === teacherId) ||
-          (assignment.created_by === null &&
-            (isPublishedCourseRef(assignment.course_id) ||
-              isPublishedCourseRef(assignment.course_slug) ||
-              isPublishedCourseRef(assignment.course_title))) ||
+          // The grading workbench is faculty-wide for published course work:
+          // legacy assignments may belong to a course owned by another instructor,
+          // but their student submissions must not disappear from the review queue.
+          isPublishedCourseRef(assignment.course_id) ||
+          isPublishedCourseRef(assignment.course_slug) ||
+          isPublishedCourseRef(assignment.course_title) ||
           matchesInstructorOwnedCourse(assignment),
         )
         .map((assignment) => assignment.id),
@@ -1934,6 +1936,9 @@ class DatabaseManager {
             (isAuthorizedCourseRef(assignment.course_id) ||
               isAuthorizedCourseRef(assignment.course_slug) ||
               isAuthorizedCourseRef(assignment.course_title) ||
+              isPublishedCourseRef(assignment.course_id) ||
+              isPublishedCourseRef(assignment.course_slug) ||
+              isPublishedCourseRef(assignment.course_title) ||
               matchesInstructorOwnedCourse(assignment)))
         );
       })
@@ -1959,10 +1964,9 @@ class DatabaseManager {
       isAuthorizedCourseRef(assignment.course_slug) ||
       isAuthorizedCourseRef(assignment.course_title) ||
       (!!teacherId && assignment.created_by === teacherId) ||
-      (assignment.created_by === null &&
-        (isPublishedCourseRef(assignment.course_id) ||
-          isPublishedCourseRef(assignment.course_slug) ||
-          isPublishedCourseRef(assignment.course_title))) ||
+      isPublishedCourseRef(assignment.course_id) ||
+      isPublishedCourseRef(assignment.course_slug) ||
+      isPublishedCourseRef(assignment.course_title) ||
       matchesInstructorOwnedCourse(assignment),
     );
 
