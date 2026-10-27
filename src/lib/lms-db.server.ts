@@ -1661,7 +1661,23 @@ class DatabaseManager {
       }
     }
 
-    const studentSubmissions = db.submissions.filter((s) => s.student_id === studentId);
+    // Show only the latest submission for a logical assignment. Older records can
+    // contain duplicate assignment rows (same title/course, different legacy IDs),
+    // which previously produced repeated cards in the student workspace.
+    const studentSubmissionCandidates = db.submissions
+      .filter((s) => s.student_id === studentId)
+      .sort((a, b) => String(b.submitted_at || "").localeCompare(String(a.submitted_at || "")));
+    const latestByAssignment = new Map<string, AssignmentSubmission>();
+    for (const submission of studentSubmissionCandidates) {
+      const assignment = db.assignments.find((a) => a.id === submission.assignment_id);
+      const courseKey = canonicalCourseKey(
+        assignment?.course_title || assignment?.course_slug || submission.course_id || "",
+      );
+      const titleKey = canonicalCourseKey(assignment?.title || submission.assignment_id);
+      const logicalKey = `${courseKey}::${titleKey}`;
+      if (!latestByAssignment.has(logicalKey)) latestByAssignment.set(logicalKey, submission);
+    }
+    const studentSubmissions = [...latestByAssignment.values()];
     const submissionMap = new Map<string, AssignmentSubmission>();
     studentSubmissions.forEach((s) => submissionMap.set(s.assignment_id, s));
 
@@ -1970,6 +1986,21 @@ class DatabaseManager {
           courseSlug: course?.slug || "",
           studentAvatar,
         };
+      })
+      // Collapse legacy duplicate rows for the same learner, assignment title, and
+      // course; retain the newest submission so instructors see one review card.
+      .sort((a, b) => String(b.submitted_at || "").localeCompare(String(a.submitted_at || "")))
+      .filter((submission, _index, all) => {
+        const key = [
+          submission.student_id,
+          canonicalCourseKey(submission.courseTitle || submission.courseSlug || submission.course_id || ""),
+          canonicalCourseKey(submission.assignmentTitle || submission.assignment_id),
+        ].join("::");
+        return all.findIndex((candidate) => [
+          candidate.student_id,
+          canonicalCourseKey(candidate.courseTitle || candidate.courseSlug || candidate.course_id || ""),
+          canonicalCourseKey(candidate.assignmentTitle || candidate.assignment_id),
+        ].join("::") === key) === _index;
       });
 
     // Assignments for authorized courses
