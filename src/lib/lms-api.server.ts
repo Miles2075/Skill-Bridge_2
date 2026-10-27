@@ -726,8 +726,21 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
     }
 
     // GET /api/lms/courses
+    // Never expose private drafts or paid-course media URLs in the public catalog.
     if (path === "courses" && method === "GET") {
-      const courses = lmsDB.getAllCourses();
+      const courses = lmsDB.getAllCourses()
+        .filter((course) =>
+          course.status === "published" ||
+          user.isAdmin ||
+          (user.isTeacher && Boolean(user.userId) && course.teacher_id === user.userId),
+        )
+        .map((course) => {
+          const ownsCourse = Boolean(user.userId) && course.teacher_id === user.userId;
+          const enrolled = Boolean(user.userId && lmsDB.getStudentEnrollment(user.userId, course.id));
+          const purchased = Boolean(user.userId && lmsDB.getPurchases(user.userId).some((item) => item.course_id === course.id));
+          if (user.isAdmin || ownsCourse || enrolled || purchased) return course;
+          return { ...course, video_url: "", video_urls: [] };
+        });
       return jsonResponse({ courses });
     }
 
@@ -738,17 +751,28 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const course = lmsDB.getCourse(idOrSlug);
       if (!course) return errorResponse("Course not found", 404);
 
-      const lessons = lmsDB.getLessonsForCourse(course.id);
+      const ownsCourse = Boolean(user.userId) && course.teacher_id === user.userId;
+      const canManageCourse = user.isAdmin || (user.isTeacher && ownsCourse);
+      if (course.status !== "published" && !canManageCourse) {
+        return errorResponse("Course not found", 404);
+      }
+
       let enrollment = null;
       let progressRecords: unknown[] = [];
-
+      let purchased = false;
       if (user.userId) {
         enrollment = lmsDB.getStudentEnrollment(user.userId, course.id);
         progressRecords = lmsDB.getLessonProgress(user.userId, course.id);
+        purchased = lmsDB.getPurchases(user.userId).some((item) => item.course_id === course.id);
       }
 
+      const hasFullAccess = canManageCourse || Boolean(enrollment) || purchased;
+      const allLessons = lmsDB.getLessonsForCourse(course.id);
+      const lessons = hasFullAccess ? allLessons : allLessons.filter((lesson) => lesson.is_preview === true);
+      const safeCourse = hasFullAccess ? course : { ...course, video_url: "", video_urls: [] };
+
       return jsonResponse({
-        course,
+        course: safeCourse,
         lessons,
         enrollment,
         lessonProgress: progressRecords,
@@ -1104,6 +1128,9 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
       const existing = lmsDB.getCourse(courseId);
       if (!existing) return errorResponse("Course not found", 404);
+      if (!user.isAdmin && existing.teacher_id !== user.userId) {
+        return errorResponse("You can only edit courses assigned to your account.", 403);
+      }
 
       const updated = lmsDB.updateCourse(existing.id, body);
       return jsonResponse({ course: updated });
@@ -1118,6 +1145,9 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
       const existing = lmsDB.getCourse(courseId);
       if (!existing) return errorResponse("Course not found", 404);
+      if (!user.isAdmin && existing.teacher_id !== user.userId) {
+        return errorResponse("You can only delete courses assigned to your account.", 403);
+      }
 
       const ok = lmsDB.deleteCourse(existing.id);
       return jsonResponse({ success: ok });
@@ -1144,6 +1174,9 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
       const course = lmsDB.getCourse(courseId);
       if (!course) return errorResponse("Course not found.", 404);
+      if (!user.isAdmin && course.teacher_id !== user.userId) {
+        return errorResponse("You can only upload media to courses assigned to your account.", 403);
+      }
 
       if (lessonId) {
         const snapshot = lmsDB.exportSnapshot();
@@ -1180,6 +1213,9 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
       const course = lmsDB.getCourse(courseId);
       if (!course) return errorResponse("Course not found.", 404);
+      if (!user.isAdmin && course.teacher_id !== user.userId) {
+        return errorResponse("You can only upload media to courses assigned to your account.", 403);
+      }
 
       const MAX_VIDEO_SIZE = 500 * 1024 * 1024;
       const declaredSize = Number(
