@@ -1875,10 +1875,27 @@ class DatabaseManager {
         };
       });
 
+    // If this instructor has published work for a course, include legacy/default
+    // assignments for that same course too. Older assignment rows can have a
+    // different created_by or stale course ID, which previously hid student work.
+    const instructorOwnedCourseKeys = new Set(
+      db.assignments
+        .filter((assignment) => !!teacherId && assignment.created_by === teacherId)
+        .flatMap((assignment) =>
+          [assignment.course_id, assignment.course_slug, assignment.course_title]
+            .map(normalizeCourseKey)
+            .filter(Boolean),
+        ),
+    );
+    const matchesInstructorOwnedCourse = (assignment: Assignment | undefined) =>
+      !!assignment &&
+      [assignment.course_id, assignment.course_slug, assignment.course_title]
+        .map(normalizeCourseKey)
+        .some((key) => !!key && instructorOwnedCourseKeys.has(key));
+
     // Submissions must follow the same access rules as the published assignments
-    // shown in Instructor Studio. Legacy submissions can have a stale course_id
-    // even when their assignment is visible to this teacher; filtering only by the
-    // submission's course_id made those submissions disappear from the workbench.
+    // shown in Instructor Studio. Filtering only by the submission's course_id
+    // made valid submissions disappear when a legacy course reference differed.
     const submissions = db.submissions
       .filter((submission) => {
         const assignment = db.assignments.find((a) => a.id === submission.assignment_id);
@@ -1888,7 +1905,8 @@ class DatabaseManager {
           (!!assignment &&
             (isAuthorizedCourseRef(assignment.course_id) ||
               isAuthorizedCourseRef(assignment.course_slug) ||
-              isAuthorizedCourseRef(assignment.course_title)))
+              isAuthorizedCourseRef(assignment.course_title) ||
+              matchesInstructorOwnedCourse(assignment)))
         );
       })
       .map((s) => {
@@ -1912,7 +1930,8 @@ class DatabaseManager {
       isAuthorizedCourseRef(assignment.course_id) ||
       isAuthorizedCourseRef(assignment.course_slug) ||
       isAuthorizedCourseRef(assignment.course_title) ||
-      (!!teacherId && assignment.created_by === teacherId),
+      (!!teacherId && assignment.created_by === teacherId) ||
+      matchesInstructorOwnedCourse(assignment),
     );
 
     // Quizzes for authorized courses
