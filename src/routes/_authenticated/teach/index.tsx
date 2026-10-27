@@ -76,6 +76,7 @@ type InstructorNavView =
   | "focus"
   | "students"
   | "submissions"
+  | "submitted-assignments"
   | "analytics"
   | "profile"
   | "settings";
@@ -2702,7 +2703,7 @@ function TeachDashboardPage() {
       {/* ------------------------------------------------------------- */}
       {currentView === "assignments" && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-200 pb-3">
             <div>
               <h1 className="text-xl font-extrabold text-slate-900">
                 Course Assignments & Milestones
@@ -2711,6 +2712,14 @@ function TeachDashboardPage() {
                 Design coding assignments, specify rubrics, and inspect student submission counts.
               </p>
             </div>
+            <button
+              type="button"
+              onClick={() => switchView("submitted-assignments")}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-teal-700 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-teal-800"
+            >
+              <ClipboardCheck className="size-4" />
+              View Submitted Assignments ({submissions.length})
+            </button>
           </div>
 
           <div className="grid gap-6 md:grid-cols-3">
@@ -3149,6 +3158,97 @@ function TeachDashboardPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ------------------------------------------------------------- */}
+      {/* VIEW: SUBMITTED ASSIGNMENTS (SUBMISSIONS ONLY) */}
+      {/* ------------------------------------------------------------- */}
+      {currentView === "submitted-assignments" && (
+        <div className="space-y-5">
+          <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-xl font-extrabold text-slate-900">Submitted Assignments</h1>
+              <p className="mt-1 text-xs text-slate-500">
+                Only assignments that have at least one student submission appear here.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => switchView("submissions")}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Open Grading Workbench
+            </button>
+          </div>
+
+          {submissions.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
+              <ClipboardCheck className="mx-auto size-8 text-slate-400" />
+              <h2 className="mt-3 text-sm font-bold text-slate-900">No student submissions yet</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                When a student submits an assignment, it will appear in this section.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {assignmentDefs
+                .filter((assignment) => submissions.some((submission) => submission.assignmentId === assignment.id))
+                .map((assignment) => {
+                  const assignmentSubmissions = submissions
+                    .filter((submission) => submission.assignmentId === assignment.id)
+                    .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime());
+                  return (
+                    <section key={assignment.id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xs">
+                      <div className="flex flex-col gap-2 border-b border-slate-100 bg-slate-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-xs font-bold text-teal-700">{assignment.courseTitle}</p>
+                          <h2 className="mt-1 text-base font-bold text-slate-900">{assignment.title}</h2>
+                          <p className="mt-1 text-xs text-slate-500">Due: {assignment.dueDate} · Max marks: {assignment.maxScore}</p>
+                        </div>
+                        <span className="w-fit rounded-full bg-teal-50 px-3 py-1 text-xs font-bold text-teal-800">
+                          {assignmentSubmissions.length} submission{assignmentSubmissions.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {assignmentSubmissions.map((sub) => (
+                          <div key={sub.id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="flex min-w-0 items-start gap-3">
+                              <UserAvatar
+                                src={(sub as unknown as Record<string, string>)["studentAvatar"] || (sub as unknown as Record<string, string>)["avatar_url"]}
+                                name={sub.studentName}
+                                className="mt-0.5 size-10 shrink-0 border border-slate-200 text-xs"
+                              />
+                              <div className="min-w-0">
+                                <p className="text-sm font-bold text-slate-900">{sub.studentName}</p>
+                                <p className="text-xs text-slate-500">{sub.studentEmail}</p>
+                                <p className="mt-1 text-xs text-slate-500">Submitted {sub.submittedAt ? new Date(sub.submittedAt).toLocaleString() : "date unavailable"}</p>
+                                {sub.solutionNotes && (
+                                  <p className="mt-2 whitespace-pre-wrap break-words rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-700">{sub.solutionNotes}</p>
+                                )}
+                                {sub.githubUrl && (
+                                  <a href={sub.githubUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-teal-700 hover:underline">
+                                    Open submitted solution <ExternalLink className="size-3" />
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+                              <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${sub.status === "approved" || sub.status === "reviewed" ? "bg-emerald-50 text-emerald-700" : sub.status === "needs_revision" ? "bg-amber-50 text-amber-700" : "bg-orange-50 text-orange-700"}`}>
+                                {sub.status === "needs_revision" ? "Revision requested" : sub.status === "approved" || sub.status === "reviewed" ? "Reviewed" : "Pending review"}
+                              </span>
+                              <button type="button" onClick={() => handleOpenGrading(sub)} className="rounded-lg bg-teal-700 px-3 py-2 text-xs font-bold text-white hover:bg-teal-800">
+                                Review submission
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  );
+                })}
+            </div>
+          )}
         </div>
       )}
 
