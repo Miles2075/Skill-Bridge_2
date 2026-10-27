@@ -306,6 +306,7 @@ export function updateLocalSessionProfile(params: {
       if (!raw) continue;
       const session = JSON.parse(raw);
       if (session?.user?.id === current.id) {
+        session.user.email = current.email;
         session.user.user_metadata = { ...session.user.user_metadata, ...current.user_metadata };
         if (params.avatarUrl === null) delete session.user.user_metadata.avatar_url;
         session.user.updated_at = current.updated_at;
