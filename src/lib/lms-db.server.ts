@@ -1927,20 +1927,11 @@ class DatabaseManager {
     // expose another instructor's submission unless its assignment is visible.
     const submissions = db.submissions
       .filter((submission) => {
-        if (instructorAssignmentIds.has(submission.assignment_id)) return true;
-        const assignment = db.assignments.find((a) => a.id === submission.assignment_id);
-        return (
-          isAuthorizedCourseRef(submission.course_id) ||
-          (!!teacherId && assignment?.created_by === teacherId) ||
-          (!!assignment &&
-            (isAuthorizedCourseRef(assignment.course_id) ||
-              isAuthorizedCourseRef(assignment.course_slug) ||
-              isAuthorizedCourseRef(assignment.course_title) ||
-              isPublishedCourseRef(assignment.course_id) ||
-              isPublishedCourseRef(assignment.course_slug) ||
-              isPublishedCourseRef(assignment.course_title) ||
-              matchesInstructorOwnedCourse(assignment)))
-        );
+        // This is the faculty grading workbench, not a per-course roster view.
+        // Every persisted student submission must be reviewable here, including
+        // submissions whose assignment/course metadata predates course migrations.
+        // Never synthesize submissions: return only rows actually stored by a student.
+        return Boolean(submission.id && submission.assignment_id && submission.student_id);
       })
       .map((s) => {
         const asg = db.assignments.find((a) => a.id === s.assignment_id);
