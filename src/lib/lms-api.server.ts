@@ -593,10 +593,11 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
           : body.avatarUrl === null
             ? null
             : String(body.avatarUrl);
+      const email = body.email === undefined ? undefined : String(body.email);
       if (displayName !== undefined && !displayName.trim())
         return errorResponse("Display name cannot be empty.");
       try {
-        const updated = lmsDB.updateUserProfile(user.userId, { displayName, avatarUrl });
+        const updated = lmsDB.updateUserProfile(user.userId, { displayName, avatarUrl, email });
         if (!updated) return errorResponse("User not found.", 404);
         return jsonResponse({ user: updated });
       } catch (err) {
