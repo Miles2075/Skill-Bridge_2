@@ -109,7 +109,7 @@ function StudentRouteLayout() {
     };
   }, [user?.id]);
 
-  const [activeView, setActiveView] = useState<StudentNavView>("dashboard");
+  const [activeView, setActiveView] = useState<StudentNavView>(() => typeof window !== "undefined" && window.location.pathname.endsWith("/assignments") ? "assignments" : "dashboard");
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [pendingAssignments, setPendingAssignments] = useState(0);
@@ -172,6 +172,10 @@ function StudentRouteLayout() {
   }, []);
 
   const switchView = (v: StudentNavView) => {
+    if (v === "assignments") {
+      window.location.assign("/student/assignments");
+      return;
+    }
     setActiveView(v);
     setMobileMenuOpen(false);
     if (typeof window !== "undefined") {
