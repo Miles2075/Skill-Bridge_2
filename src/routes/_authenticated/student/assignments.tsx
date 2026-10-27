@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, ClipboardList, Clock, FileCheck, Loader2, Send } from "lucide-react";
+import { ArrowLeft, ClipboardList, Clock, Loader2, Send } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
