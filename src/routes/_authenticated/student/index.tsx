@@ -133,10 +133,6 @@ function StudentDashboardPage() {
   }, []);
 
   const switchView = (v: StudentNavView) => {
-    if (v === "assignments") {
-      navigate({ to: "/student/assignments" });
-      return;
-    }
     setCurrentView(v);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -1357,38 +1353,77 @@ function StudentDashboardPage() {
       )}
 
       {/* ------------------------------------------------------------- */}
-      {/* VIEW 3: ASSIGNMENTS */}
+      {/* VIEW 3: ASSIGNMENTS — rebuilt as a clean, deduplicated workspace */}
       {currentView === "assignments" && (
-        <div className="space-y-8">
-          <div className="border-b border-slate-200 pb-3">
-            <h1 className="text-xl font-extrabold text-slate-900">Assignments & Capstone Projects</h1>
-            <p className="text-xs text-slate-500">Submit solutions and track instructor reviews, grades, and feedback.</p>
-          </div>
-          <section className="space-y-3">
-            <h2 className="text-base font-bold text-slate-900">Available Course Assignments</h2>
-            {availableAssignments.length ? availableAssignments.map((asg) => (
-              <div key={asg.id} className="rounded-2xl border border-slate-200 bg-white p-5 mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div><p className="text-xs font-bold text-indigo-700">{asg.course}</p><h3 className="mt-1 font-bold text-slate-900">{asg.title}</h3><p className="mt-1 text-xs text-slate-600">{asg.description}</p><p className="mt-2 text-xs text-slate-500">Due {asg.due ? new Date(asg.due).toLocaleDateString() : "No due date"} · {asg.maxScore} max marks</p></div>
-                {asg.submissionStatus && asg.submissionStatus !== "unsubmitted" ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-2 text-xs font-semibold text-emerald-800">
-                    <CheckCircle2 className="size-4" /> Submitted to teacher
-                  </span>
-                ) : (
-                  <Button onClick={() => handleOpenSubmit(asg)}>Submit Assignment</Button>
-                )}
+        <div className="mx-auto max-w-5xl space-y-6">
+          <header className="rounded-2xl border border-slate-700 bg-slate-900 p-6 text-white shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">Student workspace</p>
+                <h1 className="mt-2 text-2xl font-extrabold tracking-tight">Assignments & Projects</h1>
+                <p className="mt-2 max-w-2xl text-sm text-slate-300">One clear list of work to submit, plus your latest submission and instructor feedback for each assignment.</p>
               </div>
-            )) : <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">No new assignments to submit. New assignments for your enrolled courses will appear here.</div>}
-          </section>
+              <Button variant="outline" className="border-slate-600 bg-slate-800 text-white hover:bg-slate-700" onClick={() => { setLoading(true); void lmsClient.getStudentDashboard().then(setData).catch((error: unknown) => setFeedbackMsg({ text: error instanceof Error ? error.message : "Could not refresh assignments.", error: true })).finally(() => setLoading(false)); }}>Refresh assignments</Button>
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-slate-700 bg-slate-800/80 p-4"><p className="text-xs text-slate-400">Ready to submit</p><p className="mt-1 text-2xl font-bold">{availableAssignments.length}</p></div>
+              <div className="rounded-xl border border-slate-700 bg-slate-800/80 p-4"><p className="text-xs text-slate-400">Submitted assignments</p><p className="mt-1 text-2xl font-bold">{submittedAssignments.length}</p></div>
+              <div className="rounded-xl border border-slate-700 bg-slate-800/80 p-4"><p className="text-xs text-slate-400">Approved</p><p className="mt-1 text-2xl font-bold">{submittedAssignments.filter((a) => a.submissionStatus === "approved").length}</p></div>
+            </div>
+          </header>
+
+          {feedbackMsg && (
+            <div role="status" className={`rounded-xl border p-3 text-sm ${feedbackMsg.error ? "border-rose-800 bg-rose-950/40 text-rose-200" : "border-emerald-800 bg-emerald-950/40 text-emerald-200"}`}>
+              {feedbackMsg.text}
+            </div>
+          )}
+
           <section className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-base font-bold text-slate-900">My Submissions & Instructor Reviews ({submittedAssignments.length})</h2><span className="text-xs text-slate-500">Synced with Instructor Studio</span></div>
-            {submittedAssignments.length ? submittedAssignments.map((asg) => (
-              <article key={asg.id} className="rounded-2xl border border-slate-200 bg-white p-5 mb-3">
-                <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-bold text-slate-900">{asg.title}</h3><p className="mt-1 text-xs text-slate-500">{asg.course} · Submitted {asg.submittedAt ? new Date(asg.submittedAt).toLocaleDateString() : "successfully"}</p></div><span className="rounded-full px-3 py-1 text-xs font-bold bg-amber-100 text-amber-800">{asg.submissionStatus === "approved" ? "Graded · Approved" : asg.submissionStatus === "needs_revision" || asg.submissionStatus === "resubmission_required" ? "Revision Requested" : "Under Instructor Review"}</span></div>
-                {asg.score !== null && asg.score !== undefined && <p className="mt-3 text-sm font-semibold text-slate-800">Score: {asg.score} / {asg.maxScore}</p>}
-                {asg.feedback && <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-700">Instructor feedback</p><p className="mt-1 text-sm text-slate-600">{asg.feedback}</p></div>}
-                {(asg.submissionStatus === "needs_revision" || asg.submissionStatus === "resubmission_required") && <Button className="mt-3" onClick={() => handleOpenSubmit(asg)}>Resubmit Solution</Button>}
-              </article>
-            )) : <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">Your submitted assignments and instructor feedback will appear here.</div>}
+            <div className="flex items-center justify-between gap-3"><div><h2 className="text-lg font-bold text-slate-100">Ready to submit</h2><p className="text-sm text-slate-400">Published assignments for your enrolled courses.</p></div><span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-300">{availableAssignments.length} available</span></div>
+            {availableAssignments.length ? (
+              <div className="grid gap-3">
+                {availableAssignments.map((asg) => (
+                  <article key={asg.id} className="rounded-xl border border-slate-700 bg-slate-900 p-5 transition-colors hover:border-slate-500">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold text-cyan-300">{asg.course}</p>
+                        <h3 className="mt-1 text-base font-bold text-white">{asg.title}</h3>
+                        {asg.description && <p className="mt-2 text-sm leading-relaxed text-slate-300">{asg.description}</p>}
+                        <p className="mt-2 text-xs text-slate-400">Due {asg.due ? new Date(asg.due).toLocaleDateString() : "No due date"} · {asg.maxScore} max marks</p>
+                      </div>
+                      <Button className="shrink-0" onClick={() => handleOpenSubmit(asg)}>Submit work</Button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/60 px-6 py-10 text-center">
+                <FileCheck className="mx-auto size-8 text-slate-500" />
+                <h3 className="mt-3 font-semibold text-slate-200">You’re all caught up</h3>
+                <p className="mx-auto mt-1 max-w-lg text-sm text-slate-400">There are no unsubmitted assignments in the current course feed. New published work will appear here when it is available to your account.</p>
+              </div>
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-3"><div><h2 className="text-lg font-bold text-slate-100">Your submitted work</h2><p className="text-sm text-slate-400">Only the latest submission is shown for each course and assignment.</p></div><span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-300">{submittedAssignments.length} assignments</span></div>
+            {submittedAssignments.length ? (
+              <div className="grid gap-3">
+                {submittedAssignments.map((asg) => (
+                  <article key={asg.id} className="rounded-xl border border-slate-700 bg-slate-900 p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0"><p className="text-xs font-semibold text-cyan-300">{asg.course}</p><h3 className="mt-1 text-base font-bold text-white">{asg.title}</h3><p className="mt-1 text-xs text-slate-400">Latest submission{asg.submittedAt ? ` · ${new Date(asg.submittedAt).toLocaleDateString()}` : ""}</p></div>
+                      <span className={`rounded-full px-3 py-1 text-xs font-bold ${asg.submissionStatus === "approved" ? "bg-emerald-950 text-emerald-300" : asg.submissionStatus === "needs_revision" || asg.submissionStatus === "resubmission_required" ? "bg-rose-950 text-rose-300" : "bg-amber-950 text-amber-300"}`}>{asg.submissionStatus === "approved" ? "Approved" : asg.submissionStatus === "needs_revision" || asg.submissionStatus === "resubmission_required" ? "Revision requested" : "Under review"}</span>
+                    </div>
+                    {asg.score !== null && asg.score !== undefined && <p className="mt-3 text-sm font-semibold text-slate-200">Score: {asg.score} / {asg.maxScore}</p>}
+                    {asg.feedback && <div className="mt-3 rounded-lg border border-emerald-900 bg-emerald-950/30 p-3"><p className="text-xs font-semibold text-emerald-300">Instructor feedback</p><p className="mt-1 whitespace-pre-wrap text-sm text-slate-200">{asg.feedback}</p></div>}
+                    {(asg.submissionStatus === "needs_revision" || asg.submissionStatus === "resubmission_required") && <Button className="mt-4" onClick={() => handleOpenSubmit(asg)}>Resubmit work</Button>}
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed border-slate-700 bg-slate-900/60 px-6 py-8 text-center text-sm text-slate-400">Your submissions and instructor feedback will appear here after you submit an assignment.</div>
+            )}
           </section>
         </div>
       )}
