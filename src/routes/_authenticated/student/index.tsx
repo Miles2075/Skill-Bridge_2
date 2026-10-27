@@ -133,6 +133,8 @@ function StudentDashboardPage() {
   }, []);
 
   const switchView = (v: StudentNavView) => {
+    // The standalone assignments page has been retired; keep legacy dashboard links safe.
+    if (v === "assignments") v = "dashboard";
     setCurrentView(v);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
