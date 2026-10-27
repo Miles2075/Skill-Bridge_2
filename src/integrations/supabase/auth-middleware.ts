@@ -13,7 +13,7 @@ export const requireSupabaseAuth = createMiddleware({ type: "function" }).server
     }
 
     const authHeader = request.headers.get("authorization") || "";
-    const token = authHeader.replace(/^Bearer\\s+/i, "").trim();
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
     if (!token) {
       throw new Error("Unauthorized");
     }
