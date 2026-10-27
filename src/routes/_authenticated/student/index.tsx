@@ -621,7 +621,24 @@ function StudentDashboardPage() {
   const overallProgress = data?.overallProgress ?? 0;
   const upcomingAssignments = data?.upcomingAssignments || [];
   const availableAssignments = upcomingAssignments.filter((a) => !a.submissionStatus || a.submissionStatus === "unsubmitted");
-  const submittedAssignments = upcomingAssignments.filter((a) => Boolean(a.submissionStatus && a.submissionStatus !== "unsubmitted"));
+  // Legacy data can contain multiple submission records for the same assignment.
+  // Keep the most recent submitted card per course + assignment title in the UI too,
+  // so old duplicate rows cannot leak through even if an API response is stale.
+  const submittedAssignments = Array.from(
+    upcomingAssignments
+      .filter((a) => Boolean(a.submissionStatus && a.submissionStatus !== "unsubmitted"))
+      .reduce((latest, assignment) => {
+        const normalize = (value: unknown) =>
+          String(value || "").toLocaleLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+        const key = `${normalize(assignment.course)}::${normalize(assignment.title)}`;
+        const existing = latest.get(key);
+        const currentTime = assignment.submittedAt ? new Date(assignment.submittedAt).getTime() : 0;
+        const existingTime = existing?.submittedAt ? new Date(existing.submittedAt).getTime() : 0;
+        if (!existing || currentTime >= existingTime) latest.set(key, assignment);
+        return latest;
+      }, new Map<string, (typeof upcomingAssignments)[number]>())
+      .values(),
+  );
   const studentQuizzes = data?.studentQuizzes || [];
   const grades = data?.grades || [];
   const certificates = data?.certificates || [];
