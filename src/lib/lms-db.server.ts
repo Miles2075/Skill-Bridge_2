@@ -1897,11 +1897,26 @@ class DatabaseManager {
         .map(normalizeCourseKey)
         .some((key) => !!key && instructorOwnedCourseKeys.has(key));
 
-    // Submissions must follow the same access rules as the published assignments
-    // shown in Instructor Studio. Filtering only by the submission's course_id
-    // made valid submissions disappear when a legacy course reference differed.
+    // Resolve the instructor-visible assignment IDs first. A submission belongs
+    // in the grading queue whenever its assignment is visible to this instructor,
+    // even if older submissions stored a stale course_id or the course was renamed.
+    const instructorAssignmentIds = new Set(
+      db.assignments
+        .filter((assignment) =>
+          isAuthorizedCourseRef(assignment.course_id) ||
+          isAuthorizedCourseRef(assignment.course_slug) ||
+          isAuthorizedCourseRef(assignment.course_title) ||
+          (!!teacherId && assignment.created_by === teacherId) ||
+          matchesInstructorOwnedCourse(assignment),
+        )
+        .map((assignment) => assignment.id),
+    );
+
+    // Keep course-based fallbacks for legacy/orphaned submissions, but never
+    // expose another instructor's submission unless its assignment is visible.
     const submissions = db.submissions
       .filter((submission) => {
+        if (instructorAssignmentIds.has(submission.assignment_id)) return true;
         const assignment = db.assignments.find((a) => a.id === submission.assignment_id);
         return (
           isAuthorizedCourseRef(submission.course_id) ||
