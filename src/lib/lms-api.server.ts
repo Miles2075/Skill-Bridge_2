@@ -84,66 +84,16 @@ async function parseUserContext(req: Request): Promise<UserContext> {
     }
   }
 
-  let userId = req.headers.get("x-user-id");
-  let email = req.headers.get("x-user-email");
-  let name = req.headers.get("x-user-name");
-  let roleStr = req.headers.get("x-user-role");
-
-  // Also check cookie header as fallback for local LMS roles
-  const cookieHeader = req.headers.get("cookie") || "";
-  if (!roleStr && cookieHeader) {
-    const roleMatch = cookieHeader.match(/(?:^|;\s*)skillbridge_role=([^;]+)/);
-    if (roleMatch && roleMatch[1]) {
-      roleStr = decodeURIComponent(roleMatch[1]);
-    }
-  }
-
-  if (token) {
-    const validated = lmsDB.validateSession(token);
-    if (validated) {
-      userId = validated.user.id;
-      email = validated.user.email ?? null;
-      name = String(
-        (validated.user.user_metadata?.display_name as string) ||
-          (validated.user.email ?? "").split("@")[0],
-      );
-      const primaryRole = validated.roles.includes("admin")
-        ? "admin"
-        : (validated.roles.includes("teacher") || validated.roles.includes("instructor"))
-          ? "teacher"
-          : "student";
-      roleStr = primaryRole;
-    } else if (token.split(".").length === 3) {
-      try {
-        const payloadStr = Buffer.from(token.split(".")[1]!, "base64url").toString("utf-8");
-        const payload = JSON.parse(payloadStr);
-        if (payload.sub && !userId) userId = payload.sub;
-        if (payload.email && !email) email = payload.email;
-        if (payload.user_metadata?.display_name && !name) name = payload.user_metadata.display_name;
-        if (payload.user_metadata?.role && !roleStr) roleStr = payload.user_metadata.role;
-      } catch {
-        // ignore
-      }
-    }
-  }
-
-  const role = (
-    roleStr === "teacher" || roleStr === "instructor" || roleStr === "admin"
-      ? roleStr === "instructor"
-        ? "teacher"
-        : roleStr
-      : "student"
-  ) as "student" | "teacher" | "admin";
-  const isAdmin = role === "admin";
-  const isTeacher = role === "teacher" || isAdmin;
-
+  // Fail closed when hosted Supabase Auth is not configured. Only server-issued
+  // local sessions (validated above) or Supabase-verified tokens are trusted.
+  // Never derive identity or privileges from x-user-* headers, cookies, or decoded JWT claims.
   return {
-    userId,
-    email,
-    name,
-    role,
-    isAdmin,
-    isTeacher,
+    userId: null,
+    email: null,
+    name: null,
+    role: "student",
+    isAdmin: false,
+    isTeacher: false,
   };
 }
 
@@ -633,32 +583,57 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
     }
 
     // GENERIC QUERY: POST /api/lms/query
+    // This compatibility endpoint is read-only and deliberately exposes only
+    // public course data plus lesson previews / content the caller may access.
+    // All writes and sensitive tables must use dedicated validated endpoints.
     if (path === "query" && method === "POST") {
-      const body = await req.json();
+      const body = await req.json().catch(() => ({}));
       const tableName = typeof body.table === "string" ? body.table.toLowerCase() : "";
       const action = typeof body.action === "string" ? body.action.toLowerCase() : "";
 
-      // Enrollments and payment records must only be changed by the dedicated,
-      // validated LMS endpoints. Otherwise the generic data adapter could bypass
-      // the payment verification performed during checkout.
-      if (tableName === "course_reviews") {
-        return errorResponse("Use the course review endpoint to read or write sanitized review data.", 403);
+      if (action !== "select") {
+        return errorResponse("Generic table mutations are disabled. Use the dedicated LMS endpoint.", 403);
       }
-      if (["enrollments", "purchases"].includes(tableName) && action !== "select") {
-        return errorResponse("Enrollment and purchase records can only be changed through validated LMS endpoints.", 403);
+      if (tableName !== "courses" && tableName !== "lessons") {
+        return errorResponse("This table is not available through the public query endpoint.", 403);
       }
 
-      if (tableName === "purchases") {
-        if (!user.userId) return errorResponse("Please sign in to view purchases.", 401);
-        body.filters = { ...(body.filters || {}), user_id: user.userId };
-      }
-      if (tableName === "enrollments" && !user.isTeacher && !user.isAdmin) {
-        if (!user.userId) return errorResponse("Please sign in to view enrollments.", 401);
-        body.filters = { ...(body.filters || {}), student_id: user.userId };
+      const result = lmsDB.queryTable(tableName, {
+        action: "select",
+        filters: body.filters && typeof body.filters === "object" && !Array.isArray(body.filters)
+          ? body.filters
+          : undefined,
+      });
+      if (result.error || !Array.isArray(result.data)) return jsonResponse(result);
+
+      if (tableName === "courses") {
+        const visibleCourses = result.data.filter((row) => {
+          const course = row as { status?: string; teacher_id?: string | null };
+          return course.status === "published" ||
+            user.isAdmin ||
+            (user.isTeacher && Boolean(user.userId) && course.teacher_id === user.userId);
+        });
+        return jsonResponse({ data: visibleCourses, error: null });
       }
 
-      const result = lmsDB.queryTable(body.table, body);
-      return jsonResponse(result);
+      const visibleLessons = result.data.filter((row) => {
+        const lesson = row as {
+          course_id?: string;
+          is_preview?: boolean;
+        };
+        if (!lesson.course_id) return false;
+        const course = lmsDB.getCourse(lesson.course_id);
+        if (!course) return false;
+        const ownsCourse = Boolean(user.userId) && course.teacher_id === user.userId;
+        if (user.isAdmin || (user.isTeacher && ownsCourse)) return true;
+        if (course.status !== "published") return false;
+        if (lesson.is_preview === true) return true;
+        if (!user.userId) return false;
+        const enrolled = Boolean(lmsDB.getStudentEnrollment(user.userId, course.id));
+        const purchased = lmsDB.getPurchases(user.userId).some((purchase) => purchase.course_id === course.id);
+        return enrolled || purchased;
+      });
+      return jsonResponse({ data: visibleLessons, error: null });
     }
 
     // PAYMENTS: GET /api/lms/payments/config (or /payment/config)
