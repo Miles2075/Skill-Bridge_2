@@ -1692,9 +1692,29 @@ class DatabaseManager {
         };
       });
 
-    // Submissions for authorized courses
+    // Teachers must be able to review submissions for assignments they created,
+    // even if the related course's teacher_id was not assigned to them. This
+    // exception is scoped to the teacher's own assignments; it does not grant
+    // access to every submission in the course.
+    const assignments = db.assignments.filter(
+      (a) => authorizedCourseIds.has(a.course_id) || (!isAdmin && a.created_by === teacherId),
+    );
+    const teacherCreatedAssignmentIds = new Set(
+      assignments
+        .filter((a) => !isAdmin && a.created_by === teacherId)
+        .map((a) => a.id),
+    );
+
+    // Include submissions in authorized courses and submissions linked to an
+    // assignment created by this teacher. For the latter, require the submission
+    // and assignment to agree on course_id so unrelated course data is not exposed.
     const submissions = db.submissions
-      .filter((s) => authorizedCourseIds.has(s.course_id))
+      .filter((s) => {
+        if (authorizedCourseIds.has(s.course_id)) return true;
+        if (!teacherCreatedAssignmentIds.has(s.assignment_id)) return false;
+        const assignment = db.assignments.find((a) => a.id === s.assignment_id);
+        return !!assignment && assignment.course_id === s.course_id;
+      })
       .map((s) => {
         const asg = db.assignments.find((a) => a.id === s.assignment_id);
         const course = db.courses.find((c) => c.id === s.course_id);
@@ -1710,9 +1730,6 @@ class DatabaseManager {
           studentAvatar,
         };
       });
-
-    // Assignments for authorized courses
-    const assignments = db.assignments.filter((a) => authorizedCourseIds.has(a.course_id));
 
     // Quizzes for authorized courses
     const quizzes = db.quizzes.filter((q) => authorizedCourseIds.has(q.course_id));
