@@ -743,11 +743,11 @@ class DatabaseManager {
       quizzes: INITIAL_QUIZZES,
       quiz_attempts: [],
       certificates: [],
-      users: INITIAL_USERS,
-      user_roles: INITIAL_USER_ROLES,
+      users: process.env["VERCEL"] ? [] : INITIAL_USERS,
+      user_roles: process.env["VERCEL"] ? [] : INITIAL_USER_ROLES,
       sessions: [],
       purchases: [],
-      profiles: INITIAL_PROFILES,
+      profiles: process.env["VERCEL"] ? [] : INITIAL_PROFILES,
       password_reset_tokens: [],
     };
     this.write();
@@ -757,11 +757,12 @@ class DatabaseManager {
   private ensureSchemaIntegrity(db: LMSDatabase) {
     let changed = false;
     if (!db.users || db.users.length === 0) {
-      db.users = [...INITIAL_USERS];
+      // Never recreate publicly documented demo accounts in hosted environments.
+      db.users = process.env["VERCEL"] ? [] : [...INITIAL_USERS];
       changed = true;
     }
     if (!db.user_roles || db.user_roles.length === 0) {
-      db.user_roles = [...INITIAL_USER_ROLES];
+      db.user_roles = process.env["VERCEL"] ? [] : [...INITIAL_USER_ROLES];
       changed = true;
     }
     if (!db.sessions) {
@@ -777,7 +778,7 @@ class DatabaseManager {
       changed = true;
     }
     if (!db.profiles || db.profiles.length === 0) {
-      db.profiles = [...INITIAL_PROFILES];
+      db.profiles = process.env["VERCEL"] ? [] : [...INITIAL_PROFILES];
       changed = true;
     }
     if (!db.course_reviews) {
@@ -2281,6 +2282,20 @@ class DatabaseManager {
     // the signup endpoint; never create an account or replace its password here.
     if (!user) return null;
 
+    // The repository's seeded demo accounts use a publicly documented default
+    // password. Refuse those unchanged seed credentials on hosted deployments,
+    // while allowing an account that has already changed its password to sign in.
+    if (process.env["VERCEL"]) {
+      const seededAccount = INITIAL_USERS.find((candidate) => candidate.email === cleanEmail);
+      if (
+        seededAccount &&
+        user.password_hash === seededAccount.password_hash &&
+        user.salt === seededAccount.salt
+      ) {
+        return null;
+      }
+    }
+
     const hash = hashPassword(password, user.salt);
     if (hash !== user.password_hash) return null;
 
@@ -2311,31 +2326,8 @@ class DatabaseManager {
     if (!token) return null;
     const db = this.read();
 
-    if (token.startsWith("eyJ") && token.split(".").length === 3) {
-      try {
-        const payloadStr = Buffer.from(token.split(".")[1]!, "base64url").toString("utf-8");
-        const payload = JSON.parse(payloadStr);
-        if (payload.sub) {
-          const user = this.findUserById(payload.sub) || this.findUserByEmail(payload.email || "");
-          if (user) {
-            return {
-              user,
-              session: {
-                id: payload.session_id || "sess_jwt",
-                user_id: user.id,
-                token,
-                expires_at: new Date(Date.now() + 86400000).toISOString(),
-                created_at: new Date().toISOString(),
-              },
-              roles: this.getUserRoles(user.id),
-            };
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-
+    // JWTs are not local LMS sessions. They must be verified by Supabase Auth
+    // in the request handler; decoding claims here would permit forged identities.
     const session = db.sessions.find((s) => s.token === token);
     if (!session) return null;
     if (new Date(session.expires_at).getTime() < Date.now()) {
