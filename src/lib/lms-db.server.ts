@@ -1805,6 +1805,11 @@ class DatabaseManager {
       const course = resolveCourse(ref);
       return !!course && authorizedCourseIds.has(course.id);
     };
+    // Default/seeded assignments are shared curriculum rather than teacher-owned
+    // content. Faculty can review submissions for these assignments when the
+    // associated course is published, even if an older course row has a different
+    // teacher_id from the currently signed-in faculty account.
+    const isPublishedCourseRef = (ref: unknown) => resolveCourse(ref)?.status === "published";
 
     // Enrolled students in instructor courses
     const studentRecords = db.enrollments
@@ -1907,6 +1912,10 @@ class DatabaseManager {
           isAuthorizedCourseRef(assignment.course_slug) ||
           isAuthorizedCourseRef(assignment.course_title) ||
           (!!teacherId && assignment.created_by === teacherId) ||
+          (assignment.created_by === null &&
+            (isPublishedCourseRef(assignment.course_id) ||
+              isPublishedCourseRef(assignment.course_slug) ||
+              isPublishedCourseRef(assignment.course_title))) ||
           matchesInstructorOwnedCourse(assignment),
         )
         .map((assignment) => assignment.id),
@@ -1950,6 +1959,10 @@ class DatabaseManager {
       isAuthorizedCourseRef(assignment.course_slug) ||
       isAuthorizedCourseRef(assignment.course_title) ||
       (!!teacherId && assignment.created_by === teacherId) ||
+      (assignment.created_by === null &&
+        (isPublishedCourseRef(assignment.course_id) ||
+          isPublishedCourseRef(assignment.course_slug) ||
+          isPublishedCourseRef(assignment.course_title))) ||
       matchesInstructorOwnedCourse(assignment),
     );
 
