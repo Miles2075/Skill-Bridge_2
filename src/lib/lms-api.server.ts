@@ -932,6 +932,13 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const course = lmsDB.getCourse(courseId);
       if (!course) return errorResponse("Course not found", 404);
 
+      // Keep each submission attached to the assignment's actual course.
+      const assignment = lmsDB.getAssignment(assignmentId);
+      if (!assignment) return errorResponse("Assignment not found", 404);
+      if (assignment.course_id !== course.id) {
+        return errorResponse("Assignment does not belong to the selected course", 400);
+      }
+
       const submission = lmsDB.submitAssignment({
         assignment_id: assignmentId,
         course_id: course.id,
