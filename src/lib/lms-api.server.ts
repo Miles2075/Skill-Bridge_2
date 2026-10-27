@@ -479,7 +479,13 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         return errorResponse("Invalid login credentials", 400);
       }
       return jsonResponse({
-        user: res.user,
+        user: {
+          id: res.user.id,
+          email: res.user.email,
+          user_metadata: res.user.user_metadata,
+          created_at: res.user.created_at,
+          updated_at: res.user.updated_at,
+        },
         session: res.session,
         roles: res.roles,
       });
@@ -494,23 +500,35 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const cleanEmail = email.trim().toLowerCase();
       if (lmsDB.findUserByEmail(cleanEmail)) {
         const authed = lmsDB.authenticateUser(cleanEmail, password);
-        if (authed) {
-          return jsonResponse({
-            user: authed.user,
-            session: authed.session,
-            roles: authed.roles,
-          });
-        }
+        if (!authed) return errorResponse("Invalid login credentials", 400);
+        return jsonResponse({
+          user: {
+            id: authed.user.id,
+            email: authed.user.email,
+            user_metadata: authed.user.user_metadata,
+            created_at: authed.user.created_at,
+            updated_at: authed.user.updated_at,
+          },
+          session: authed.session,
+          roles: authed.roles,
+        });
       }
 
+      // Public signups must never be able to assign themselves privileged roles.
       const res = lmsDB.registerUser({
         email: cleanEmail,
         password,
         name: metadata?.display_name || metadata?.name,
-        role: metadata?.role,
+        role: "student",
       });
       return jsonResponse({
-        user: res.user,
+        user: {
+          id: res.user.id,
+          email: res.user.email,
+          user_metadata: res.user.user_metadata,
+          created_at: res.user.created_at,
+          updated_at: res.user.updated_at,
+        },
         session: res.session,
         roles: res.roles,
       });
@@ -570,7 +588,13 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         return jsonResponse({ user: null, session: null, roles: [] });
       }
       return jsonResponse({
-        user: validated.user,
+        user: {
+          id: validated.user.id,
+          email: validated.user.email,
+          user_metadata: validated.user.user_metadata,
+          created_at: validated.user.created_at,
+          updated_at: validated.user.updated_at,
+        },
         session: validated.session,
         roles: validated.roles,
       });
