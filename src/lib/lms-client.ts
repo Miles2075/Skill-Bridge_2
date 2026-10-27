@@ -23,7 +23,22 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
     // If running during SSR or storage reading fails
   }
 
-  // Also fallback to local LMS session if Supabase session is absent
+  // Prefer a server-issued LMS token when using the built-in LMS auth fallback.
+  try {
+    for (const key of ["skillbridge_local_auth_session", "sb-local-auth-token", "sb-csjygxumpnonfupobhih-auth-token"]) {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      if (typeof parsed?.access_token === "string" && parsed.access_token && !headers["Authorization"]) {
+        headers["Authorization"] = `Bearer ${parsed.access_token}`;
+        break;
+      }
+    }
+  } catch {
+    // Browser storage may be unavailable during SSR.
+  }
+
+  // Legacy identity headers are for UI compatibility only; the server does not trust them.
   try {
     const localUser = getLocalSession();
     if (localUser) {
