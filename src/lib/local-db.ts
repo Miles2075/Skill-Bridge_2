@@ -268,12 +268,17 @@ export function getLocalUserRole(user: LocalUser | null): LocalRole {
 export function updateLocalSessionProfile(params: {
   displayName?: string;
   avatarUrl?: string | null;
+  email?: string;
 }) {
   if (typeof window === "undefined") return;
 
   try {
     const current = getLocalSession();
     if (!current) return;
+    if (params.email !== undefined) {
+      current.email = params.email;
+      current.user_metadata.email = params.email;
+    }
     if (params.displayName !== undefined) current.user_metadata.display_name = params.displayName;
     if (params.avatarUrl !== undefined) {
       if (params.avatarUrl === null) delete current.user_metadata.avatar_url;
@@ -285,6 +290,7 @@ export function updateLocalSessionProfile(params: {
     const users = readUsers();
     const existing = users.find((item) => item.id === current.id);
     if (existing) {
+      existing.email = current.email;
       existing.user_metadata = { ...existing.user_metadata, ...current.user_metadata };
       if (params.avatarUrl === null) delete existing.user_metadata.avatar_url;
       existing.updated_at = current.updated_at;
