@@ -624,33 +624,79 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       if (action !== "select") {
         return errorResponse("Generic table mutations are disabled. Use the dedicated LMS endpoint.", 403);
       }
-      if (tableName !== "courses" && tableName !== "lessons") {
+      const allowedReadTables = new Set(["courses", "lessons", "profiles", "purchases", "user_roles"]);
+      if (!allowedReadTables.has(tableName)) {
         return errorResponse("This table is not available through the public query endpoint.", 403);
       }
 
-      const result = lmsDB.queryTable(tableName, {
-        action: "select",
-        filters: body.filters && typeof body.filters === "object" && !Array.isArray(body.filters)
-          ? body.filters
-          : undefined,
-      });
+      if (["profiles", "purchases", "user_roles"].includes(tableName) && !user.userId) {
+        return errorResponse("Please sign in to read this data.", 401);
+      }
+
+      const suppliedFilters = body.filters && typeof body.filters === "object" && !Array.isArray(body.filters)
+        ? body.filters as Record<string, unknown>
+        : {};
+      const filters = tableName === "profiles"
+        ? { ...suppliedFilters, id: user.userId }
+        : tableName === "purchases"
+          ? { ...suppliedFilters, user_id: user.userId }
+          : tableName === "user_roles"
+            ? { ...suppliedFilters, user_id: user.userId }
+            : suppliedFilters;
+
+      const result = lmsDB.queryTable(tableName, { action: "select", filters });
       if (result.error || !Array.isArray(result.data)) return jsonResponse(result);
 
-      if (tableName === "courses") {
-        const visibleCourses = result.data.filter((row) => {
-          const course = row as { status?: string; teacher_id?: string | null };
-          return course.status === "published" ||
-            user.isAdmin ||
-            (user.isTeacher && Boolean(user.userId) && course.teacher_id === user.userId);
+      if (tableName === "profiles") {
+        const profiles = result.data.map((row) => {
+          const profile = row as Record<string, unknown>;
+          return {
+            id: profile.id,
+            display_name: profile.display_name,
+            email: profile.email,
+            created_at: profile.created_at,
+          };
         });
+        return jsonResponse({ data: profiles, error: null });
+      }
+
+      if (tableName === "purchases") {
+        // The fallback purchase query is used only to determine owned course IDs.
+        return jsonResponse({
+          data: result.data.map((row) => ({ course_id: (row as Record<string, unknown>).course_id })),
+          error: null,
+        });
+      }
+
+      if (tableName === "user_roles") {
+        return jsonResponse({
+          data: result.data.map((row) => ({ role: (row as Record<string, unknown>).role })),
+          error: null,
+        });
+      }
+
+      if (tableName === "courses") {
+        const visibleCourses = result.data
+          .filter((row) => {
+            const course = row as { status?: string; teacher_id?: string | null };
+            return course.status === "published" ||
+              user.isAdmin ||
+              (user.isTeacher && Boolean(user.userId) && course.teacher_id === user.userId);
+          })
+          .map((row) => {
+            const course = row as Record<string, unknown>;
+            const id = String(course.id || "");
+            const ownsCourse = Boolean(user.userId) && course.teacher_id === user.userId;
+            const enrolled = Boolean(user.userId && lmsDB.getStudentEnrollment(user.userId, id));
+            const purchased = Boolean(user.userId && lmsDB.getPurchases(user.userId).some((item) => item.course_id === id));
+            if (user.isAdmin || ownsCourse || enrolled || purchased) return course;
+            return { ...course, video_url: "", video_urls: [] };
+          });
         return jsonResponse({ data: visibleCourses, error: null });
       }
 
       const visibleLessons = result.data.filter((row) => {
-        const lesson = row as {
-          course_id?: string;
-          is_preview?: boolean;
-        };
+        const lesson = row as { course_id?: string; is_preview?: boolean };
         if (!lesson.course_id) return false;
         const course = lmsDB.getCourse(lesson.course_id);
         if (!course) return false;
