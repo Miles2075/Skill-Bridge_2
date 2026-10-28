@@ -215,7 +215,12 @@ function TeachLayoutRoute() {
     { id: "content", label: "Course Content", icon: FolderKanban },
     { id: "assignments", label: "Assignments", icon: Layers },
     { id: "assessments", label: "Assessments", icon: Target },
-    { id: "students", label: "Students", icon: Users, badge: studentCount ? `${studentCount}` : undefined },
+    {
+      id: "students",
+      label: "Students",
+      icon: Users,
+      badge: studentCount ? `${studentCount}` : undefined,
+    },
     {
       id: "submissions",
       label: "Submissions",
@@ -245,7 +250,9 @@ function TeachLayoutRoute() {
     },
     {
       label: "TOOLS",
-      items: navItems.filter((item) => ["codelab", "recall", "focus", "analytics"].includes(item.id)),
+      items: navItems.filter((item) =>
+        ["codelab", "recall", "focus", "analytics"].includes(item.id),
+      ),
     },
     {
       label: "ACCOUNT",
@@ -338,7 +345,9 @@ function TeachLayoutRoute() {
                       }`}
                     >
                       <div className="flex items-center gap-2.5">
-                        <Icon className={`size-4 ${isActive ? "text-teal-700" : "text-slate-400"}`} />
+                        <Icon
+                          className={`size-4 ${isActive ? "text-teal-700" : "text-slate-400"}`}
+                        />
                         <span>{item.label}</span>
                       </div>
                       {item.badge && (
@@ -393,7 +402,9 @@ function TeachLayoutRoute() {
                           }`}
                         >
                           <div className="flex items-center gap-2.5">
-                            <Icon className={`size-4 ${isActive ? "text-teal-700" : "text-slate-400"}`} />
+                            <Icon
+                              className={`size-4 ${isActive ? "text-teal-700" : "text-slate-400"}`}
+                            />
                             <span>{item.label}</span>
                           </div>
                           {item.badge && (

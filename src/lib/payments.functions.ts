@@ -27,7 +27,9 @@ async function readApiResponse<T>(response: Response, action: string): Promise<T
     message?: string;
   };
   if (!response.ok) {
-    throw new Error(payload.error || payload.message || `${action} failed (HTTP ${response.status}).`);
+    throw new Error(
+      payload.error || payload.message || `${action} failed (HTTP ${response.status}).`,
+    );
   }
   return payload as T;
 }
@@ -94,7 +96,9 @@ export async function getUserPurchases(opts?: { data?: { userId?: string } }): P
     const json = (await response.json()) as {
       purchases?: Array<{ course_id: string }>;
     };
-    return Array.isArray(json.purchases) ? json.purchases.map((purchase) => purchase.course_id) : [];
+    return Array.isArray(json.purchases)
+      ? json.purchases.map((purchase) => purchase.course_id)
+      : [];
   } catch {
     return [];
   }

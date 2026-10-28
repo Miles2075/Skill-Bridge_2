@@ -91,19 +91,23 @@ function StudentRouteLayout() {
       return;
     }
     let cancelled = false;
-    lmsClient.getProfile().then(({ user: profile }) => {
-      const avatar = typeof profile.user_metadata?.avatar_url === "string"
-        ? profile.user_metadata.avatar_url
-        : null;
-      if (cancelled) return;
-      setSavedAvatarUrl(avatar);
-      const localUser = getLocalSession();
-      if (localUser?.id === profile.id) {
-        updateLocalSessionProfile({ avatarUrl: avatar });
-      }
-    }).catch(() => {
-      if (!cancelled) setSavedAvatarUrl(undefined);
-    });
+    lmsClient
+      .getProfile()
+      .then(({ user: profile }) => {
+        const avatar =
+          typeof profile.user_metadata?.avatar_url === "string"
+            ? profile.user_metadata.avatar_url
+            : null;
+        if (cancelled) return;
+        setSavedAvatarUrl(avatar);
+        const localUser = getLocalSession();
+        if (localUser?.id === profile.id) {
+          updateLocalSessionProfile({ avatarUrl: avatar });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSavedAvatarUrl(undefined);
+      });
     return () => {
       cancelled = true;
     };
@@ -268,7 +272,12 @@ function StudentRouteLayout() {
     { id: "progress", label: "Progress", icon: TrendingUp },
     { id: "grades", label: "Grades / Results", icon: BarChart3 },
     { id: "skill-dna", label: "Skill DNA", icon: Brain, badge: "Skills" },
-    { id: "assignment-autopsy", label: "Assignment Autopsy", icon: ClipboardList, badge: "Feedback" },
+    {
+      id: "assignment-autopsy",
+      label: "Assignment Autopsy",
+      icon: ClipboardList,
+      badge: "Feedback",
+    },
     {
       id: "certificates",
       label: "Certificates",
@@ -326,7 +335,9 @@ function StudentRouteLayout() {
                 className="flex items-center gap-2 text-left cursor-pointer group"
               >
                 <UserAvatar
-                  src={savedAvatarUrl !== undefined ? savedAvatarUrl : user?.user_metadata?.avatar_url}
+                  src={
+                    savedAvatarUrl !== undefined ? savedAvatarUrl : user?.user_metadata?.avatar_url
+                  }
                   name={displayName}
                   initials={initials}
                   className="size-8 text-xs border border-indigo-200 shadow-2xs group-hover:ring-2 group-hover:ring-indigo-300 transition-all"

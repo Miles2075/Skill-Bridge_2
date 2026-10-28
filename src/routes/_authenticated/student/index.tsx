@@ -222,7 +222,9 @@ function StudentDashboardPage() {
         });
         const dashboard = { ...res, enrolledCourses };
         setData(dashboard);
-        const enrolledIds = new Set((dashboard?.enrolledCourses || []).flatMap((c) => [c.id, c.slug]));
+        const enrolledIds = new Set(
+          (dashboard?.enrolledCourses || []).flatMap((c) => [c.id, c.slug]),
+        );
         const unEnrolled = (catalog?.courses || []).filter(
           (c) => c.status === "published" && !enrolledIds.has(c.id) && !enrolledIds.has(c.slug),
         );
@@ -616,8 +618,12 @@ function StudentDashboardPage() {
   const currentContinueCourse = inProgressCourses[0] || enrolledCourses[0] || null;
   const overallProgress = data?.overallProgress ?? 0;
   const upcomingAssignments = data?.upcomingAssignments || [];
-  const availableAssignments = upcomingAssignments.filter((a) => !a.submissionStatus || a.submissionStatus === "unsubmitted");
-  const submittedAssignments = upcomingAssignments.filter((a) => Boolean(a.submissionStatus && a.submissionStatus !== "unsubmitted"));
+  const availableAssignments = upcomingAssignments.filter(
+    (a) => !a.submissionStatus || a.submissionStatus === "unsubmitted",
+  );
+  const submittedAssignments = upcomingAssignments.filter((a) =>
+    Boolean(a.submissionStatus && a.submissionStatus !== "unsubmitted"),
+  );
   const studentQuizzes = data?.studentQuizzes || [];
   const grades = data?.grades || [];
   const certificates = data?.certificates || [];
@@ -911,9 +917,10 @@ function StudentDashboardPage() {
           {/* Continue Learning Course Hero */}
           {currentContinueCourse ? (
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
-              {((currentContinueCourse.lessonsTotal ?? 0) <= 0) && (currentContinueCourse.progress || 0) > 0 && (
-                <span className="sr-only">Progress is unavailable until lessons are added.</span>
-              )}
+              {(currentContinueCourse.lessonsTotal ?? 0) <= 0 &&
+                (currentContinueCourse.progress || 0) > 0 && (
+                  <span className="sr-only">Progress is unavailable until lessons are added.</span>
+                )}
               <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2">
                   <Play className="size-4 text-indigo-600 fill-indigo-600" />
@@ -930,7 +937,9 @@ function StudentDashboardPage() {
 
               <div className="flex flex-col md:flex-row gap-5 items-center">
                 <img
-                  src={currentContinueCourse.thumbnail || getCourseImage(currentContinueCourse.slug)}
+                  src={
+                    currentContinueCourse.thumbnail || getCourseImage(currentContinueCourse.slug)
+                  }
                   alt={currentContinueCourse.title}
                   className="w-full md:w-56 h-32 rounded-xl object-cover"
                 />
@@ -945,10 +954,15 @@ function StudentDashboardPage() {
                     <span className="font-bold text-indigo-600">
                       {(currentContinueCourse.lessonsTotal ?? 0) > 0
                         ? Math.round(
-                            (Math.min(Math.max(currentContinueCourse.lessonsDone || 0, 0), currentContinueCourse.lessonsTotal ?? 0) /
-                              (currentContinueCourse.lessonsTotal ?? 1)) * 100,
+                            (Math.min(
+                              Math.max(currentContinueCourse.lessonsDone || 0, 0),
+                              currentContinueCourse.lessonsTotal ?? 0,
+                            ) /
+                              (currentContinueCourse.lessonsTotal ?? 1)) *
+                              100,
                           )
-                        : 0}% Completed
+                        : 0}
+                      % Completed
                     </span>
                   </div>
 
@@ -956,12 +970,18 @@ function StudentDashboardPage() {
                     <div
                       className="h-full bg-indigo-600 rounded-full transition-all duration-500"
                       style={{
-                        width: `${(currentContinueCourse.lessonsTotal ?? 0) > 0
-                          ? Math.round(
-                              (Math.min(Math.max(currentContinueCourse.lessonsDone || 0, 0), currentContinueCourse.lessonsTotal ?? 0) /
-                                (currentContinueCourse.lessonsTotal ?? 1)) * 100,
-                            )
-                          : 0}%`,
+                        width: `${
+                          (currentContinueCourse.lessonsTotal ?? 0) > 0
+                            ? Math.round(
+                                (Math.min(
+                                  Math.max(currentContinueCourse.lessonsDone || 0, 0),
+                                  currentContinueCourse.lessonsTotal ?? 0,
+                                ) /
+                                  (currentContinueCourse.lessonsTotal ?? 1)) *
+                                  100,
+                              )
+                            : 0
+                        }%`,
                       }}
                     />
                   </div>
@@ -1184,30 +1204,43 @@ function StudentDashboardPage() {
                       <div>
                         <div className="flex items-center justify-between text-xs mb-1.5">
                           <span className="text-slate-500">
-                            Progress ({Math.min(Math.max(course.lessonsDone || 0, 0), course.lessonsTotal ?? 0)}/
-                            {course.lessonsTotal ?? 0} Lessons)
+                            Progress (
+                            {Math.min(
+                              Math.max(course.lessonsDone || 0, 0),
+                              course.lessonsTotal ?? 0,
+                            )}
+                            /{course.lessonsTotal ?? 0} Lessons)
                           </span>
                           <span className="font-bold text-indigo-600">
                             {course.lessonsTotal > 0
                               ? Math.round(
-                                  (Math.min(Math.max(course.lessonsDone || 0, 0), course.lessonsTotal) /
+                                  (Math.min(
+                                    Math.max(course.lessonsDone || 0, 0),
+                                    course.lessonsTotal,
+                                  ) /
                                     course.lessonsTotal) *
                                     100,
                                 )
-                              : 0}%
+                              : 0}
+                            %
                           </span>
                         </div>
                         <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
                           <div
                             className="h-full bg-indigo-600 rounded-full transition-all"
                             style={{
-                              width: `${course.lessonsTotal > 0
-                                ? Math.round(
-                                    (Math.min(Math.max(course.lessonsDone || 0, 0), course.lessonsTotal) /
-                                      course.lessonsTotal) *
-                                      100,
-                                  )
-                                : 0}%`,
+                              width: `${
+                                course.lessonsTotal > 0
+                                  ? Math.round(
+                                      (Math.min(
+                                        Math.max(course.lessonsDone || 0, 0),
+                                        course.lessonsTotal,
+                                      ) /
+                                        course.lessonsTotal) *
+                                        100,
+                                    )
+                                  : 0
+                              }%`,
                             }}
                           />
                         </div>
@@ -1340,28 +1373,96 @@ function StudentDashboardPage() {
       {currentView === "assignments" && (
         <div className="space-y-8">
           <div className="border-b border-slate-200 pb-3">
-            <h1 className="text-xl font-extrabold text-slate-900">Assignments & Capstone Projects</h1>
-            <p className="text-xs text-slate-500">Submit solutions and track instructor reviews, grades, and feedback.</p>
+            <h1 className="text-xl font-extrabold text-slate-900">
+              Assignments & Capstone Projects
+            </h1>
+            <p className="text-xs text-slate-500">
+              Submit solutions and track instructor reviews, grades, and feedback.
+            </p>
           </div>
           <section className="space-y-3">
             <h2 className="text-base font-bold text-slate-900">Available Course Assignments</h2>
-            {availableAssignments.length ? availableAssignments.map((asg) => (
-              <div key={asg.id} className="rounded-2xl border border-slate-200 bg-white p-5 mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div><p className="text-xs font-bold text-indigo-700">{asg.course}</p><h3 className="mt-1 font-bold text-slate-900">{asg.title}</h3><p className="mt-1 text-xs text-slate-600">{asg.description}</p><p className="mt-2 text-xs text-slate-500">Due {asg.due ? new Date(asg.due).toLocaleDateString() : "No due date"} · {asg.maxScore} max marks</p></div>
-                <Button onClick={() => handleOpenSubmit(asg)}>Submit Solution</Button>
+            {availableAssignments.length ? (
+              availableAssignments.map((asg) => (
+                <div
+                  key={asg.id}
+                  className="rounded-2xl border border-slate-200 bg-white p-5 mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <p className="text-xs font-bold text-indigo-700">{asg.course}</p>
+                    <h3 className="mt-1 font-bold text-slate-900">{asg.title}</h3>
+                    <p className="mt-1 text-xs text-slate-600">{asg.description}</p>
+                    <p className="mt-2 text-xs text-slate-500">
+                      Due {asg.due ? new Date(asg.due).toLocaleDateString() : "No due date"} ·{" "}
+                      {asg.maxScore} max marks
+                    </p>
+                  </div>
+                  <Button onClick={() => handleOpenSubmit(asg)}>Submit Solution</Button>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">
+                No new assignments to submit. New assignments for your enrolled courses will appear
+                here.
               </div>
-            )) : <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">No new assignments to submit. New assignments for your enrolled courses will appear here.</div>}
+            )}
           </section>
           <section className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2"><h2 className="text-base font-bold text-slate-900">My Submissions & Instructor Reviews ({submittedAssignments.length})</h2><span className="text-xs text-slate-500">Synced with Instructor Studio</span></div>
-            {submittedAssignments.length ? submittedAssignments.map((asg) => (
-              <article key={asg.id} className="rounded-2xl border border-slate-200 bg-white p-5 mb-3">
-                <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-bold text-slate-900">{asg.title}</h3><p className="mt-1 text-xs text-slate-500">{asg.course} · Submitted {asg.submittedAt ? new Date(asg.submittedAt).toLocaleDateString() : "successfully"}</p></div><span className="rounded-full px-3 py-1 text-xs font-bold bg-amber-100 text-amber-800">{asg.submissionStatus === "approved" ? "Graded · Approved" : asg.submissionStatus === "needs_revision" || asg.submissionStatus === "resubmission_required" ? "Revision Requested" : "Under Instructor Review"}</span></div>
-                {asg.score !== null && asg.score !== undefined && <p className="mt-3 text-sm font-semibold text-slate-800">Score: {asg.score} / {asg.maxScore}</p>}
-                {asg.feedback && <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3"><p className="text-xs font-semibold text-slate-700">Instructor feedback</p><p className="mt-1 text-sm text-slate-600">{asg.feedback}</p></div>}
-                {(asg.submissionStatus === "needs_revision" || asg.submissionStatus === "resubmission_required") && <Button className="mt-3" onClick={() => handleOpenSubmit(asg)}>Resubmit Solution</Button>}
-              </article>
-            )) : <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">Your submitted assignments and instructor feedback will appear here.</div>}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-base font-bold text-slate-900">
+                My Submissions & Instructor Reviews ({submittedAssignments.length})
+              </h2>
+              <span className="text-xs text-slate-500">Synced with Instructor Studio</span>
+            </div>
+            {submittedAssignments.length ? (
+              submittedAssignments.map((asg) => (
+                <article
+                  key={asg.id}
+                  className="rounded-2xl border border-slate-200 bg-white p-5 mb-3"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h3 className="font-bold text-slate-900">{asg.title}</h3>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {asg.course} · Submitted{" "}
+                        {asg.submittedAt
+                          ? new Date(asg.submittedAt).toLocaleDateString()
+                          : "successfully"}
+                      </p>
+                    </div>
+                    <span className="rounded-full px-3 py-1 text-xs font-bold bg-amber-100 text-amber-800">
+                      {asg.submissionStatus === "approved"
+                        ? "Graded · Approved"
+                        : asg.submissionStatus === "needs_revision" ||
+                            asg.submissionStatus === "resubmission_required"
+                          ? "Revision Requested"
+                          : "Under Instructor Review"}
+                    </span>
+                  </div>
+                  {asg.score !== null && asg.score !== undefined && (
+                    <p className="mt-3 text-sm font-semibold text-slate-800">
+                      Score: {asg.score} / {asg.maxScore}
+                    </p>
+                  )}
+                  {asg.feedback && (
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-semibold text-slate-700">Instructor feedback</p>
+                      <p className="mt-1 text-sm text-slate-600">{asg.feedback}</p>
+                    </div>
+                  )}
+                  {(asg.submissionStatus === "needs_revision" ||
+                    asg.submissionStatus === "resubmission_required") && (
+                    <Button className="mt-3" onClick={() => handleOpenSubmit(asg)}>
+                      Resubmit Solution
+                    </Button>
+                  )}
+                </article>
+              ))
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">
+                Your submitted assignments and instructor feedback will appear here.
+              </div>
+            )}
           </section>
         </div>
       )}
@@ -1922,8 +2023,13 @@ function StudentDashboardPage() {
                 <p className="text-xs text-slate-500">
                   {playerCourse.instructor} · {playerCourse.hours} hours ·{" "}
                   {playerLessons.length > 0
-                    ? Math.round((playerLessons.filter((lesson) => lesson.completed).length / playerLessons.length) * 100)
-                    : 0}% Completed
+                    ? Math.round(
+                        (playerLessons.filter((lesson) => lesson.completed).length /
+                          playerLessons.length) *
+                          100,
+                      )
+                    : 0}
+                  % Completed
                 </p>
               </div>
               <button
@@ -1986,27 +2092,27 @@ function StudentDashboardPage() {
 
                   {playerLessons.length > 0 &&
                     playerLessons.every((lesson) => lesson.completed) && (
-                    <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-800">
-                      <span className="font-bold flex items-center gap-1.5">
-                        <CheckCircle2 className="size-4 text-emerald-600" /> Course Completed • 100%
-                        Mastered
-                      </span>
-                      <button
-                        onClick={() =>
-                          setSelectedCert({
-                            certificate_id: playerCourse.certificateId || "CERT-VERIFIED",
-                            title: playerCourse.title,
-                            course_title: playerCourse.title,
-                            instructor: playerCourse.instructor,
-                            completion_date: playerCourse.completedAt || new Date().toISOString(),
-                          })
-                        }
-                        className="font-bold text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
-                      >
-                        <Award className="size-3.5" /> View Certificate
-                      </button>
-                    </div>
-                  )}
+                      <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs text-emerald-800">
+                        <span className="font-bold flex items-center gap-1.5">
+                          <CheckCircle2 className="size-4 text-emerald-600" /> Course Completed •
+                          100% Mastered
+                        </span>
+                        <button
+                          onClick={() =>
+                            setSelectedCert({
+                              certificate_id: playerCourse.certificateId || "CERT-VERIFIED",
+                              title: playerCourse.title,
+                              course_title: playerCourse.title,
+                              instructor: playerCourse.instructor,
+                              completion_date: playerCourse.completedAt || new Date().toISOString(),
+                            })
+                          }
+                          className="font-bold text-emerald-700 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <Award className="size-3.5" /> View Certificate
+                        </button>
+                      </div>
+                    )}
 
                   {playerLessons[activeLessonIndex] ? (
                     <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-2">
@@ -2077,8 +2183,8 @@ function StudentDashboardPage() {
                       Curriculum Syllabus ({playerLessons.length} Lessons)
                     </span>
                     <span className="text-[11px] font-semibold text-indigo-600">
-                      {playerLessons.filter((l) => l.completed).length} /{" "}
-                      {playerLessons.length} Completed
+                      {playerLessons.filter((l) => l.completed).length} / {playerLessons.length}{" "}
+                      Completed
                     </span>
                   </div>
 

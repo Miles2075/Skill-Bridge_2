@@ -113,12 +113,16 @@ export function CheckoutModal({
       });
 
       if (!order.isLive || !order.keyId) {
-        throw new Error("Razorpay is not configured yet. No payment was taken and the course remains locked.");
+        throw new Error(
+          "Razorpay is not configured yet. No payment was taken and the course remains locked.",
+        );
       }
       setStatusText("Opening Razorpay secure checkout…");
       const loaded = await loadRazorpayScript();
       if (!loaded || !window.Razorpay) {
-        throw new Error("Razorpay checkout could not load. Please check your connection and try again.");
+        throw new Error(
+          "Razorpay checkout could not load. Please check your connection and try again.",
+        );
       }
 
       const razorpay = new window.Razorpay({
@@ -136,7 +140,9 @@ export function CheckoutModal({
             const verifiedPaymentId = response["razorpay_payment_id"];
             const verifiedSignature = response["razorpay_signature"];
             if (!verifiedOrderId || !verifiedPaymentId || !verifiedSignature) {
-              throw new Error("Razorpay returned incomplete payment details. Course access has not been granted.");
+              throw new Error(
+                "Razorpay returned incomplete payment details. Course access has not been granted.",
+              );
             }
 
             setStatusText("Verifying payment with Razorpay…");
@@ -173,7 +179,11 @@ export function CheckoutModal({
             }, 900);
           } catch (error: unknown) {
             setCompleted(false);
-            setErrorMsg(error instanceof Error ? error.message : "Payment verification failed. Course access remains locked.");
+            setErrorMsg(
+              error instanceof Error
+                ? error.message
+                : "Payment verification failed. Course access remains locked.",
+            );
             setStatusText("");
             setProcessing(false);
           }
@@ -294,7 +304,8 @@ export function CheckoutModal({
             </div>
             <p className="text-xs leading-relaxed text-slate-600">
               Choose UPI, cards, netbanking, or another available payment method inside Razorpay.
-              Skillbridge unlocks the course only after the server verifies the signed, captured payment.
+              Skillbridge unlocks the course only after the server verifies the signed, captured
+              payment.
             </p>
             <div className="flex items-center gap-2 text-[11px] text-slate-500">
               <Lock className="size-3.5" />

@@ -1580,12 +1580,12 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         return errorResponse("Assignment not found for your enrolled courses.", 404);
       }
 
-      const assignedCourse = lmsDB.getCourse(assignment.courseSlug);
-      if (
-        !assignedCourse ||
-        (courseId !== assignment.courseSlug && courseId !== assignedCourse.id)
-      ) {
-        return errorResponse("This assignment does not belong to the selected course.", 400);
+      const assignedCourse =
+        lmsDB.getCourse(assignment.courseSlug) ||
+        lmsDB.getCourse(courseId) ||
+        lmsDB.getCourse(assignment.course);
+      if (!assignedCourse) {
+        return errorResponse("This assignment does not belong to a valid course.", 400);
       }
 
       const course = assignedCourse;

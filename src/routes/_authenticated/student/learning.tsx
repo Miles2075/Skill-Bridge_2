@@ -35,7 +35,10 @@ function MyLearningPage() {
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewText, setReviewText] = useState("");
   const [reviewBusy, setReviewBusy] = useState(false);
-  const [reviewMessage, setReviewMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [reviewMessage, setReviewMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
 
   const loadEnrollments = useCallback(async () => {
     if (!user?.id) return;
@@ -114,20 +117,23 @@ function MyLearningPage() {
 
     let cancelled = false;
     setReviewMessage(null);
-    void lmsClient.getCourseReviews(selectedCourseId).then((summary) => {
-      if (cancelled) return;
-      setReviewSummary(summary);
-      setReviewRating(summary.myReview?.rating ?? 5);
-      setReviewText(summary.myReview?.reviewText ?? "");
-    }).catch(() => {
-      if (!cancelled) {
-        setReviewSummary(null);
-        setReviewMessage({
-          type: "error",
-          text: "Course reviews could not be loaded right now.",
-        });
-      }
-    });
+    void lmsClient
+      .getCourseReviews(selectedCourseId)
+      .then((summary) => {
+        if (cancelled) return;
+        setReviewSummary(summary);
+        setReviewRating(summary.myReview?.rating ?? 5);
+        setReviewText(summary.myReview?.reviewText ?? "");
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setReviewSummary(null);
+          setReviewMessage({
+            type: "error",
+            text: "Course reviews could not be loaded right now.",
+          });
+        }
+      });
 
     return () => {
       cancelled = true;
@@ -264,15 +270,25 @@ function MyLearningPage() {
               {lessons.length > 0
                 ? Math.round(
                     (Math.min(
-                      progress.filter((item) => item.completed && lessons.some((lesson) => lesson.id === item.lesson_id)).length,
+                      progress.filter(
+                        (item) =>
+                          item.completed && lessons.some((lesson) => lesson.id === item.lesson_id),
+                      ).length,
                       lessons.length,
-                    ) / lessons.length) * 100,
+                    ) /
+                      lessons.length) *
+                      100,
                   )
-                : 0}% complete ·{" "}
+                : 0}
+              % complete ·{" "}
               {Math.min(
-                progress.filter((item) => item.completed && lessons.some((lesson) => lesson.id === item.lesson_id)).length,
+                progress.filter(
+                  (item) =>
+                    item.completed && lessons.some((lesson) => lesson.id === item.lesson_id),
+                ).length,
                 lessons.length,
-              )}/{lessons.length} lessons
+              )}
+              /{lessons.length} lessons
             </div>
           </div>
 
@@ -388,9 +404,12 @@ function MyLearningPage() {
               {reviewSummary && reviewSummary.reviewCount > 0 ? (
                 <div className="flex items-center gap-2 text-sm">
                   <Star className="size-4 fill-amber-400 text-amber-500" />
-                  <span className="font-bold text-slate-900">{reviewSummary.rating.toFixed(1)} / 5</span>
+                  <span className="font-bold text-slate-900">
+                    {reviewSummary.rating.toFixed(1)} / 5
+                  </span>
                   <span className="text-slate-500">
-                    ({reviewSummary.reviewCount.toLocaleString()} {reviewSummary.reviewCount === 1 ? "review" : "reviews"})
+                    ({reviewSummary.reviewCount.toLocaleString()}{" "}
+                    {reviewSummary.reviewCount === 1 ? "review" : "reviews"})
                   </span>
                 </div>
               ) : (
@@ -407,7 +426,11 @@ function MyLearningPage() {
             >
               <div>
                 <p className="text-sm font-semibold text-slate-800">Your rating</p>
-                <div className="mt-1 flex items-center gap-1" role="group" aria-label="Rate this course from one to five stars">
+                <div
+                  className="mt-1 flex items-center gap-1"
+                  role="group"
+                  aria-label="Rate this course from one to five stars"
+                >
                   {[1, 2, 3, 4, 5].map((starValue) => (
                     <button
                       key={starValue}
@@ -417,7 +440,9 @@ function MyLearningPage() {
                       aria-pressed={reviewRating === starValue}
                       className="rounded p-1.5 transition hover:bg-amber-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
                     >
-                      <Star className={`size-6 ${starValue <= reviewRating ? "fill-amber-400 text-amber-500" : "text-slate-300"}`} />
+                      <Star
+                        className={`size-6 ${starValue <= reviewRating ? "fill-amber-400 text-amber-500" : "text-slate-300"}`}
+                      />
                     </button>
                   ))}
                   <span className="ml-1 text-xs text-slate-500">{reviewRating} of 5</span>
@@ -425,7 +450,10 @@ function MyLearningPage() {
               </div>
 
               <div>
-                <label htmlFor="course-review-text" className="mb-1 block text-sm font-semibold text-slate-800">
+                <label
+                  htmlFor="course-review-text"
+                  className="mb-1 block text-sm font-semibold text-slate-800"
+                >
                   Your review
                 </label>
                 <textarea
@@ -439,29 +467,46 @@ function MyLearningPage() {
                   required
                   className="w-full resize-y rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                 />
-                <p className="mt-1 text-right text-[11px] text-slate-400">{reviewText.length}/1200</p>
+                <p className="mt-1 text-right text-[11px] text-slate-400">
+                  {reviewText.length}/1200
+                </p>
               </div>
 
               {reviewMessage && (
-                <p className={`text-xs ${reviewMessage.type === "success" ? "text-emerald-700" : "text-rose-700"}`} role="status">
+                <p
+                  className={`text-xs ${reviewMessage.type === "success" ? "text-emerald-700" : "text-rose-700"}`}
+                  role="status"
+                >
                   {reviewMessage.text}
                 </p>
               )}
 
               <div className="flex items-center justify-between gap-3">
                 <p className="text-[11px] text-slate-500">
-                  {reviewSummary?.myReview ? "Editing your existing review" : "One review per enrolled student"}
+                  {reviewSummary?.myReview
+                    ? "Editing your existing review"
+                    : "One review per enrolled student"}
                 </p>
-                <Button type="submit" size="sm" disabled={reviewBusy || reviewText.trim().length < 5}>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={reviewBusy || reviewText.trim().length < 5}
+                >
                   {reviewBusy ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
-                  {reviewBusy ? "Saving…" : reviewSummary?.myReview ? "Update review" : "Submit review"}
+                  {reviewBusy
+                    ? "Saving…"
+                    : reviewSummary?.myReview
+                      ? "Update review"
+                      : "Submit review"}
                 </Button>
               </div>
             </form>
 
             {reviewSummary && reviewSummary.reviews.length > 0 && (
               <div className="mt-4 space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">Recent student reviews</h4>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Recent student reviews
+                </h4>
                 {reviewSummary.reviews.slice(0, 5).map((review) => (
                   <article key={review.id} className="rounded-lg border border-slate-100 px-3 py-3">
                     <div className="flex items-center justify-between gap-3">
@@ -471,7 +516,9 @@ function MyLearningPage() {
                         {review.rating}/5
                       </div>
                     </div>
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">{review.reviewText}</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
+                      {review.reviewText}
+                    </p>
                     <p className="mt-2 text-[11px] text-slate-400">
                       {new Date(review.createdAt).toLocaleDateString()}
                     </p>

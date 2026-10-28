@@ -46,8 +46,6 @@ import { lmsClient, type ClientCourse, type StudentDashboardData } from "@/lib/l
 import {
   type AssignmentSubmission,
   type VideoComment,
-  getSubmissions,
-  saveSubmission,
   getVideoComments,
   addVideoComment,
   syncStudentEnrollment,
@@ -221,27 +219,6 @@ const initialCourses: Course[] = [
 
 const courses: Course[] = initialCourses;
 
-const assignments = [
-  {
-    day: "18",
-    month: "Sep",
-    title: "Build a Redux Store",
-    course: "React Performance & Architecture",
-    due: "Due tomorrow",
-    status: "Not submitted",
-    urgent: true,
-  },
-  {
-    day: "19",
-    month: "Sep",
-    title: "TypeScript Generics Exercise",
-    course: "Advanced TypeScript & Design Patterns",
-    due: "Due Saturday",
-    status: "Not submitted",
-    urgent: false,
-  },
-];
-
 const navItems: { id: View; label: string; icon: LucideIcon }[] = [
   { id: "dashboard", label: "My Learning", icon: LayoutDashboard },
   { id: "courses", label: "All Courses", icon: BookOpen },
@@ -277,6 +254,7 @@ type Commerce = {
   avatarUrl: string | null;
   courses: Course[];
   dashboardData: StudentDashboardData | null;
+  refreshProgress: () => Promise<void>;
 };
 const CommerceContext = createContext<Commerce | null>(null);
 const useCommerce = () => useContext(CommerceContext)!;
@@ -407,7 +385,8 @@ function useCommerceState(
           // to bundled artwork for missing or legacy built-in image paths.
           image: (() => {
             const thumbnail = typeof course.thumbnail === "string" ? course.thumbnail.trim() : "";
-            const isLegacyBuiltinPath = /^\/?course-(typescript|react|system-design|dsa)\.jpg$/i.test(thumbnail);
+            const isLegacyBuiltinPath =
+              /^\/?course-(typescript|react|system-design|dsa)\.jpg$/i.test(thumbnail);
             return thumbnail && !isLegacyBuiltinPath ? thumbnail : imageForSlug(course.slug);
           })(),
           bestseller: course.bestseller,
@@ -618,6 +597,7 @@ function useCommerceState(
     avatarUrl: user?.user_metadata?.avatar_url || null,
     courses: coursesList,
     dashboardData,
+    refreshProgress: loadLmsProgress,
   };
 }
 
@@ -643,7 +623,10 @@ function Stars({ rating, reviews }: { rating: number; reviews?: string }) {
   }
 
   return (
-    <div className="flex items-center gap-1.5 text-xs" aria-label={`Rated ${rating.toFixed(1)} out of 5 from ${reviewCount} reviews`}>
+    <div
+      className="flex items-center gap-1.5 text-xs"
+      aria-label={`Rated ${rating.toFixed(1)} out of 5 from ${reviewCount} reviews`}
+    >
       <span className="font-bold text-orange">{rating.toFixed(1)}</span>
       <span className="flex">
         {[1, 2, 3, 4, 5].map((i) => (
@@ -827,9 +810,11 @@ function Skillbridge() {
   const [modal, setModal] = useState<"assignment" | "quiz" | "certificate" | null>(null);
   const [certCourse, setCertCourse] = useState<Course | null>(null);
   const [targetAssignment, setTargetAssignment] = useState<{
+    assignmentId?: string;
     courseTitle: string;
     courseSlug: string;
     assignmentTitle: string;
+    maxScore?: number;
   } | null>(null);
   const [player, setPlayer] = useState<Course | null>(null);
   const [toast, setToast] = useState<{
@@ -891,6 +876,10 @@ function Skillbridge() {
             setView={handleViewChange}
             setModal={setModal}
             openPlayer={setPlayer}
+            openAssignment={(asg) => {
+              setTargetAssignment(asg);
+              setModal("assignment");
+            }}
             onOpenCert={(c) => {
               setCertCourse(c);
               setModal("certificate");
@@ -1136,18 +1125,53 @@ function CourseCard({
   );
 }
 
+function formatAssignmentDate(dueString?: string | null) {
+  if (!dueString) {
+    return { day: "—", month: "TBD", dueText: "No deadline", isUrgent: false };
+  }
+  const date = new Date(dueString);
+  if (isNaN(date.getTime())) {
+    return { day: "—", month: "TBD", dueText: dueString, isUrgent: false };
+  }
+  const now = Date.now();
+  const diffDays = Math.ceil((date.getTime() - now) / (1000 * 60 * 60 * 24));
+  let dueText = `Due ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+  if (diffDays === 0) dueText = "Due today";
+  else if (diffDays === 1) dueText = "Due tomorrow";
+  else if (diffDays < 0) dueText = `Overdue (${Math.abs(diffDays)}d ago)`;
+
+  return {
+    day: String(date.getDate()),
+    month: date.toLocaleString("en-US", { month: "short" }).toUpperCase(),
+    dueText,
+    isUrgent: diffDays >= 0 && diffDays <= 3,
+  };
+}
+
 function Dashboard({
   setView,
   setModal,
   openPlayer,
+  openAssignment,
   onOpenCert,
 }: {
   setView: (view: View) => void;
   setModal: (modal: "assignment" | "quiz") => void;
   openPlayer: (course: Course) => void;
+  openAssignment?: (assignment: {
+    assignmentId?: string;
+    courseTitle: string;
+    courseSlug: string;
+    assignmentTitle: string;
+    maxScore?: number;
+  }) => void;
   onOpenCert?: (course: Course) => void;
 }) {
   const { firstName, courses, dashboardData } = useCommerce();
+  const upcomingAssignments = dashboardData?.upcomingAssignments || [];
+  const availableAssignments = upcomingAssignments.filter(
+    (a) => !a.submissionStatus || a.submissionStatus === "unsubmitted",
+  );
   const current = courses.find((c) => c.progress > 0 && c.progress < 100) || courses[0]!;
 
   const enrolledCount = dashboardData?.enrolledCourses.length ?? 0;
@@ -1295,31 +1319,55 @@ function Dashboard({
             </button>
           </div>
           <div className="space-y-3">
-            {assignments.map((assignment) => (
-              <div
-                key={assignment.title}
-                className="flex items-center gap-3 rounded-md border border-border p-3"
-              >
-                <div className="grid size-11 shrink-0 place-items-center rounded-md bg-secondary leading-none">
-                  <span className="text-sm font-extrabold">{assignment.day}</span>
-                  <span className="text-[10px] uppercase text-muted-foreground">
-                    {assignment.month}
-                  </span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold">{assignment.title}</p>
-                  <p className="truncate text-xs text-muted-foreground">{assignment.course}</p>
-                </div>
-                <span
-                  className={`hidden text-xs font-semibold sm:block ${assignment.urgent ? "text-destructive" : "text-muted-foreground"}`}
-                >
-                  {assignment.due}
-                </span>
-                <Button size="sm" variant="amber" onClick={() => setModal("assignment")}>
-                  Submit
-                </Button>
-              </div>
-            ))}
+            {availableAssignments.length > 0 ? (
+              availableAssignments.slice(0, 3).map((assignment) => {
+                const { day, month, dueText, isUrgent } = formatAssignmentDate(assignment.due);
+
+                return (
+                  <div
+                    key={assignment.id}
+                    className="flex items-center gap-3 rounded-md border border-border p-3"
+                  >
+                    <div className="grid size-11 shrink-0 place-items-center rounded-md bg-secondary leading-none">
+                      <span className="text-sm font-extrabold">{day}</span>
+                      <span className="text-[10px] uppercase text-muted-foreground">{month}</span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold">{assignment.title}</p>
+                      <p className="truncate text-xs text-muted-foreground">{assignment.course}</p>
+                    </div>
+                    <span
+                      className={`hidden text-xs font-semibold sm:block ${isUrgent ? "text-destructive" : "text-muted-foreground"}`}
+                    >
+                      {dueText}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="amber"
+                      onClick={() => {
+                        if (openAssignment) {
+                          openAssignment({
+                            assignmentId: assignment.id,
+                            courseTitle: assignment.course,
+                            courseSlug: assignment.courseSlug,
+                            assignmentTitle: assignment.title,
+                            maxScore: assignment.maxScore,
+                          });
+                        } else {
+                          setModal("assignment");
+                        }
+                      }}
+                    >
+                      Submit
+                    </Button>
+                  </div>
+                );
+              })
+            ) : (
+              <p className="py-4 text-center text-xs text-muted-foreground">
+                No pending assignment deadlines. All caught up!
+              </p>
+            )}
           </div>
         </section>
         <section className="rounded-lg border border-border bg-card p-5 lg:col-span-2">
@@ -1353,7 +1401,12 @@ function Dashboard({
         </div>
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {courses.slice(1).map((course) => (
-            <CourseCard key={course.id || course.slug} course={course} openPlayer={openPlayer} compact />
+            <CourseCard
+              key={course.id || course.slug}
+              course={course}
+              openPlayer={openPlayer}
+              compact
+            />
           ))}
         </div>
       </section>
@@ -1431,16 +1484,29 @@ function Courses({
 function Assignments({
   open,
 }: {
-  open: (assignment?: { courseTitle: string; courseSlug: string; assignmentTitle: string }) => void;
+  open: (assignment?: {
+    assignmentId?: string;
+    courseTitle: string;
+    courseSlug: string;
+    assignmentTitle: string;
+    maxScore?: number;
+  }) => void;
 }) {
-  const [submissions, setSubmissions] = useState<AssignmentSubmission[]>([]);
+  const { dashboardData, user, isTeacher, refreshProgress } = useCommerce();
 
   useEffect(() => {
-    setSubmissions(getSubmissions());
-    const handleUpdate = () => setSubmissions(getSubmissions());
-    window.addEventListener("lms_submissions_updated", handleUpdate);
-    return () => window.removeEventListener("lms_submissions_updated", handleUpdate);
-  }, []);
+    if (refreshProgress) {
+      refreshProgress();
+    }
+  }, [refreshProgress]);
+
+  const upcomingAssignments = dashboardData?.upcomingAssignments || [];
+  const availableAssignments = upcomingAssignments.filter(
+    (a) => !a.submissionStatus || a.submissionStatus === "unsubmitted",
+  );
+  const submittedAssignments = upcomingAssignments.filter((a) =>
+    Boolean(a.submissionStatus && a.submissionStatus !== "unsubmitted"),
+  );
 
   return (
     <>
@@ -1451,141 +1517,239 @@ function Assignments({
             detail="Submit your code solutions, get evaluated by faculty instructors, and track grading feedback."
           />
         </div>
-        <Button
-          variant="chrome"
-          onClick={() => open()}
-          className="self-start gap-2 text-xs font-bold"
-        >
-          <UploadCloud className="size-4" /> Upload New Assignment
-        </Button>
+        {isTeacher ? (
+          <Link to="/teach">
+            <Button variant="chrome" className="self-start gap-2 text-xs font-bold">
+              <UploadCloud className="size-4" /> Instructor Studio
+            </Button>
+          </Link>
+        ) : availableAssignments.length > 0 ? (
+          <Button
+            variant="chrome"
+            onClick={() =>
+              open({
+                assignmentId: availableAssignments[0].id,
+                courseTitle: availableAssignments[0].course,
+                courseSlug: availableAssignments[0].courseSlug,
+                assignmentTitle: availableAssignments[0].title,
+                maxScore: availableAssignments[0].maxScore,
+              })
+            }
+            className="self-start gap-2 text-xs font-bold"
+          >
+            <Send className="size-4" /> Submit Solution
+          </Button>
+        ) : null}
       </div>
 
-      {/* Available Course Projects */}
+      {/* Available Course Assignments */}
       <section className="mb-10">
         <h2 className="mb-3 text-base font-bold text-foreground">Available Course Assignments</h2>
-        <div className="space-y-3">
-          {assignments.map((assignment) => (
-            <div
-              key={assignment.title}
-              className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:flex-row sm:items-center"
-            >
-              <div className="grid size-12 shrink-0 place-items-center rounded-lg bg-secondary leading-none">
-                <span className="text-base font-extrabold">{assignment.day}</span>
-                <span className="text-[10px] uppercase font-bold text-muted-foreground">
-                  {assignment.month}
-                </span>
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-foreground">{assignment.title}</h3>
-                  {assignment.urgent && (
-                    <span className="rounded bg-destructive/15 px-2 py-0.5 text-[10px] font-extrabold text-destructive">
-                      Due Soon
+        {availableAssignments.length > 0 ? (
+          <div className="space-y-3">
+            {availableAssignments.map((assignment) => {
+              const { day, month, dueText, isUrgent } = formatAssignmentDate(assignment.due);
+
+              return (
+                <div
+                  key={assignment.id}
+                  className="flex flex-col gap-4 rounded-xl border border-border bg-card p-5 sm:flex-row sm:items-center"
+                >
+                  <div className="grid size-12 shrink-0 place-items-center rounded-lg bg-secondary leading-none">
+                    <span className="text-base font-extrabold">{day}</span>
+                    <span className="text-[10px] uppercase font-bold text-muted-foreground">
+                      {month}
                     </span>
-                  )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-foreground">{assignment.title}</h3>
+                      {isUrgent && (
+                        <span className="rounded bg-destructive/15 px-2 py-0.5 text-[10px] font-extrabold text-destructive">
+                          Due Soon
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{assignment.course}</p>
+                    {assignment.description && (
+                      <p className="mt-1 text-xs text-muted-foreground/90 line-clamp-2">
+                        {assignment.description}
+                      </p>
+                    )}
+                  </div>
+                  <div className="text-left sm:text-right">
+                    <span className="text-xs font-semibold text-muted-foreground block">
+                      Deadline: {dueText}
+                    </span>
+                    {assignment.maxScore && (
+                      <span className="text-[11px] text-muted-foreground/75">
+                        Max Marks: {assignment.maxScore}
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    variant="chrome"
+                    size="sm"
+                    onClick={() =>
+                      open({
+                        assignmentId: assignment.id,
+                        courseTitle: assignment.course,
+                        courseSlug: assignment.courseSlug,
+                        assignmentTitle: assignment.title,
+                        maxScore: assignment.maxScore,
+                      })
+                    }
+                  >
+                    Submit Solution
+                  </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">{assignment.course}</p>
-              </div>
-              <span className="text-xs font-semibold text-muted-foreground">
-                Deadline: {assignment.due}
-              </span>
-              <Button
-                variant="chrome"
-                size="sm"
-                onClick={() =>
-                  open({
-                    courseTitle: assignment.course,
-                    courseSlug: "advanced-typescript",
-                    assignmentTitle: assignment.title,
-                  })
-                }
-              >
-                Submit Solution
-              </Button>
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-border bg-card/60 p-8 text-center text-xs text-muted-foreground">
+            {user ? (
+              <>
+                <p className="font-semibold text-foreground text-sm mb-1">
+                  No pending assignments to submit
+                </p>
+                <p>
+                  New assignments published by instructors for your enrolled courses will appear
+                  here automatically.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="font-semibold text-foreground text-sm mb-1">
+                  Sign in to view assignments
+                </p>
+                <p>Enroll in a course to receive assignments and faculty evaluation.</p>
+              </>
+            )}
+          </div>
+        )}
       </section>
 
       {/* Student's Submitted Work & Feedback */}
       <section>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-bold text-foreground">
-            My Submissions & Instructor Reviews ({submissions.length})
+            My Submissions & Instructor Reviews ({submittedAssignments.length})
           </h2>
           <span className="text-xs text-muted-foreground">Synchronized with Instructor Studio</span>
         </div>
 
-        <div className="grid gap-4">
-          {submissions.map((sub) => (
-            <div
-              key={sub.id}
-              className="rounded-xl border border-border bg-card p-5 shadow-sm transition-all"
-            >
-              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-foreground">{sub.assignmentTitle}</span>
-                    <span
-                      className={`rounded px-2 py-0.5 text-[11px] font-bold ${
-                        sub.status === "approved"
-                          ? "bg-teal/15 text-teal"
-                          : sub.status === "needs_revision"
-                            ? "bg-destructive/15 text-destructive"
-                            : "bg-amber-500/15 text-amber-500"
-                      }`}
-                    >
-                      {sub.status === "approved"
-                        ? `✓ Approved (${sub.score}/${sub.maxScore})`
-                        : sub.status === "needs_revision"
-                          ? "⚠ Needs Revision"
-                          : "⏳ Under Instructor Review"}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {sub.courseTitle} • Submitted on{" "}
-                    {new Date(sub.submittedAt).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
+        {submittedAssignments.length > 0 ? (
+          <div className="grid gap-4">
+            {submittedAssignments.map((sub) => {
+              const isApproved = sub.submissionStatus === "approved";
+              const isNeedsRevision =
+                sub.submissionStatus === "needs_revision" ||
+                sub.submissionStatus === "resubmission_required";
 
-              <div className="mt-4 rounded-lg border border-border bg-secondary/40 p-3.5 text-xs">
-                <span className="font-semibold text-muted-foreground">My Solution Summary: </span>
-                <p className="mt-1 text-foreground">{sub.solutionNotes}</p>
-                {sub.githubUrl && (
-                  <a
-                    href={sub.githubUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 inline-flex items-center gap-1 font-semibold text-primary hover:underline"
-                  >
-                    <ExternalLink className="size-3" /> View Submitted Code / Repository
-                  </a>
-                )}
-              </div>
-
-              {sub.feedback ? (
-                <div className="mt-3 rounded-lg border border-teal/20 bg-teal/10 p-3.5 text-xs text-teal">
-                  <div className="flex items-center gap-1.5 font-bold">
-                    <CheckCircle2 className="size-4 shrink-0" />
-                    <span>Faculty Feedback:</span>
+              return (
+                <div
+                  key={sub.id}
+                  className="rounded-xl border border-border bg-card p-5 shadow-sm transition-all"
+                >
+                  <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-foreground">{sub.title}</span>
+                        <span
+                          className={`rounded px-2 py-0.5 text-[11px] font-bold ${
+                            isApproved
+                              ? "bg-teal/15 text-teal"
+                              : isNeedsRevision
+                                ? "bg-destructive/15 text-destructive"
+                                : "bg-amber-500/15 text-amber-500"
+                          }`}
+                        >
+                          {isApproved
+                            ? `✓ Approved (${sub.score ?? 0}/${sub.maxScore})`
+                            : isNeedsRevision
+                              ? "⚠ Needs Revision"
+                              : "⏳ Under Instructor Review"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {sub.course} • Submitted{" "}
+                        {sub.submittedAt
+                          ? new Date(sub.submittedAt).toLocaleDateString()
+                          : "recently"}
+                      </p>
+                    </div>
+                    {isNeedsRevision && (
+                      <Button
+                        variant="chrome"
+                        size="sm"
+                        onClick={() =>
+                          open({
+                            assignmentId: sub.id,
+                            courseTitle: sub.course,
+                            courseSlug: sub.courseSlug,
+                            assignmentTitle: sub.title,
+                            maxScore: sub.maxScore,
+                          })
+                        }
+                      >
+                        Resubmit Solution
+                      </Button>
+                    )}
                   </div>
-                  <p className="mt-1 leading-relaxed text-foreground">{sub.feedback}</p>
-                  {sub.gradedBy && (
-                    <span className="mt-2 block text-[11px] opacity-80">
-                      Evaluated by {sub.gradedBy} on{" "}
-                      {sub.gradedAt ? new Date(sub.gradedAt).toLocaleDateString() : "recent"}
-                    </span>
+
+                  {sub.solutionNotes && (
+                    <div className="mt-4 rounded-lg border border-border bg-secondary/40 p-3.5 text-xs">
+                      <span className="font-semibold text-muted-foreground">
+                        My Solution Summary:{" "}
+                      </span>
+                      <p className="mt-1 text-foreground whitespace-pre-wrap">
+                        {sub.solutionNotes}
+                      </p>
+                      {sub.githubUrl && (
+                        <a
+                          href={sub.githubUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-2 inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+                        >
+                          <ExternalLink className="size-3" /> View Submitted Code / Repository
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {sub.feedback ? (
+                    <div className="mt-3 rounded-lg border border-teal/20 bg-teal/10 p-3.5 text-xs text-teal">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <CheckCircle2 className="size-4 shrink-0" />
+                        <span>Faculty Feedback:</span>
+                      </div>
+                      <p className="mt-1 leading-relaxed text-foreground whitespace-pre-wrap">
+                        {sub.feedback}
+                      </p>
+                      {sub.gradedBy && (
+                        <span className="mt-2 block text-[11px] opacity-80">
+                          Evaluated by {sub.gradedBy} on{" "}
+                          {sub.gradedAt ? new Date(sub.gradedAt).toLocaleDateString() : "recent"}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xs text-muted-foreground italic">
+                      Instructor has received your submission and will provide score & feedback
+                      shortly.
+                    </p>
                   )}
                 </div>
-              ) : (
-                <p className="mt-3 text-xs text-muted-foreground italic">
-                  Instructor has received your submission and will provide score & feedback shortly.
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed border-border bg-card/60 p-6 text-center text-xs text-muted-foreground">
+            No submissions yet. Submit a solution above to receive faculty review.
+          </div>
+        )}
       </section>
     </>
   );
@@ -1600,7 +1764,10 @@ function Assessments({ open }: { open: () => void }) {
       />
       <div className="grid gap-5 sm:grid-cols-2">
         {courses.map((course, index) => (
-          <article key={course.id || course.slug} className="rounded-lg border border-border bg-card p-5">
+          <article
+            key={course.id || course.slug}
+            className="rounded-lg border border-border bg-card p-5"
+          >
             <div className="flex items-center justify-between">
               <span className="grid size-9 place-items-center rounded-md bg-primary/10 text-primary">
                 <Target className="size-4" />
@@ -1745,7 +1912,10 @@ function Certificates({ onOpenCert }: { onOpenCert: (course: Course) => void }) 
         <h2 className="mb-4 text-base font-bold text-foreground">Courses in Progress</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           {inProgressCourses.map((course) => (
-            <div key={course.id || course.slug} className="rounded-xl border border-border bg-card p-5">
+            <div
+              key={course.id || course.slug}
+              className="rounded-xl border border-border bg-card p-5"
+            >
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-foreground">{course.title}</h3>
                 <span className="text-xs font-bold text-primary">{course.progress}%</span>
@@ -2425,79 +2595,122 @@ function AssignmentModal({
   close,
   notify,
 }: {
-  targetAssignment: { courseTitle: string; courseSlug: string; assignmentTitle: string } | null;
+  targetAssignment: {
+    assignmentId?: string;
+    courseTitle: string;
+    courseSlug: string;
+    assignmentTitle: string;
+    maxScore?: number;
+  } | null;
   close: () => void;
   notify: (message: string, type?: "success" | "error" | "info") => void;
 }) {
-  const { user } = useCommerce();
-  const [courseSlug, setCourseSlug] = useState(
-    targetAssignment?.courseSlug || "advanced-typescript",
+  const { user, dashboardData, refreshProgress } = useCommerce();
+  const upcomingAssignments = dashboardData?.upcomingAssignments || [];
+  const availableAssignments = upcomingAssignments.filter(
+    (a) => !a.submissionStatus || a.submissionStatus === "unsubmitted",
   );
-  const [assignmentTitle, setAssignmentTitle] = useState(
-    targetAssignment?.assignmentTitle || "Build a Type-Safe Event Bus with Generics",
-  );
+
+  const initialAssignment = targetAssignment
+    ? upcomingAssignments.find((a) => a.id === targetAssignment.assignmentId) || {
+        id: targetAssignment.assignmentId || "",
+        title: targetAssignment.assignmentTitle,
+        course: targetAssignment.courseTitle,
+        courseSlug: targetAssignment.courseSlug,
+        maxScore: targetAssignment.maxScore || 100,
+      }
+    : availableAssignments[0] || upcomingAssignments[0] || null;
+
+  const [selectedAsgId, setSelectedAsgId] = useState(initialAssignment?.id || "");
   const [githubUrl, setGithubUrl] = useState("");
   const [solutionNotes, setSolutionNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const currentAssignment =
+    upcomingAssignments.find((a) => a.id === selectedAsgId) || initialAssignment;
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!solutionNotes.trim()) return;
+    if (!solutionNotes.trim()) {
+      setErrorMsg("Please provide your solution notes or architecture writeup.");
+      return;
+    }
+    if (!currentAssignment?.id) {
+      setErrorMsg("Please select an assignment to submit.");
+      return;
+    }
 
-    const studentName =
-      (user?.user_metadata?.display_name as string) ||
-      user?.email?.split("@")[0] ||
-      "Student Learner";
+    setSubmitting(true);
+    setErrorMsg("");
 
-    saveSubmission({
-      courseSlug,
-      courseTitle:
-        courseSlug === "advanced-typescript"
-          ? "Advanced TypeScript & Design Patterns"
-          : courseSlug === "system-design"
-            ? "System Design Fundamentals"
-            : "React Performance & Architecture",
-      assignmentId: `asg-${Date.now()}`,
-      assignmentTitle,
-      studentId: user?.id || "student-user",
-      studentName,
-      studentEmail: user?.email || "student@skillbridge.dev",
-      githubUrl: githubUrl.trim() || undefined,
-      solutionNotes: solutionNotes.trim(),
-    });
+    try {
+      const studentName =
+        (user?.user_metadata?.display_name as string) ||
+        user?.email?.split("@")[0] ||
+        "Student Learner";
+      const studentEmail = user?.email || "student@skillbridge.dev";
 
-    notify("Assignment submitted successfully for instructor review!", "success");
-    close();
+      await lmsClient.submitAssignment({
+        assignmentId: currentAssignment.id,
+        courseId: currentAssignment.courseSlug,
+        githubUrl: githubUrl.trim() || undefined,
+        solutionNotes: solutionNotes.trim(),
+        maxScore: currentAssignment.maxScore || 100,
+        studentName,
+        studentEmail,
+      });
+
+      notify(
+        `Assignment "${currentAssignment.title}" submitted successfully for instructor evaluation!`,
+        "success",
+      );
+      window.dispatchEvent(new CustomEvent("lms_data_updated"));
+      if (refreshProgress) {
+        await refreshProgress();
+      }
+      close();
+    } catch (err: unknown) {
+      setErrorMsg(
+        err instanceof Error ? err.message : "Failed to submit assignment. Please try again.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <Modal title="Submit Project Assignment" close={close}>
       <form onSubmit={handleSubmit} className="space-y-4">
+        {errorMsg && (
+          <div className="rounded-lg bg-destructive/15 border border-destructive/30 p-3 text-xs text-destructive font-medium">
+            {errorMsg}
+          </div>
+        )}
+
         <div>
           <label className="text-xs font-semibold">Course & Assignment</label>
-          <select
-            value={courseSlug}
-            onChange={(e) => {
-              setCourseSlug(e.target.value);
-              if (e.target.value === "advanced-typescript") {
-                setAssignmentTitle("Build a Type-Safe Event Bus with Generics");
-              } else if (e.target.value === "system-design") {
-                setAssignmentTitle("Distributed Rate Limiter & Token Bucket Architecture");
-              } else {
-                setAssignmentTitle("Virtual List & Memoization Profiler");
-              }
-            }}
-            className="mt-1.5 w-full rounded-md border border-input bg-card px-3 py-2 text-xs font-medium"
-          >
-            <option value="advanced-typescript">
-              Advanced TypeScript & Design Patterns — Type-Safe Event Bus
-            </option>
-            <option value="system-design">
-              System Design Fundamentals — Distributed Rate Limiter
-            </option>
-            <option value="react-performance">
-              React Performance & Architecture — Virtual List Profiler
-            </option>
-          </select>
+          {upcomingAssignments.length > 0 ? (
+            <select
+              value={selectedAsgId}
+              onChange={(e) => {
+                setSelectedAsgId(e.target.value);
+                setErrorMsg("");
+              }}
+              disabled={submitting}
+              className="mt-1.5 w-full rounded-md border border-input bg-card px-3 py-2 text-xs font-medium text-foreground"
+            >
+              {upcomingAssignments.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.course} — {a.title}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="mt-1.5 rounded-md border border-input bg-muted/40 px-3 py-2 text-xs font-medium text-foreground">
+              {currentAssignment?.course || "Course"} — {currentAssignment?.title || "Assignment"}
+            </div>
+          )}
         </div>
 
         <div>
@@ -2507,6 +2720,7 @@ function AssignmentModal({
             onChange={(e) => setGithubUrl(e.target.value)}
             placeholder="https://github.com/your-username/my-project"
             className="mt-1.5 text-xs font-mono"
+            disabled={submitting}
           />
         </div>
 
@@ -2520,15 +2734,21 @@ function AssignmentModal({
             placeholder="Describe your design choices, trade-offs, algorithms used, and test coverage for the faculty review team…"
             className="mt-1.5 min-h-36 bg-background text-xs leading-relaxed"
             required
+            disabled={submitting}
           />
         </div>
 
         <div className="mt-6 flex justify-end gap-2 border-t border-border pt-4">
-          <Button type="button" variant="outline" size="sm" onClick={close}>
+          <Button type="button" variant="outline" size="sm" onClick={close} disabled={submitting}>
             Cancel
           </Button>
-          <Button type="submit" variant="chrome" size="sm" disabled={!solutionNotes.trim()}>
-            Submit for Instructor Evaluation
+          <Button
+            type="submit"
+            variant="chrome"
+            size="sm"
+            disabled={submitting || !solutionNotes.trim()}
+          >
+            {submitting ? "Submitting Solution…" : "Submit for Instructor Evaluation"}
           </Button>
         </div>
       </form>

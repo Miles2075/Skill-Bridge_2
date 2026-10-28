@@ -845,7 +845,12 @@ class DatabaseManager {
     fs.renameSync(tempFile, DB_FILE);
   }
 
-  syncExternalUser(params: { id: string; email: string; name: string; role: "student" | "teacher" | "admin" }): void {
+  syncExternalUser(params: {
+    id: string;
+    email: string;
+    name: string;
+    role: "student" | "teacher" | "admin";
+  }): void {
     const db = this.read();
     const email = params.email.trim().toLowerCase();
     let user = db.users.find((item) => item.id === params.id);
@@ -859,20 +864,39 @@ class DatabaseManager {
         salt,
         created_at: now,
         updated_at: now,
-        user_metadata: { display_name: params.name || email.split("@")[0] || "Learner", role: params.role, email },
+        user_metadata: {
+          display_name: params.name || email.split("@")[0] || "Learner",
+          role: params.role,
+          email,
+        },
       };
       db.users.push(user);
     } else {
       user.email = email || user.email;
-      user.user_metadata = { ...user.user_metadata, display_name: params.name || user.user_metadata.display_name, role: params.role, email };
+      user.user_metadata = {
+        ...user.user_metadata,
+        display_name: params.name || user.user_metadata.display_name,
+        role: params.role,
+        email,
+      };
       user.updated_at = now;
     }
     if (!db.user_roles.some((item) => item.user_id === params.id && item.role === params.role)) {
-      db.user_roles.push({ id: crypto.randomUUID(), user_id: params.id, role: params.role, created_at: now });
+      db.user_roles.push({
+        id: crypto.randomUUID(),
+        user_id: params.id,
+        role: params.role,
+        created_at: now,
+      });
     }
     const profile = db.profiles.find((item) => item.id === params.id);
     if (!profile) {
-      db.profiles.push({ id: params.id, display_name: params.name || email.split("@")[0] || "Learner", email, created_at: now });
+      db.profiles.push({
+        id: params.id,
+        display_name: params.name || email.split("@")[0] || "Learner",
+        email,
+        created_at: now,
+      });
     } else {
       profile.email = email || profile.email;
       if (params.name) profile.display_name = params.name;
@@ -886,7 +910,9 @@ class DatabaseManager {
     return db.courses.map((c) => {
       let videoUrls =
         c.video_urls && Array.isArray(c.video_urls)
-          ? c.video_urls.filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
+          ? c.video_urls.filter(
+              (url): url is string => typeof url === "string" && Boolean(url.trim()),
+            )
           : c.video_url
             ? [c.video_url]
             : [];
@@ -897,12 +923,17 @@ class DatabaseManager {
         (l) => l.course_id === c.id || l.course_id === c.slug,
       );
       // Lecture counts must come from persisted lesson records, never video metadata.
-    // A course with no lesson records should display zero lectures and a pending syllabus.
-    const lessonsCount = courseLessons.length;
-      const primaryVideoUrl = videoUrls.includes(c.video_url || "") ? c.video_url || "" : videoUrls[0] || "";
+      // A course with no lesson records should display zero lectures and a pending syllabus.
+      const lessonsCount = courseLessons.length;
+      const primaryVideoUrl = videoUrls.includes(c.video_url || "")
+        ? c.video_url || ""
+        : videoUrls[0] || "";
       const courseReviews = db.course_reviews.filter((review) => review.course_id === c.id);
       const rating = courseReviews.length
-        ? Math.round((courseReviews.reduce((sum, review) => sum + review.rating, 0) / courseReviews.length) * 10) / 10
+        ? Math.round(
+            (courseReviews.reduce((sum, review) => sum + review.rating, 0) / courseReviews.length) *
+              10,
+          ) / 10
         : 0;
       const enrollmentCount = db.enrollments.filter(
         (enrollment) => enrollment.course_id === c.id || enrollment.course_id === c.slug,
@@ -936,7 +967,9 @@ class DatabaseManager {
     if (!c) return null;
     let videoUrls =
       c.video_urls && Array.isArray(c.video_urls)
-        ? c.video_urls.filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
+        ? c.video_urls.filter(
+            (url): url is string => typeof url === "string" && Boolean(url.trim()),
+          )
         : c.video_url
           ? [c.video_url]
           : [];
@@ -944,10 +977,15 @@ class DatabaseManager {
     videoUrls = videoUrls.filter((url, index, urls) => urls.indexOf(url) === index);
     const courseLessons = db.lessons.filter((l) => l.course_id === c.id || l.course_id === c.slug);
     const lessonsCount = courseLessons.length > 0 ? courseLessons.length : videoUrls.length;
-    const primaryVideoUrl = videoUrls.includes(c.video_url || "") ? c.video_url || "" : videoUrls[0] || "";
+    const primaryVideoUrl = videoUrls.includes(c.video_url || "")
+      ? c.video_url || ""
+      : videoUrls[0] || "";
     const courseReviews = db.course_reviews.filter((review) => review.course_id === c.id);
     const rating = courseReviews.length
-      ? Math.round((courseReviews.reduce((sum, review) => sum + review.rating, 0) / courseReviews.length) * 10) / 10
+      ? Math.round(
+          (courseReviews.reduce((sum, review) => sum + review.rating, 0) / courseReviews.length) *
+            10,
+        ) / 10
       : 0;
     const enrollmentCount = db.enrollments.filter(
       (enrollment) => enrollment.course_id === c.id || enrollment.course_id === c.slug,
@@ -966,7 +1004,9 @@ class DatabaseManager {
 
   getCourseReviews(courseIdOrSlug: string): CourseReview[] {
     const db = this.read();
-    const course = db.courses.find((item) => item.id === courseIdOrSlug || item.slug === courseIdOrSlug);
+    const course = db.courses.find(
+      (item) => item.id === courseIdOrSlug || item.slug === courseIdOrSlug,
+    );
     if (!course) return [];
     return db.course_reviews
       .filter((review) => review.course_id === course.id)
@@ -975,22 +1015,30 @@ class DatabaseManager {
 
   getUserCourseReview(studentId: string, courseIdOrSlug: string): CourseReview | null {
     const db = this.read();
-    const course = db.courses.find((item) => item.id === courseIdOrSlug || item.slug === courseIdOrSlug);
+    const course = db.courses.find(
+      (item) => item.id === courseIdOrSlug || item.slug === courseIdOrSlug,
+    );
     if (!course) return null;
-    return db.course_reviews.find(
-      (review) => review.course_id === course.id && review.student_id === studentId,
-    ) || null;
+    return (
+      db.course_reviews.find(
+        (review) => review.course_id === course.id && review.student_id === studentId,
+      ) || null
+    );
   }
 
   getCourseReviewSummary(courseIdOrSlug: string) {
     const db = this.read();
-    const course = db.courses.find((item) => item.id === courseIdOrSlug || item.slug === courseIdOrSlug);
+    const course = db.courses.find(
+      (item) => item.id === courseIdOrSlug || item.slug === courseIdOrSlug,
+    );
     if (!course) return null;
     const reviews = db.course_reviews
       .filter((review) => review.course_id === course.id)
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
     const rating = reviews.length
-      ? Math.round((reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length) * 10) / 10
+      ? Math.round(
+          (reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length) * 10,
+        ) / 10
       : 0;
     const learners = db.enrollments.filter(
       (enrollment) => enrollment.course_id === course.id || enrollment.course_id === course.slug,
@@ -1028,7 +1076,9 @@ class DatabaseManager {
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
       throw new Error("Choose a rating from 1 to 5 stars.");
     }
-    const reviewText = String(params.reviewText || "").trim().slice(0, 1200);
+    const reviewText = String(params.reviewText || "")
+      .trim()
+      .slice(0, 1200);
     if (reviewText.length < 5) throw new Error("Write at least 5 characters for your review.");
 
     const hasEnrollment = db.enrollments.some(
@@ -1051,7 +1101,12 @@ class DatabaseManager {
     const now = new Date().toISOString();
     const profile = db.profiles.find((item) => item.id === params.studentId);
     const localUser = db.users.find((item) => item.id === params.studentId);
-    const savedName = (profile?.display_name || localUser?.user_metadata?.display_name || params.studentName || "Student")
+    const savedName = (
+      profile?.display_name ||
+      localUser?.user_metadata?.display_name ||
+      params.studentName ||
+      "Student"
+    )
       .trim()
       .slice(0, 80);
     if (existing) {
@@ -1210,10 +1265,15 @@ class DatabaseManager {
     // Reconcile course-level video assets with lesson rows. Existing lesson titles
     // are left untouched; any uploaded asset that lacks a lesson becomes a
     // persistent lesson with a readable filename-derived title.
-    const lessonVideoUrls = new Set(directLessons.map((lesson) => lesson.video_url).filter(Boolean));
+    const lessonVideoUrls = new Set(
+      directLessons.map((lesson) => lesson.video_url).filter(Boolean),
+    );
     const missingVideoUrls = videoUrls.filter((videoUrl) => !lessonVideoUrls.has(videoUrl));
     if (missingVideoUrls.length > 0) {
-      const nextOrder = directLessons.reduce((max, lesson) => Math.max(max, lesson.lesson_order || 0), 0);
+      const nextOrder = directLessons.reduce(
+        (max, lesson) => Math.max(max, lesson.lesson_order || 0),
+        0,
+      );
       const addedLessons: CourseLesson[] = missingVideoUrls.map((videoUrl, index) => ({
         id: `les_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         course_id: course.id,
@@ -1431,7 +1491,8 @@ class DatabaseManager {
         lesson = courseLessons[legacyIndex - 1];
       }
     }
-    if (!lesson) throw new Error("Lesson not found in course. Refresh the course page and try again.");
+    if (!lesson)
+      throw new Error("Lesson not found in course. Refresh the course page and try again.");
 
     // Always store progress against the canonical database lesson ID.
     const canonicalLessonId = lesson.id;
@@ -1553,11 +1614,19 @@ class DatabaseManager {
     const resolveCourseRef = (ref: string | null | undefined) => {
       if (!ref) return undefined;
       const canonical = courseAliases[ref] || ref;
-      const normalizedRef = canonical.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+      const normalizedRef = canonical
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "");
       return db.courses.find((course) => {
         const courseKeys = [course.id, course.slug, course.title]
           .filter((value): value is string => typeof value === "string")
-          .map((value) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ""));
+          .map((value) =>
+            value
+              .trim()
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, ""),
+          );
         return (
           course.id === canonical ||
           course.slug === canonical ||
@@ -1640,22 +1709,22 @@ class DatabaseManager {
     // title. This keeps real published work visible after course records were
     // normalized, without exposing assignments for courses the student hasn't joined.
     const normalizeCourseKey = (value: unknown) =>
-      typeof value === "string" ? value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "") : "";
+      typeof value === "string"
+        ? value
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "")
+        : "";
     const resolveAssignmentCourse = (assignment: Assignment) =>
       resolveCourseRef(assignment.course_id) ||
       resolveCourseRef(assignment.course_slug) ||
       db.courses.find((course) => {
-        const legacyKeys = [
-          course.title,
-          course.slug,
-          course.id,
-          courseAliases[course.id],
-        ].map(normalizeCourseKey);
-        return [
-          assignment.course_title,
-          assignment.course_slug,
-          assignment.course_id,
-        ].some((key) => normalizeCourseKey(key) && legacyKeys.includes(normalizeCourseKey(key)));
+        const legacyKeys = [course.title, course.slug, course.id, courseAliases[course.id]].map(
+          normalizeCourseKey,
+        );
+        return [assignment.course_title, assignment.course_slug, assignment.course_id].some(
+          (key) => normalizeCourseKey(key) && legacyKeys.includes(normalizeCourseKey(key)),
+        );
       });
 
     const upcomingAssignments = db.assignments
@@ -1674,7 +1743,9 @@ class DatabaseManager {
           assignmentCourse.slug,
           assignmentCourse.title,
           courseAliases[assignmentCourse.id],
-        ].map(normalizeCourseKey).filter(Boolean);
+        ]
+          .map(normalizeCourseKey)
+          .filter(Boolean);
 
         return enrolledCourses.some((enrolledCourse) => {
           const enrolledKeys = [
@@ -1682,7 +1753,9 @@ class DatabaseManager {
             enrolledCourse.slug,
             enrolledCourse.title,
             courseAliases[enrolledCourse.id],
-          ].map(normalizeCourseKey).filter(Boolean);
+          ]
+            .map(normalizeCourseKey)
+            .filter(Boolean);
 
           return (
             enrolledCourse.id === assignmentCourse.id ||
@@ -1706,6 +1779,10 @@ class DatabaseManager {
           score: sub?.score ?? null,
           feedback: sub?.feedback ?? null,
           submittedAt: sub?.submitted_at ?? null,
+          githubUrl: sub?.github_url ?? null,
+          solutionNotes: sub?.solution_notes ?? null,
+          gradedBy: sub?.graded_by ?? null,
+          gradedAt: sub?.graded_at ?? null,
         };
       });
 
@@ -1776,7 +1853,12 @@ class DatabaseManager {
       (c) => isAdmin || c.teacher_id === teacherId || c.teacher_id === null,
     );
     const normalizeCourseKey = (value: unknown) =>
-      typeof value === "string" ? value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "") : "";
+      typeof value === "string"
+        ? value
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "")
+        : "";
     const courseAliases: Record<string, string> = {
       "c-ts": "advanced-typescript",
       "c-react": "react-performance",
@@ -1880,7 +1962,7 @@ class DatabaseManager {
       .filter((submission) => isAuthorizedCourseRef(submission.course_id))
       .map((s) => {
         const asg = db.assignments.find((a) => a.id === s.assignment_id);
-        const course = db.courses.find((c) => c.id === s.course_id);
+        const course = resolveCourse(s.course_id) || resolveCourse(asg?.course_id);
         const studentUser = db.users.find(
           (u) => u.id === s.student_id || u.email === s.student_email,
         );
@@ -1888,18 +1970,19 @@ class DatabaseManager {
         return {
           ...s,
           assignmentTitle: asg?.title || "Assignment",
-          courseTitle: course?.title || "Course",
-          courseSlug: course?.slug || "",
+          courseTitle: course?.title || asg?.course_title || "Course",
+          courseSlug: course?.slug || asg?.course_slug || "",
           studentAvatar,
         };
       });
 
     // Assignments for authorized courses
-    const assignments = db.assignments.filter((assignment) =>
-      isAuthorizedCourseRef(assignment.course_id) ||
-      isAuthorizedCourseRef(assignment.course_slug) ||
-      isAuthorizedCourseRef(assignment.course_title) ||
-      (!!teacherId && assignment.created_by === teacherId),
+    const assignments = db.assignments.filter(
+      (assignment) =>
+        isAuthorizedCourseRef(assignment.course_id) ||
+        isAuthorizedCourseRef(assignment.course_slug) ||
+        isAuthorizedCourseRef(assignment.course_title) ||
+        (!!teacherId && assignment.created_by === teacherId),
     );
 
     // Quizzes for authorized courses
@@ -2162,9 +2245,7 @@ class DatabaseManager {
 
     const now = Date.now();
     const recentRequest = (db.password_reset_tokens || []).some(
-      (item) =>
-        item.user_id === user.id &&
-        now - new Date(item.created_at).getTime() < 60_000,
+      (item) => item.user_id === user.id && now - new Date(item.created_at).getTime() < 60_000,
     );
     if (recentRequest) return false;
 
@@ -2194,9 +2275,7 @@ class DatabaseManager {
     const db = this.read();
     const now = Date.now();
     const resetToken = (db.password_reset_tokens || []).find(
-      (item) =>
-        item.token_hash === tokenHash &&
-        new Date(item.expires_at).getTime() > now,
+      (item) => item.token_hash === tokenHash && new Date(item.expires_at).getTime() > now,
     );
     if (!resetToken) return null;
 

@@ -56,7 +56,11 @@ function toCourse(course: ClientCourse): Course {
     preview_minutes: course.preview_minutes,
     thumbnail: course.thumbnail || "",
     video_url: course.video_url || course.video_urls?.[0] || "",
-    video_urls: Array.isArray(course.video_urls) ? course.video_urls : course.video_url ? [course.video_url] : [],
+    video_urls: Array.isArray(course.video_urls)
+      ? course.video_urls
+      : course.video_url
+        ? [course.video_url]
+        : [],
     updated_at: new Date().toISOString(),
     status: course.status,
   };

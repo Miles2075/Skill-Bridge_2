@@ -189,10 +189,15 @@ export interface StudentDashboardData {
     courseSlug: string;
     due: string;
     maxScore: number;
-    submissionStatus: "unsubmitted" | "pending" | "approved" | "resubmission_required";
+    submissionStatus:
+      "unsubmitted" | "pending" | "approved" | "resubmission_required" | "needs_revision";
     score: number | null;
     feedback: string | null;
     submittedAt: string | null;
+    githubUrl?: string | null;
+    solutionNotes?: string | null;
+    gradedBy?: string | null;
+    gradedAt?: string | null;
   }>;
   studentQuizzes: Array<{
     id: string;

@@ -384,6 +384,19 @@
       "created_by": "8d95e694-3d47-422e-a017-86a1a0ee1251",
       "created_at": "2026-09-18T00:00:00.000Z",
       "updated_at": "2026-09-18T00:00:00.000Z"
+    },
+    {
+      "course_id": "c-ts",
+      "course_slug": "advanced-typescript",
+      "course_title": "Advanced TypeScript & Design Patterns",
+      "title": "E2E Test Assignment: Mini Redux",
+      "description": "Build a mini Redux store in TypeScript with reducers and action creators.",
+      "due_date": "2026-10-31T07:56:29.310Z",
+      "max_score": 100,
+      "created_by": "8d95e694-3d47-422e-a017-86a1a0ee1251",
+      "id": "asg_1793174189314_ajiz",
+      "created_at": "2026-10-28T07:56:29.314Z",
+      "updated_at": "2026-10-28T07:56:29.314Z"
     }
   ],
   "submissions": [],
@@ -401,12 +414,7 @@
         {
           "id": 1,
           "question": "Which keyword is used inside conditional types to deduce a type variable?",
-          "options": [
-            "deduce",
-            "infer",
-            "extract",
-            "typeof"
-          ],
+          "options": ["deduce", "infer", "extract", "typeof"],
           "correct_option": 1,
           "explanation": "The 'infer' keyword introduces a type variable in the true branch of a conditional type.",
           "marks": 25
@@ -427,12 +435,7 @@
         {
           "id": 3,
           "question": "How do you make all properties of type T readonly in TypeScript?",
-          "options": [
-            "Readonly<T>",
-            "Immutable<T>",
-            "const T",
-            "Freeze<T>"
-          ],
+          "options": ["Readonly<T>", "Immutable<T>", "const T", "Freeze<T>"],
           "correct_option": 0,
           "explanation": "The built-in utility type Readonly<T> marks all properties of T as readonly.",
           "marks": 25
@@ -440,12 +443,7 @@
         {
           "id": 4,
           "question": "What is the result of 'type X = string & number'?",
-          "options": [
-            "string",
-            "number",
-            "any",
-            "never"
-          ],
+          "options": ["string", "number", "any", "never"],
           "correct_option": 3,
           "explanation": "No value can be both a string and a number simultaneously, so the intersection evaluates to 'never'.",
           "marks": 25
@@ -494,12 +492,7 @@
         {
           "id": 3,
           "question": "What hook helps preserve expensive computation results across renders?",
-          "options": [
-            "useEffect",
-            "useMemo",
-            "useContext",
-            "useId"
-          ],
+          "options": ["useEffect", "useMemo", "useContext", "useId"],
           "correct_option": 1,
           "explanation": "useMemo caches the result of an expensive calculation until dependencies change.",
           "marks": 30
@@ -755,5 +748,7 @@
       "email": "krishtalati05@gmail.com",
       "created_at": "2026-10-06T11:53:16.445Z"
     }
-  ]
+  ],
+  "password_reset_tokens": [],
+  "course_reviews": []
 }
