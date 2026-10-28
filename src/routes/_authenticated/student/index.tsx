@@ -740,7 +740,7 @@ function StudentDashboardPage() {
                   <strong>{enrolledCourses.filter((c) => c.progress < 100).length}</strong>
                 </span>
                 <button
-                  onClick={() => switchView("my-learning")}
+                  onClick={() => switchView("courses")}
                   className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
                 >
                   Continue
