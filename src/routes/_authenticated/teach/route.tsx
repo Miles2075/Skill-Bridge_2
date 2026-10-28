@@ -94,7 +94,6 @@ function TeachLayoutRoute() {
 
   const [pendingReviews, setPendingReviews] = useState(0);
   const [studentCount, setStudentCount] = useState(0);
-  const [coursesCount, setCoursesCount] = useState(5);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -114,8 +113,6 @@ function TeachLayoutRoute() {
           setPendingReviews(subs.filter((s) => s.status === "pending").length);
           const studs = data.students || [];
           setStudentCount(new Set(studs.map((s) => s.studentId)).size);
-          const crs = (data.courses || []).filter((c) => c.status === "published" || !c.status);
-          setCoursesCount(crs.length || data.courses?.length || 5);
         }
       } catch {
         // ignore if not loaded yet
@@ -211,28 +208,49 @@ function TeachLayoutRoute() {
     icon: React.ElementType;
     badge?: string | undefined;
     badgeColor?: string | undefined;
-    section?: string | undefined;
   }[] = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "courses", label: "My Courses", icon: BookOpen, badge: `${coursesCount} Active` },
+    { id: "courses", label: "Courses", icon: BookOpen },
     { id: "create-course", label: "Create Course", icon: PlusCircle },
     { id: "content", label: "Course Content", icon: FolderKanban },
     { id: "assignments", label: "Assignments", icon: Layers },
     { id: "assessments", label: "Assessments", icon: Target },
-    { id: "codelab", label: "Code Lab (Sandbox)", icon: Code2 },
-    { id: "recall", label: "Recall Decks", icon: Brain },
-    { id: "focus", label: "Focus Studio", icon: Timer },
-    { id: "students", label: "Students", icon: Users, badge: `${studentCount}` },
+    { id: "students", label: "Students", icon: Users, badge: studentCount ? `${studentCount}` : undefined },
     {
       id: "submissions",
-      label: "Submissions / Grading",
+      label: "Submissions",
       icon: ClipboardCheck,
-      badge: pendingReviews > 0 ? `${pendingReviews} Due` : undefined,
+      badge: pendingReviews > 0 ? `${pendingReviews} due` : undefined,
       badgeColor: "bg-amber-100 text-amber-800 font-bold",
     },
+    { id: "codelab", label: "Code Lab", icon: Code2 },
+    { id: "recall", label: "Recall Decks", icon: Brain },
+    { id: "focus", label: "Focus Studio", icon: Timer },
     { id: "analytics", label: "Analytics", icon: TrendingUp },
     { id: "profile", label: "Profile", icon: User },
     { id: "settings", label: "Settings", icon: Settings },
+  ];
+
+  const navGroups: { label: string; items: typeof navItems }[] = [
+    { label: "OVERVIEW", items: navItems.filter((item) => item.id === "dashboard") },
+    {
+      label: "COURSES & TEACHING",
+      items: navItems.filter((item) =>
+        ["courses", "create-course", "content", "assignments", "assessments"].includes(item.id),
+      ),
+    },
+    {
+      label: "STUDENT SUPPORT",
+      items: navItems.filter((item) => ["students", "submissions"].includes(item.id)),
+    },
+    {
+      label: "TOOLS",
+      items: navItems.filter((item) => ["codelab", "recall", "focus", "analytics"].includes(item.id)),
+    },
+    {
+      label: "ACCOUNT",
+      items: navItems.filter((item) => ["profile", "settings"].includes(item.id)),
+    },
   ];
 
   return (
@@ -262,14 +280,6 @@ function TeachLayoutRoute() {
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => switchView("create-course")}
-              className="hidden sm:inline-flex items-center gap-1.5 rounded-md bg-teal-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-800 transition-colors shadow-2xs cursor-pointer"
-            >
-              <PlusCircle className="size-3.5" />
-              <span>New Course</span>
-            </button>
-
             <div className="flex items-center gap-2 border-l border-slate-200 pl-3">
               <button
                 onClick={() => switchView("profile")}
@@ -308,66 +318,45 @@ function TeachLayoutRoute() {
       <div className="mx-auto flex max-w-7xl flex-1 w-full">
         {/* Desktop Instructor Management Sidebar */}
         <aside className="hidden md:flex w-64 shrink-0 flex-col border-r border-slate-200 bg-white p-4">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-3 px-3">
-            Instructor Operations
-          </div>
-
-          <nav className="space-y-1">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeView === item.id;
-              return (
-                <button
-                  key={item.id}
-                  onClick={() => switchView(item.id)}
-                  className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-colors cursor-pointer ${
-                    isActive
-                      ? "bg-teal-50 text-teal-800 font-semibold border border-teal-200 shadow-2xs"
-                      : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent"
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Icon className={`size-4 ${isActive ? "text-teal-700" : "text-slate-400"}`} />
-                    <span>{item.label}</span>
-                  </div>
-                  {item.badge && (
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                        item.badgeColor ||
-                        (isActive ? "bg-teal-100 text-teal-800" : "bg-slate-100 text-slate-600")
+          <nav className="space-y-4">
+            {navGroups.map((group) => (
+              <div key={group.label} className="space-y-1.5">
+                <div className="px-3 pt-1 text-[10px] font-semibold tracking-wider text-slate-400">
+                  {group.label}
+                </div>
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeView === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => switchView(item.id)}
+                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-xs font-medium transition-colors cursor-pointer ${
+                        isActive
+                          ? "bg-teal-50 text-teal-800 font-semibold border border-teal-200"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900 border border-transparent"
                       }`}
                     >
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
-              );
-            })}
-          </nav>
-
-          {/* Quick Review Status Widget */}
-          <div className="mt-auto pt-4 border-t border-slate-100">
-            <div className="rounded-xl border border-teal-100 bg-teal-50/60 p-3 text-xs">
-              <div className="flex items-center justify-between font-bold text-teal-900 mb-1">
-                <span className="flex items-center gap-1.5">
-                  <ClipboardCheck className="size-4 text-teal-700" />
-                  Review Queue
-                </span>
-                <span className="text-[11px] font-mono text-teal-800">
-                  {pendingReviews} Pending
-                </span>
+                      <div className="flex items-center gap-2.5">
+                        <Icon className={`size-4 ${isActive ? "text-teal-700" : "text-slate-400"}`} />
+                        <span>{item.label}</span>
+                      </div>
+                      {item.badge && (
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                            item.badgeColor ||
+                            (isActive ? "bg-teal-100 text-teal-800" : "bg-slate-100 text-slate-600")
+                          }`}
+                        >
+                          {item.badge}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
-              <p className="text-[11px] text-slate-600 leading-snug">
-                Student submissions awaiting evaluation and rubric scoring.
-              </p>
-              <button
-                onClick={() => switchView("submissions")}
-                className="mt-2 block w-full rounded bg-teal-700 py-1 text-center font-bold text-[11px] text-white hover:bg-teal-800 transition-colors cursor-pointer"
-              >
-                Open Review Queue →
-              </button>
-            </div>
-          </div>
+            ))}
+          </nav>
         </aside>
 
         {/* Mobile Navigation Drawer */}
@@ -384,34 +373,39 @@ function TeachLayoutRoute() {
                 </button>
               </div>
 
-              <nav className="mt-4 space-y-1 flex-1 overflow-y-auto">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = activeView === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => switchView(item.id)}
-                      className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-xs font-medium cursor-pointer ${
-                        isActive
-                          ? "bg-teal-50 text-teal-800 font-semibold"
-                          : "text-slate-600 hover:bg-slate-50"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <Icon
-                          className={`size-4 ${isActive ? "text-teal-700" : "text-slate-400"}`}
-                        />
-                        <span>{item.label}</span>
-                      </div>
-                      {item.badge && (
-                        <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">
-                          {item.badge}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
+              <nav className="mt-4 flex-1 space-y-4 overflow-y-auto">
+                {navGroups.map((group) => (
+                  <div key={group.label} className="space-y-1">
+                    <div className="px-3 pt-1 text-[10px] font-semibold tracking-wider text-slate-400">
+                      {group.label}
+                    </div>
+                    {group.items.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeView === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => switchView(item.id)}
+                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-xs font-medium cursor-pointer ${
+                            isActive
+                              ? "bg-teal-50 text-teal-800 font-semibold"
+                              : "text-slate-600 hover:bg-slate-50"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <Icon className={`size-4 ${isActive ? "text-teal-700" : "text-slate-400"}`} />
+                            <span>{item.label}</span>
+                          </div>
+                          {item.badge && (
+                            <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600">
+                              {item.badge}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
               </nav>
 
               <div className="pt-3 border-t border-slate-100">
@@ -438,18 +432,16 @@ function TeachLayoutRoute() {
       {/* Instructor Console Footer */}
       <footer className="mt-auto border-t border-slate-200 bg-white py-4 text-xs text-slate-500">
         <div className="mx-auto flex max-w-7xl flex-col gap-2 px-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <span>
-            © 2026 Skillbridge Instructor Studio — Faculty Curriculum & Student Management
-          </span>
+          <span>© 2026 Skillbridge Instructor</span>
           <div className="flex items-center gap-4">
             <button onClick={() => switchView("courses")} className="hover:text-teal-700">
-              Course Engine
+              Courses
             </button>
             <button onClick={() => switchView("submissions")} className="hover:text-teal-700">
-              Grading Workbench
+              Submissions
             </button>
             <button onClick={() => switchView("analytics")} className="hover:text-teal-700">
-              Financial Ledger
+              Analytics
             </button>
           </div>
         </div>

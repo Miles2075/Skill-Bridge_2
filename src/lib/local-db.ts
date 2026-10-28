@@ -159,6 +159,7 @@ export function setLocalSession(user: LocalUser) {
 export function getLocalSession(): LocalUser | null {
   if (typeof window === "undefined") return null;
 
+  const candidates: LocalUser[] = [];
   for (const key of ALL_SESSION_KEYS) {
     try {
       const raw = localStorage.getItem(key);
@@ -167,37 +168,67 @@ export function getLocalSession(): LocalUser | null {
       if (!parsed) continue;
 
       if (parsed.email && parsed.user_metadata?.role) {
-        return parsed as LocalUser;
+        candidates.push(parsed as LocalUser);
+        continue;
       }
 
       const u = parsed.user || (parsed.access_token ? parsed : null);
-      if (u && (u.email || u.id)) {
-        const role = (u.user_metadata?.role as LocalRole) || "student";
-        const displayName = u.user_metadata?.display_name || u.email?.split("@")[0] || "Learner";
-        const localUser: LocalUser = {
-          id: u.id || "00000000-0000-4000-a000-000000000001",
+      if (!u || (!u.email && !u.id)) continue;
+      const role = (u.user_metadata?.role as LocalRole) || "student";
+      const displayName = u.user_metadata?.display_name || u.email?.split("@")[0] || "Learner";
+      candidates.push({
+        id: u.id || "00000000-0000-4000-a000-000000000001",
+        email: u.email || "student@skillbridge.edu",
+        user_metadata: {
+          display_name: displayName,
           email: u.email || "student@skillbridge.edu",
-          user_metadata: {
-            display_name: displayName,
-            email: u.email || "student@skillbridge.edu",
-            role,
-          },
-          created_at: u.created_at || new Date().toISOString(),
-          updated_at: u.updated_at || new Date().toISOString(),
-        };
-        try {
-          localStorage.setItem(SESSION_KEY, JSON.stringify(localUser));
-        } catch {
-          // ignore
-        }
-        return localUser;
-      }
+          role,
+          ...(typeof u.user_metadata?.avatar_url === "string"
+            ? { avatar_url: u.user_metadata.avatar_url }
+            : {}),
+        },
+        created_at: u.created_at || new Date().toISOString(),
+        updated_at: u.updated_at || new Date().toISOString(),
+      });
     } catch {
-      // ignore
+      // Ignore malformed session variants and continue checking the other keys.
     }
   }
 
-  return null;
+  if (candidates.length === 0) return null;
+
+  // Several auth adapters keep separate copies of the same session. Prefer the
+  // first valid identity, but merge its avatar from any matching newer copy or
+  // the local account record before handing it to React.
+  const primary = candidates[0]!;
+  const primaryEmail = primary.email.trim().toLowerCase();
+  const matching = candidates.filter(
+    (candidate) =>
+      candidate.id === primary.id || candidate.email.trim().toLowerCase() === primaryEmail,
+  );
+  const storedUser = readUsers().find(
+    (candidate) =>
+      candidate.id === primary.id || candidate.email.trim().toLowerCase() === primaryEmail,
+  );
+  const avatar =
+    matching.find((candidate) => candidate.user_metadata?.avatar_url)?.user_metadata.avatar_url ||
+    storedUser?.user_metadata?.avatar_url ||
+    primary.user_metadata?.avatar_url;
+
+  const merged: LocalUser = {
+    ...primary,
+    user_metadata: {
+      ...primary.user_metadata,
+      ...(typeof avatar === "string" && avatar ? { avatar_url: avatar } : {}),
+    },
+  };
+
+  try {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(merged));
+  } catch {
+    // The user remains readable for this render even if storage is unavailable.
+  }
+  return merged;
 }
 
 export function clearLocalSession() {
@@ -255,6 +286,7 @@ export function updateLocalSessionProfile(params: {
     const existing = users.find((item) => item.id === current.id);
     if (existing) {
       existing.user_metadata = { ...existing.user_metadata, ...current.user_metadata };
+      if (params.avatarUrl === null) delete existing.user_metadata.avatar_url;
       existing.updated_at = current.updated_at;
       writeUsers(users);
     }
@@ -269,6 +301,7 @@ export function updateLocalSessionProfile(params: {
       const session = JSON.parse(raw);
       if (session?.user?.id === current.id) {
         session.user.user_metadata = { ...session.user.user_metadata, ...current.user_metadata };
+        if (params.avatarUrl === null) delete session.user.user_metadata.avatar_url;
         session.user.updated_at = current.updated_at;
         localStorage.setItem(key, JSON.stringify(session));
       }

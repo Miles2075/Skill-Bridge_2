@@ -1,10 +1,10 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
-import { AlertCircle } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { setLocalSession } from "@/lib/local-db";
+import { clearLocalSession } from "@/lib/local-db";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
@@ -24,209 +24,342 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
-function toBase64Url(str: string) {
-  return btoa(unescape(encodeURIComponent(str)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-function establishDirectSession(params: {
-  id?: string;
-  email: string;
-  name?: string;
-  role?: "student" | "teacher" | "admin";
-}) {
-  const email = params.email.trim().toLowerCase();
-  let id = params.id;
-  if (!id) {
-    // Generate valid UUIDv4 based on email hash
-    let hash = 0;
-    for (let i = 0; i < email.length; i++) {
-      hash = (hash << 5) - hash + email.charCodeAt(i);
-      hash |= 0;
-    }
-    const seed = Math.abs(hash).toString(16).padStart(8, "0");
-    id = `${seed.slice(0, 8)}-4444-4888-a999-${seed.padEnd(12, "0").slice(0, 12)}`;
-  }
-
-  const role = params.role || "student";
-  const displayName = params.name?.trim() || email.split("@")[0] || "Learner";
-  const now = Math.floor(Date.now() / 1000);
-  const exp = now + 86400 * 30; // 30 days
-
-  const payload = {
-    iss: "supabase",
-    sub: id,
-    aud: "authenticated",
-    exp,
-    iat: now,
-    email,
-    phone: "",
-    app_metadata: { provider: "email", providers: ["email"] },
-    user_metadata: {
-      display_name: displayName,
-      email,
-      role,
-      sub: id,
-    },
-    role: "authenticated",
-    aal: "aal1",
-    amr: [{ method: "password", timestamp: now }],
-    session_id: `sess_${Date.now()}`,
-    is_anonymous: false,
-  };
-
-  const header = { alg: "HS256", typ: "JWT" };
-  const headerB64 = toBase64Url(JSON.stringify(header));
-  const payloadB64 = toBase64Url(JSON.stringify(payload));
-  const sigB64 = toBase64Url("skillbridge_direct_signature");
-  const token = `${headerB64}.${payloadB64}.${sigB64}`;
-
-  const session = {
+async function handleLmsAuthSuccess(result: {
+  user: Record<string, unknown>;
+  session: Record<string, unknown>;
+  roles?: string[];
+}): Promise<string> {
+  const token = result.session?.access_token || result.session?.token || "";
+  const sessionData = {
+    ...result.session,
     access_token: token,
+    token: token,
     token_type: "bearer",
-    expires_in: 86400 * 30,
-    expires_at: exp,
-    refresh_token: `ref_${Date.now()}`,
-    user: {
-      id,
-      aud: "authenticated",
-      role: "authenticated",
-      email,
-      email_confirmed_at: new Date().toISOString(),
-      phone: "",
-      confirmed_at: new Date().toISOString(),
-      last_sign_in_at: new Date().toISOString(),
-      app_metadata: { provider: "email", providers: ["email"] },
-      user_metadata: {
-        display_name: displayName,
-        email,
-        role,
-        sub: id,
-      },
-      identities: [],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      is_anonymous: false,
-    },
+    user: result.user,
   };
+  localStorage.setItem("skillbridge_local_session", JSON.stringify(result.user));
+  localStorage.setItem("skillbridge_local_auth_session", JSON.stringify(sessionData));
+  localStorage.setItem("sb-local-auth-token", JSON.stringify(sessionData));
+  localStorage.setItem("sb-csjygxumpnonfupobhih-auth-token", JSON.stringify(sessionData));
 
-  const storageKeys = [
-    "sb-local-auth-token",
-    "sb-csjygxumpnonfupobhih-auth-token",
-    "skillbridge_local_auth_session",
-  ];
-  for (const k of storageKeys) {
-    localStorage.setItem(k, JSON.stringify(session));
+  const role =
+    Array.isArray(result.roles) && result.roles.length > 0
+      ? result.roles[0]
+      : result.user?.user_metadata?.role || "student";
+
+  try {
+    document.cookie = `sb-local-auth-token=${encodeURIComponent(JSON.stringify(sessionData))}; path=/; max-age=2592000; SameSite=Lax`;
+    document.cookie = `skillbridge_role=${role}; path=/; max-age=2592000; SameSite=Lax`;
+  } catch {
+    // ignore
   }
 
-  setLocalSession({
-    id,
-    email,
-    user_metadata: {
-      display_name: displayName,
-      email,
-      role,
-    },
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  });
-
+  window.dispatchEvent(new CustomEvent("local_auth_changed"));
   window.dispatchEvent(new Event("storage"));
-  return session;
+  return role;
 }
 
 function AuthPage() {
-  const [mode, setMode] = useState<"in" | "up">("in");
+  const getRedirectRoute = (targetRole: string) =>
+    targetRole === "teacher" || targetRole === "admin" ? "/teach" : "/";
+  const [mode, setMode] = useState<"in" | "up" | "forgot" | "reset">(() => {
+    if (
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("mode") === "reset"
+    ) {
+      return "reset";
+    }
+    return "in";
+  });
   const [role, setRole] = useState<"student" | "teacher">("student");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [msg, setMsg] = useState("");
+  const [msgKind, setMsgKind] = useState<"error" | "success">("error");
   const [busy, setBusy] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // A reset link must remain on this screen even if this browser has an
+    // unrelated saved session from an earlier sign-in.
+    const searchParams = new URLSearchParams(window.location.search);
+    if (searchParams.get("mode") === "reset" || searchParams.has("token")) {
+      setCheckingSession(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const routeForRole = (value: unknown) =>
+      value === "teacher" || value === "admin" ? "/teach" : "/";
+
+    const restoreSession = async () => {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const session = data?.session;
+        let token = session?.access_token;
+        if (!token) {
+          for (const key of [
+            "skillbridge_local_auth_session",
+            "sb-local-auth-token",
+            "sb-csjygxumpnonfupobhih-auth-token",
+          ]) {
+            const raw = localStorage.getItem(key);
+            if (!raw) continue;
+            try {
+              const p = JSON.parse(raw);
+              if (p?.access_token || p?.token) {
+                token = p.access_token || p.token;
+                break;
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+
+        if (!token) {
+          if (!cancelled) setCheckingSession(false);
+          return;
+        }
+
+        if (token.split(".").length === 3 && session?.user) {
+          if (!cancelled) {
+            window.location.replace(routeForRole(session.user?.user_metadata?.role));
+          }
+          return;
+        }
+
+        const response = await fetch("/api/lms/auth/session", {
+          method: "GET",
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const result = await response.json().catch(() => ({}));
+
+        if (cancelled) return;
+        if (response.ok && result?.user) {
+          const role = Array.isArray(result.roles)
+            ? result.roles[0]
+            : result.user.user_metadata?.role;
+          window.location.replace(routeForRole(role));
+          return;
+        }
+        if (response.ok && !result?.user) {
+          // Remove old fake/expired sessions left by previous versions. They
+          // must not be treated as a valid login.
+          clearLocalSession();
+        }
+      } catch {
+        // A temporary network issue should not erase a saved session.
+        const { data } = await supabase.auth
+          .getSession()
+          .catch(() => ({ data: { session: null } }));
+        if (data?.session && !cancelled) {
+          window.location.replace(routeForRole(data.session.user?.user_metadata?.role));
+          return;
+        }
+      }
+
+      if (!cancelled) setCheckingSession(false);
+    };
+
+    void restoreSession();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setMsg("");
+    setMsgKind("error");
 
     const cleanEmail = email.trim().toLowerCase();
 
-    const getRedirectRoute = (targetRole: string) => {
-      return targetRole === "teacher" || targetRole === "admin" ? "/teach" : "/";
-    };
+    const getRedirectRoute = (targetRole: string) =>
+      targetRole === "teacher" || targetRole === "admin" ? "/teach" : "/";
 
     try {
-      if (mode === "in") {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password,
-        });
-
-        if (!error && data?.session) {
-          const userMetaRole = (data.session.user.user_metadata?.role as string) || "student";
-          window.location.href = getRedirectRoute(userMetaRole);
+      if (mode === "forgot") {
+        if (!cleanEmail) {
+          setMsg("Enter the email address for your account.");
           return;
         }
-
-        // Direct fallback so valid users/testers are never blocked
-        const detectedRole =
-          cleanEmail.includes("teach") ||
-          cleanEmail.includes("instructor") ||
-          cleanEmail.includes("admin")
-            ? "teacher"
-            : "student";
-        establishDirectSession({
-          email: cleanEmail,
-          role: detectedRole,
+        const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: `${window.location.origin}/auth?mode=reset`,
         });
-        window.location.href = getRedirectRoute(detectedRole);
+        if (error) {
+          setMsg(error.message || "Could not send a password reset email. Please try again.");
+          return;
+        }
+        setMsgKind("success");
+        setMsg(
+          "If an account exists for that email, password reset instructions have been sent. Check your inbox and spam folder.",
+        );
+        return;
+      }
+
+      if (mode === "reset") {
+        if (password.length < 8) {
+          setMsg("Your new password must be at least 8 characters long.");
+          return;
+        }
+        if (password !== confirmPassword) {
+          setMsg("The passwords do not match.");
+          return;
+        }
+        const { error } = await supabase.auth.updateUser({ password });
+        if (error) {
+          setMsg(
+            error.message ||
+              "Could not update your password. Request a new reset link if necessary.",
+          );
+          return;
+        }
+        setMsgKind("success");
+        setMsg("Your password has been reset. You can now sign in with your new password.");
+        setPassword("");
+        setConfirmPassword("");
+        setMode("in");
+        return;
+      }
+
+      if (mode === "in") {
+        let authError: string | null = null;
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password,
+          });
+          if (!error && data?.session) {
+            const userMetaRole = (data.session.user.user_metadata?.role as string) || "student";
+            window.location.replace(getRedirectRoute(userMetaRole));
+            return;
+          }
+          if (error) authError = error.message;
+        } catch {
+          // Supabase unavailable; try built-in LMS auth
+        }
+
+        // Built-in LMS authentication fallback
+        const response = await fetch("/api/lms/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: cleanEmail, password }),
+          cache: "no-store",
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result?.session || !result?.user) {
+          setMsg(result?.error || authError || "Sign-in failed. Check your email and password.");
+          return;
+        }
+        const assignedRole = await handleLmsAuthSuccess(result);
+        window.location.replace(getRedirectRoute(assignedRole));
         return;
       } else {
-        const { data, error } = await supabase.auth.signUp({
-          email: cleanEmail,
-          password,
-          options: {
-            data: { display_name: name.trim() || cleanEmail.split("@")[0], role },
-          },
-        });
-
-        if (!error && data?.session) {
-          window.location.href = getRedirectRoute(role);
-          return;
+        let regError: string | null = null;
+        try {
+          const { data, error } = await supabase.auth.signUp({
+            email: cleanEmail,
+            password,
+            options: {
+              data: { display_name: name.trim() || cleanEmail.split("@")[0], role },
+            },
+          });
+          if (!error && data?.session) {
+            window.location.replace(getRedirectRoute(role));
+            return;
+          }
+          if (error) regError = error.message;
+        } catch {
+          // Supabase unavailable; try built-in LMS auth
         }
 
-        // Direct fallback so registration always starts session
-        establishDirectSession({
-          email: cleanEmail,
-          name: name.trim() || cleanEmail.split("@")[0],
-          role,
+        // Built-in LMS registration fallback
+        const response = await fetch("/api/lms/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: cleanEmail,
+            password,
+            metadata: { display_name: name.trim() || cleanEmail.split("@")[0], role },
+          }),
+          cache: "no-store",
         });
-        window.location.href = getRedirectRoute(role);
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result?.session || !result?.user) {
+          setMsg(result?.error || regError || "Registration failed. Please try again.");
+          return;
+        }
+        const assignedRole = await handleLmsAuthSuccess(result);
+        window.location.replace(getRedirectRoute(assignedRole || role));
         return;
       }
     } catch (err: unknown) {
       console.error("Auth submit error:", err);
-      try {
-        const targetRole =
-          role ||
-          (cleanEmail.includes("teach") || cleanEmail.includes("instructor")
-            ? "teacher"
-            : "student");
-        establishDirectSession({
-          email: cleanEmail,
-          name: name.trim() || cleanEmail.split("@")[0],
-          role: targetRole,
-        });
-        window.location.href = getRedirectRoute(targetRole);
-      } catch {
-        setMsg("Authentication failed.");
-      }
+      setMsg(err instanceof Error ? err.message : "Authentication failed. Please try again.");
     } finally {
       setBusy(false);
     }
   };
+
+  const signInDemo = async (email: string) => {
+    setBusy(true);
+    setMsg("");
+    setMsgKind("error");
+    try {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password: "password123",
+        });
+        if (!error && data?.session) {
+          const targetRole = data.session.user.user_metadata?.role as string;
+          window.location.replace(
+            targetRole === "teacher" || targetRole === "admin" ? "/teach" : "/",
+          );
+          return;
+        }
+      } catch {
+        // Fall back to LMS auth
+      }
+
+      const response = await fetch("/api/lms/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password: "password123" }),
+        cache: "no-store",
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.session || !result?.user) {
+        setMsg(
+          result?.error ||
+            "This demo account is not available. Please use Sign up or your own account.",
+        );
+        return;
+      }
+      const role = await handleLmsAuthSuccess(result);
+      window.location.replace(getRedirectRoute(role));
+    } catch (err: unknown) {
+      setMsg(err instanceof Error ? err.message : "Could not sign in to the demo account.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (checkingSession) {
+    return (
+      <div className="grid min-h-screen place-items-center bg-background px-4">
+        <p className="text-sm text-muted-foreground">Restoring your saved Skillbridge session…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="grid min-h-screen place-items-center bg-background px-4">
@@ -241,12 +374,22 @@ function AuthPage() {
           <span className="text-lg font-extrabold tracking-tight">skillbridge</span>
         </Link>
         <h1 className="text-xl font-extrabold">
-          {mode === "in" ? "Welcome back" : "Create your account"}
+          {mode === "in"
+            ? "Welcome back"
+            : mode === "up"
+              ? "Create your account"
+              : mode === "forgot"
+                ? "Reset your password"
+                : "Choose a new password"}
         </h1>
         <p className="mt-1 text-xs text-muted-foreground">
           {mode === "in"
             ? "Sign in directly with your email and password."
-            : "Sign up as a student or teacher to get started."}
+            : mode === "up"
+              ? "Sign up as a student or teacher to get started."
+              : mode === "forgot"
+                ? "Enter your account email and we’ll send you a reset link."
+                : "Choose a new password with at least 8 characters."}
         </p>
         <div className="mt-5 space-y-3">
           {mode === "up" && (
@@ -271,103 +414,159 @@ function AuthPage() {
               />
             </>
           )}
-          <Input
-            type="email"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            autoComplete="email"
-          />
-          <Input
-            type="password"
-            placeholder="Password (min 6 characters)"
-            minLength={6}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            autoComplete={mode === "in" ? "current-password" : "new-password"}
-          />
+          {mode !== "reset" && (
+            <Input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+            />
+          )}
+          {(mode === "in" || mode === "up" || mode === "reset") && (
+            <Input
+              type="password"
+              placeholder={
+                mode === "reset" ? "New password (min 8 characters)" : "Password (min 6 characters)"
+              }
+              minLength={mode === "reset" ? 8 : 6}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete={mode === "in" ? "current-password" : "new-password"}
+            />
+          )}
+          {mode === "reset" && (
+            <Input
+              type="password"
+              placeholder="Confirm new password"
+              minLength={8}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+            />
+          )}
+          {mode === "in" && (
+            <div className="flex justify-end -mt-1">
+              <button
+                type="button"
+                className="text-xs font-semibold text-primary hover:underline cursor-pointer"
+                onClick={() => {
+                  setMsg("");
+                  setMsgKind("error");
+                  setMode("forgot");
+                }}
+              >
+                Forgot password?
+              </button>
+            </div>
+          )}
         </div>
 
         {msg && (
-          <div className="mt-4 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs font-medium text-destructive">
-            <AlertCircle className="size-4 shrink-0 text-destructive" />
+          <div
+            role="status"
+            className={`mt-4 flex items-center gap-2 rounded-md border p-3 text-xs font-medium ${msgKind === "success" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border-destructive/30 bg-destructive/10 text-destructive"}`}
+          >
+            {msgKind === "success" ? (
+              <CheckCircle2 className="size-4 shrink-0" />
+            ) : (
+              <AlertCircle className="size-4 shrink-0" />
+            )}
             <span>{msg}</span>
           </div>
         )}
 
         <Button type="submit" variant="chrome" className="mt-5 w-full" disabled={busy}>
-          {busy ? "Signing in…" : mode === "in" ? "Sign in" : "Sign up"}
+          {busy
+            ? mode === "forgot"
+              ? "Sending reset link…"
+              : mode === "reset"
+                ? "Updating password…"
+                : mode === "up"
+                  ? "Creating account…"
+                  : "Signing in…"
+            : mode === "in"
+              ? "Sign in"
+              : mode === "up"
+                ? "Sign up"
+                : mode === "forgot"
+                  ? "Send reset link"
+                  : "Update password"}
         </Button>
-        <button
-          type="button"
-          className="mt-4 w-full text-sm text-primary hover:underline cursor-pointer"
-          onClick={() => {
-            setMode(mode === "in" ? "up" : "in");
-            setMsg("");
-          }}
-        >
-          {mode === "in" ? "New here? Create an account" : "Already have an account? Sign in"}
-        </button>
+        {mode === "in" || mode === "up" ? (
+          <button
+            type="button"
+            className="mt-4 w-full text-sm text-primary hover:underline cursor-pointer"
+            onClick={() => {
+              setMode(mode === "in" ? "up" : "in");
+              setMsg("");
+              setMsgKind("error");
+            }}
+          >
+            {mode === "in" ? "New here? Create an account" : "Already have an account? Sign in"}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="mt-4 w-full text-sm text-primary hover:underline cursor-pointer"
+            onClick={() => {
+              setMode("in");
+              setMsg("");
+              setMsgKind("error");
+              setPassword("");
+              setConfirmPassword("");
+            }}
+          >
+            Back to sign in
+          </button>
+        )}
 
-        <div className="mt-6 border-t border-border pt-4">
-          <p className="text-center text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-2">
-            Instant Demo Access
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-xs"
-              onClick={() => {
-                establishDirectSession({
-                  id: "00000000-0000-4000-a000-000000000001",
-                  email: "student@skillbridge.edu",
-                  name: "Alex Learner",
-                  role: "student",
-                });
-                window.location.href = "/";
-              }}
-            >
-              🎓 Demo Student
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-xs"
-              onClick={() => {
-                establishDirectSession({
-                  id: "8d95e694-3d47-422e-a017-86a1a0ee1251",
-                  email: "instructor@skillbridge.edu",
-                  name: "Sarah Chen",
-                  role: "teacher",
-                });
-                window.location.href = "/teach";
-              }}
-            >
-              👨‍🏫 Demo Instructor
-            </Button>
-          </div>
-          <div className="mt-3 text-center text-[11px] text-muted-foreground space-y-0.5">
-            <div>
-              Student:{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
-                student@skillbridge.edu
-              </code>{" "}
-              / <code className="rounded bg-muted px-1 py-0.5 text-[10px]">password123</code>
+        {(mode === "in" || mode === "up") && (
+          <div className="mt-6 border-t border-border pt-4">
+            <p className="text-center text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-2">
+              Instant Demo Access
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={() => void signInDemo("student@skillbridge.edu")}
+              >
+                🎓 Demo Student
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={() => void signInDemo("instructor@skillbridge.edu")}
+              >
+                👨‍🏫 Demo Instructor
+              </Button>
             </div>
-            <div>
-              Instructor:{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
-                instructor@skillbridge.edu
-              </code>{" "}
-              / <code className="rounded bg-muted px-1 py-0.5 text-[10px]">password123</code>
+            <div className="mt-3 text-center text-[11px] text-muted-foreground space-y-0.5">
+              <div>
+                Student:{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+                  student@skillbridge.edu
+                </code>{" "}
+                / <code className="rounded bg-muted px-1 py-0.5 text-[10px]">password123</code>
+              </div>
+              <div>
+                Instructor:{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+                  instructor@skillbridge.edu
+                </code>{" "}
+                / <code className="rounded bg-muted px-1 py-0.5 text-[10px]">password123</code>
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </form>
     </div>
   );

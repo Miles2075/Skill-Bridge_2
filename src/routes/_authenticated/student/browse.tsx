@@ -192,8 +192,22 @@ function BrowseCoursesPage() {
                 key={course.id}
                 className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
               >
-                <div className="flex h-32 items-center justify-center bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-700 text-white">
-                  <BookOpen className="size-12 opacity-80" />
+                <div className="h-32 overflow-hidden bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-700">
+                  {course.thumbnail ? (
+                    <img
+                      src={course.thumbnail}
+                      alt={`${course.title} course cover`}
+                      className="h-full w-full object-cover"
+                      loading="lazy"
+                      onError={(event) => {
+                        event.currentTarget.style.display = "none";
+                      }}
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-white">
+                      <BookOpen className="size-12 opacity-80" />
+                    </div>
+                  )}
                 </div>
                 <div className="p-5">
                   <h2 className="font-semibold leading-snug text-slate-900">{course.title}</h2>

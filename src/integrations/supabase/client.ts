@@ -41,7 +41,7 @@ export interface LocalAuthSession {
 }
 
 type AuthChangeCallback = (
-  event: "SIGNED_IN" | "SIGNED_OUT" | "TOKEN_REFRESHED" | "INITIAL_SESSION",
+  event: "SIGNED_IN" | "SIGNED_OUT" | "TOKEN_REFRESHED" | "INITIAL_SESSION" | "USER_UPDATED",
   session: LocalAuthSession | null,
 ) => void;
 
@@ -91,12 +91,14 @@ function saveStoredSession(session: LocalAuthSession | null) {
         id: session.user.id,
         email: session.user.email || "",
         user_metadata: {
+          ...session.user.user_metadata,
           display_name:
             session.user.user_metadata?.display_name ||
             session.user.email?.split("@")[0] ||
             "Learner",
           email: session.user.email || "",
           role,
+          avatar_url: session.user.user_metadata?.avatar_url,
         },
         created_at: session.user.created_at,
         updated_at: session.user.updated_at,
@@ -270,7 +272,7 @@ class LocalSupabaseAuth {
   }
 
   private notifyListeners(
-    event: "SIGNED_IN" | "SIGNED_OUT" | "TOKEN_REFRESHED" | "INITIAL_SESSION",
+    event: "SIGNED_IN" | "SIGNED_OUT" | "TOKEN_REFRESHED" | "INITIAL_SESSION" | "USER_UPDATED",
     session: LocalAuthSession | null,
   ) {
     for (const listener of this.listeners) {
@@ -346,35 +348,16 @@ class LocalSupabaseAuth {
       this.notifyListeners("SIGNED_IN", authSession);
 
       return { data: { user: authUser, session: authSession }, error: null };
-    } catch {
-      const email = credentials.email.trim().toLowerCase();
-      const role =
-        email.includes("teach") || email.includes("instructor") || email.includes("admin")
-          ? "teacher"
-          : "student";
-      const displayName = email.split("@")[0] || "Learner";
-      const fallbackUser: LocalAuthUser = {
-        id: "usr_" + Math.random().toString(36).slice(2),
-        aud: "authenticated",
-        role: "authenticated",
-        email,
-        email_confirmed_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        app_metadata: { provider: "email", providers: ["email"] },
-        user_metadata: { role, display_name: displayName, email },
+    } catch (err: unknown) {
+      return {
+        data: { user: null, session: null },
+        error: {
+          message:
+            err instanceof Error
+              ? err.message
+              : "Unable to reach the login service. Please try again.",
+        },
       };
-      const fallbackSession: LocalAuthSession = {
-        access_token: `sb_local_${Date.now()}`,
-        token_type: "bearer",
-        expires_in: 86400 * 30,
-        expires_at: Math.floor(Date.now() / 1000) + 86400 * 30,
-        refresh_token: `sb_ref_${Date.now()}`,
-        user: fallbackUser,
-      };
-      saveStoredSession(fallbackSession);
-      this.notifyListeners("SIGNED_IN", fallbackSession);
-      return { data: { user: fallbackUser, session: fallbackSession }, error: null };
     }
   }
 
@@ -440,36 +423,124 @@ class LocalSupabaseAuth {
       this.notifyListeners("SIGNED_IN", authSession);
 
       return { data: { user: authUser, session: authSession }, error: null };
-    } catch {
-      const email = params.email.trim().toLowerCase();
-      const role =
-        (params.options?.data?.["role"] as "student" | "teacher" | "admin") ||
-        (email.includes("teach") || email.includes("instructor") ? "teacher" : "student");
-      const displayName =
-        (params.options?.data?.["display_name"] as string) || email.split("@")[0] || "Learner";
-      const fallbackUser: LocalAuthUser = {
-        id: "usr_" + Math.random().toString(36).slice(2),
-        aud: "authenticated",
-        role: "authenticated",
-        email,
-        email_confirmed_at: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        app_metadata: { provider: "email", providers: ["email"] },
-        user_metadata: { role, display_name: displayName, email },
+    } catch (err: unknown) {
+      return {
+        data: { user: null, session: null },
+        error: {
+          message:
+            err instanceof Error
+              ? err.message
+              : "Unable to reach the registration service. Please try again.",
+        },
       };
-      const fallbackSession: LocalAuthSession = {
-        access_token: `sb_local_${Date.now()}`,
-        token_type: "bearer",
-        expires_in: 86400 * 30,
-        expires_at: Math.floor(Date.now() / 1000) + 86400 * 30,
-        refresh_token: `sb_ref_${Date.now()}`,
-        user: fallbackUser,
-      };
-      saveStoredSession(fallbackSession);
-      this.notifyListeners("SIGNED_IN", fallbackSession);
-      return { data: { user: fallbackUser, session: fallbackSession }, error: null };
     }
+  }
+
+  async resetPasswordForEmail(
+    email: string,
+    _options?: { redirectTo?: string },
+  ): Promise<{
+    data: Record<string, never>;
+    error: { message: string } | null;
+  }> {
+    try {
+      const response = await fetch("/api/lms/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || result?.error) {
+        return {
+          data: {},
+          error: { message: result?.error || "Could not request a password reset." },
+        };
+      }
+      return { data: {}, error: null };
+    } catch {
+      return {
+        data: {},
+        error: { message: "Unable to reach the password reset service. Please try again." },
+      };
+    }
+  }
+
+  async updateUser(attributes: { data?: Record<string, unknown>; password?: string }): Promise<{
+    data: { user: LocalAuthUser | null };
+    error: { message: string } | null;
+  }> {
+    // Password-reset links for the local LMS adapter carry a short-lived token
+    // in the URL instead of an authenticated session.
+    if (attributes.password !== undefined) {
+      const resetToken =
+        typeof window !== "undefined"
+          ? new URLSearchParams(window.location.search).get("token")
+          : null;
+      if (!resetToken) {
+        return {
+          data: { user: null },
+          error: {
+            message: "Open the password reset link from your email to choose a new password.",
+          },
+        };
+      }
+      try {
+        const response = await fetch("/api/lms/auth/reset-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: resetToken, password: attributes.password }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || result?.error) {
+          return {
+            data: { user: null },
+            error: { message: result?.error || "This password reset link is invalid or expired." },
+          };
+        }
+
+        // The backend revokes all old sessions when the password is reset.
+        saveStoredSession(null);
+        this.notifyListeners("SIGNED_OUT", null);
+        const cleanUrl = new URL(window.location.href);
+        cleanUrl.searchParams.delete("token");
+        cleanUrl.searchParams.delete("mode");
+        cleanUrl.hash = "";
+        window.history.replaceState({}, "", `${cleanUrl.pathname}${cleanUrl.search}`);
+        return { data: { user: null }, error: null };
+      } catch {
+        return {
+          data: { user: null },
+          error: { message: "Unable to reset the password right now. Please try again." },
+        };
+      }
+    }
+
+    const session = getStoredSession();
+    if (!session?.user) {
+      return {
+        data: { user: null },
+        error: { message: "You must be signed in to update your profile." },
+      };
+    }
+
+    const updatedUser: LocalAuthUser = {
+      ...session.user,
+      user_metadata: {
+        ...session.user.user_metadata,
+        ...(attributes.data || {}),
+      },
+      updated_at: new Date().toISOString(),
+    };
+    const updatedSession: LocalAuthSession = {
+      ...session,
+      user: updatedUser,
+    };
+
+    // Persist the merged metadata in the browser session and notify auth hooks
+    // so the avatar/name update immediately across the app.
+    saveStoredSession(updatedSession);
+    this.notifyListeners("USER_UPDATED", updatedSession);
+    return { data: { user: updatedUser }, error: null };
   }
 
   async signOut(): Promise<{ error: null }> {
@@ -522,7 +593,7 @@ const localSupabase = {
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-export const supabase: any =
+export const supabase: ReturnType<typeof createClient> =
   supabaseUrl && supabaseAnonKey
     ? createClient(supabaseUrl, supabaseAnonKey, {
         auth: {
@@ -531,4 +602,4 @@ export const supabase: any =
           detectSessionInUrl: true,
         },
       })
-    : localSupabase;
+    : (localSupabase as unknown as ReturnType<typeof createClient>);

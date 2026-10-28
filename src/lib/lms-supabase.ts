@@ -7,7 +7,9 @@ export type Course = {
   teacher_id: string | null;
   price_inr: number;
   preview_minutes: number;
+  thumbnail: string;
   video_url: string;
+  video_urls?: string[];
   updated_at: string;
   status?: "published" | "draft" | "review";
 };
@@ -52,7 +54,9 @@ function toCourse(course: ClientCourse): Course {
     teacher_id: course.teacher_id,
     price_inr: course.price_inr,
     preview_minutes: course.preview_minutes,
-    video_url: course.video_url,
+    thumbnail: course.thumbnail || "",
+    video_url: course.video_url || course.video_urls?.[0] || "",
+    video_urls: Array.isArray(course.video_urls) ? course.video_urls : course.video_url ? [course.video_url] : [],
     updated_at: new Date().toISOString(),
     status: course.status,
   };

@@ -1,0 +1,29 @@
+import { BookOpen, Brain, Sparkles, Target } from "lucide-react";
+import type { StudentDashboardData } from "@/lib/lms-client";
+type Props = { data: StudentDashboardData };
+const groups = [
+ { name:"Frontend & UI", description:"Interfaces, web development, and modern frontend tools", match:/react|frontend|typescript|javascript|ui|web development/i },
+ { name:"Data Structures & Logic", description:"Structured problem solving and code reasoning", match:/dsa|data structure|algorithm|problem.solv|programming/i },
+ { name:"Systems & Architecture", description:"How software components work together", match:/system design|architecture|database|cloud|devops|scalab/i },
+ { name:"Engineering Practice", description:"Applying concepts through implementation and delivery", match:/project|performance|design pattern|engineering|development/i },
+];
+const clamp=(n:number)=>Math.max(0,Math.min(100,Math.round(n)));
+export function SkillDNAView({data}:Props){
+ const skills=groups.map(g=>{
+  const courses=(data.enrolledCourses||[]).filter(c=>g.match.test(c.title+" "+c.slug+" "+c.description));
+  const grades=(data.grades||[]).filter(x=>g.match.test(x.course+" "+x.title));
+  const quizzes=(data.studentQuizzes||[]).filter(x=>g.match.test(x.course+" "+x.title)&&x.bestScore!==null);
+  const signals=[...courses.map(c=>clamp(c.progress||0)),...grades.map(x=>clamp(x.percentage??(x.maxScore?x.score/x.maxScore*100:0))),...quizzes.map(x=>clamp(x.bestScore||0))];
+  return {...g,courses,grades,score:signals.length?clamp(signals.reduce((a,b)=>a+b,0)/signals.length):null,count:signals.length};
+ }).filter(x=>x.courses.length||x.grades.length||(data.studentQuizzes||[]).some(q=>x.match.test(q.course+" "+q.title)));
+ const evidence=skills.reduce((n,s)=>n+s.count,0);
+ const scored=skills.filter(s=>s.score!==null);
+ const avg=scored.length?clamp(scored.reduce((n,s)=>n+(s.score||0),0)/scored.length):null;
+ return <div className="space-y-6">
+  <section className="rounded-2xl bg-gradient-to-br from-violet-950 via-purple-900 to-fuchsia-800 p-6 text-white sm:p-8"><span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs"><Sparkles className="size-4"/> SKILL DNA</span><div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><h1 className="text-2xl font-bold sm:text-3xl">Your skills, backed by evidence.</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-violet-100">A living snapshot based on course progress, graded assignments, and quiz results—not just time spent watching lessons.</p></div><div className="rounded-xl border border-white/15 bg-white/10 p-4"><p className="text-xs text-violet-100">Evidence signals</p><p className="text-3xl font-bold">{evidence}</p></div></div></section>
+  <div className="grid gap-4 sm:grid-cols-3"><div className="rounded-xl border border-border bg-card p-5"><BookOpen className="size-5 text-violet-600"/><p className="mt-3 text-2xl font-bold text-foreground">{skills.length}</p><p className="text-xs text-muted-foreground">Skill areas with evidence</p></div><div className="rounded-xl border border-border bg-card p-5"><Target className="size-5 text-teal-600"/><p className="mt-3 text-2xl font-bold text-foreground">{avg===null?"—":avg+"%"}</p><p className="text-xs text-muted-foreground">Average signal, not certification</p></div><div className="rounded-xl border border-border bg-card p-5"><Brain className="size-5 text-amber-600"/><p className="mt-3 text-sm font-semibold text-foreground">Next move: add evidence</p><p className="mt-1 text-xs text-muted-foreground">Complete a quiz or submit an assignment to strengthen your profile.</p></div></div>
+  <section className="rounded-2xl border border-border bg-card p-5 sm:p-6"><h2 className="font-bold text-foreground">Your skill map</h2><p className="mt-1 text-xs text-muted-foreground">Areas without enough evidence are left unscored instead of guessed.</p>
+   {skills.length?<div className="mt-5 grid gap-4 md:grid-cols-2">{skills.map(s=><article key={s.name} className="rounded-xl border border-border p-4"><div className="flex items-start justify-between gap-3"><div><h3 className="text-sm font-semibold text-foreground">{s.name}</h3><p className="mt-1 text-xs text-muted-foreground">{s.description}</p></div><span className="text-lg font-bold text-foreground">{s.score===null?"—":s.score+"%"}</span></div><div className="mt-4 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-500" style={{width:(s.score||0)+"%"}}/></div><div className="mt-2 flex justify-between text-[11px] text-muted-foreground"><span>{s.count} evidence signals</span><span>{s.score===null?"Not enough evidence":s.score>=80?"Strong current signal":s.score>=55?"Developing":"Needs practice"}</span></div><div className="mt-3 flex flex-wrap gap-2">{s.courses.map(c=><span key={c.id} className="rounded-md bg-muted px-2 py-1 text-[11px] text-muted-foreground">{c.title}</span>)}{s.grades.slice(0,2).map(g=><span key={g.id} className="rounded-md bg-teal-500/10 px-2 py-1 text-[11px] text-teal-700 dark:text-teal-300">{g.title}</span>)}</div></article>)}</div>:<div className="py-12 text-center"><BookOpen className="mx-auto size-8 text-muted-foreground"/><h3 className="mt-3 text-sm font-semibold text-foreground">Your skill map is ready to grow</h3><p className="mx-auto mt-1 max-w-md text-xs text-muted-foreground">Enroll in a course and complete lessons, quizzes, or graded assignments to start building your profile.</p></div>}
+  </section><p className="text-[11px] leading-5 text-muted-foreground">Transparency note: scores are inferred from available course titles and performance records. They guide practice; they do not certify proficiency or determine hiring outcomes.</p>
+ </div>
+}

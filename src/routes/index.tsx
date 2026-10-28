@@ -155,11 +155,11 @@ const initialCourses: Course[] = [
     nextLesson: "1. Advanced Type Narrowing",
     level: "Advanced",
     hours: 18,
-    rating: 4.8,
-    reviews: "12,480",
-    learners: "48,210",
+    rating: 0,
+    reviews: "0",
+    learners: "0",
     category: "Web Development",
-    bestseller: true,
+    bestseller: false,
     image: tsThumb,
   },
   {
@@ -174,9 +174,9 @@ const initialCourses: Course[] = [
     nextLesson: "1. Profiling Renders with React DevTools",
     level: "Intermediate",
     hours: 16,
-    rating: 4.7,
-    reviews: "8,932",
-    learners: "31,764",
+    rating: 0,
+    reviews: "0",
+    learners: "0",
     category: "Web Development",
     image: reactThumb,
   },
@@ -192,11 +192,11 @@ const initialCourses: Course[] = [
     nextLesson: "1. High Availability & Load Balancing Strategies",
     level: "Intermediate",
     hours: 20,
-    rating: 4.9,
-    reviews: "15,207",
-    learners: "62,905",
+    rating: 0,
+    reviews: "0",
+    learners: "0",
     category: "Software Architecture",
-    bestseller: true,
+    bestseller: false,
     image: systemThumb,
   },
   {
@@ -211,23 +211,15 @@ const initialCourses: Course[] = [
     nextLesson: "1. Arrays & Dynamic Resizing",
     level: "Intermediate",
     hours: 24,
-    rating: 4.6,
-    reviews: "21,338",
-    learners: "84,120",
+    rating: 0,
+    reviews: "0",
+    learners: "0",
     category: "Computer Science",
     image: dsaThumb,
   },
 ];
 
 const courses: Course[] = initialCourses;
-
-const categories = [
-  "Web Development",
-  "Software Architecture",
-  "Computer Science",
-  "Data Science",
-  "Cloud & DevOps",
-];
 
 const assignments = [
   {
@@ -349,7 +341,7 @@ function useCommerceState(
               ...c,
               progress: enr.progress,
               lessonsDone: enr.lessonsDone,
-              lessonsTotal: enr.lessonsTotal || c.lessonsTotal || 3,
+              lessonsTotal: enr.lessonsTotal ?? c.lessonsTotal ?? 0,
               nextLesson: enr.nextLesson,
               certificateId: enr.certificateId || undefined,
             };
@@ -358,7 +350,7 @@ function useCommerceState(
             ...c,
             progress: 0,
             lessonsDone: 0,
-            lessonsTotal: c.lessonsTotal || 3,
+            lessonsTotal: c.lessonsTotal ?? 0,
             certificateId: undefined,
           };
         }),
@@ -388,14 +380,12 @@ function useCommerceState(
       };
 
       const dynamicCourses: Course[] = publishedCourses.map((course: ClientCourse) => {
+        // A video URL is not a lecture. Lecture totals must come exclusively
+        // from persisted lesson records returned by the LMS API.
         const totalLectures =
-          course.lessons_count && course.lessons_count > 0
-            ? course.lessons_count
-            : course.video_urls && course.video_urls.length > 0
-              ? course.video_urls.length
-              : course.video_url
-                ? 1
-                : 3;
+          typeof course.lessons_count === "number" && Number.isFinite(course.lessons_count)
+            ? Math.max(0, course.lessons_count)
+            : 0;
 
         return {
           id: course.id,
@@ -409,12 +399,17 @@ function useCommerceState(
           nextLesson: "Start your first lesson",
           level: course.level || "Intermediate",
           hours: course.hours || 10,
-          rating: course.rating || 5,
+          rating: course.rating ?? 0,
           reviews: course.reviews || "0",
           learners: course.learners || "0",
           category: course.category || "Development",
-          // Prefer bundled assets for built-in courses; API thumbnails may be legacy root-relative paths.
-          image: imageForSlug(course.slug),
+          // Use the saved instructor-uploaded thumbnail for custom courses. Only fall back
+          // to bundled artwork for missing or legacy built-in image paths.
+          image: (() => {
+            const thumbnail = typeof course.thumbnail === "string" ? course.thumbnail.trim() : "";
+            const isLegacyBuiltinPath = /^\/?course-(typescript|react|system-design|dsa)\.jpg$/i.test(thumbnail);
+            return thumbnail && !isLegacyBuiltinPath ? thumbnail : imageForSlug(course.slug);
+          })(),
           bestseller: course.bestseller,
           video_url: course.video_url || "",
           video_urls:
@@ -447,7 +442,7 @@ function useCommerceState(
               ...c,
               progress: existing.progress,
               lessonsDone: existing.lessonsDone,
-              lessonsTotal: c.lessonsTotal || existing.lessonsTotal || 3,
+              lessonsTotal: c.lessonsTotal ?? existing.lessonsTotal ?? 0,
               nextLesson: existing.nextLesson,
               certificateId: existing.certificateId,
             };
@@ -642,8 +637,13 @@ function PriceTag({ course }: { course: Course }) {
 }
 
 function Stars({ rating, reviews }: { rating: number; reviews?: string }) {
+  const reviewCount = Number(String(reviews ?? "0").replace(/[^0-9]/g, "")) || 0;
+  if (reviewCount === 0) {
+    return <span className="text-xs text-muted-foreground">No reviews yet</span>;
+  }
+
   return (
-    <div className="flex items-center gap-1.5 text-xs">
+    <div className="flex items-center gap-1.5 text-xs" aria-label={`Rated ${rating.toFixed(1)} out of 5 from ${reviewCount} reviews`}>
       <span className="font-bold text-orange">{rating.toFixed(1)}</span>
       <span className="flex">
         {[1, 2, 3, 4, 5].map((i) => (
@@ -653,7 +653,7 @@ function Stars({ rating, reviews }: { rating: number; reviews?: string }) {
           />
         ))}
       </span>
-      {reviews && <span className="text-muted-foreground">({reviews})</span>}
+      <span className="text-muted-foreground">({reviewCount.toLocaleString()})</span>
     </div>
   );
 }
@@ -717,7 +717,7 @@ function MyLearning({
             const isCompleted = course.progress >= 100;
             return (
               <div
-                key={course.slug}
+                key={course.id || course.slug}
                 className="overflow-hidden rounded-xl border border-border bg-card shadow-sm hover:shadow-md transition-shadow"
               >
                 <div
@@ -745,8 +745,8 @@ function MyLearning({
                   <div className="mt-4">
                     <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
                       <span>
-                        {Math.min(course.lessonsDone, course.lessonsTotal || 3)} of{" "}
-                        {course.lessonsTotal || 3} lectures
+                        {Math.min(course.lessonsDone, course.lessonsTotal ?? 0)} of{" "}
+                        {course.lessonsTotal ?? 0} lectures
                       </span>
                       <span className="font-bold text-foreground">{course.progress}%</span>
                     </div>
@@ -792,6 +792,7 @@ function MyLearning({
 
 function Skillbridge() {
   const [view, setView] = useState<StudentView>("dashboard");
+  const [selectedCourseCategory, setSelectedCourseCategory] = useState("All");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -846,6 +847,17 @@ function Skillbridge() {
   };
 
   const commerce = useCommerceState(notify);
+  const courseCategories = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          commerce.courses
+            .map((course) => course.category?.trim())
+            .filter((category): category is string => Boolean(category)),
+        ),
+      ).sort((a, b) => a.localeCompare(b)),
+    [commerce.courses],
+  );
 
   useEffect(() => {
     if (typeof window !== "undefined" && commerce.courses?.length) {
@@ -871,6 +883,8 @@ function Skillbridge() {
         avatarUrl={commerce.avatarUrl}
         user={commerce.user}
         signOut={commerce.signOut}
+        categories={courseCategories}
+        onSelectCategory={setSelectedCourseCategory}
       >
         {view === "dashboard" && (
           <Dashboard
@@ -883,7 +897,14 @@ function Skillbridge() {
             }}
           />
         )}
-        {view === "courses" && <Courses openPlayer={setPlayer} />}
+        {view === "courses" && (
+          <Courses
+            openPlayer={setPlayer}
+            categories={courseCategories}
+            selectedCategory={selectedCourseCategory}
+            onCategoryChange={setSelectedCourseCategory}
+          />
+        )}
         {view === "my-learning" && (
           <MyLearning
             openPlayer={setPlayer}
@@ -1048,7 +1069,7 @@ function CourseCard({
           <Stars rating={course.rating} reviews={course.reviews} />
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          {course.hours} total hours · {course.lessonsTotal || 3} lectures · {course.level}
+          {course.hours} total hours · {course.lessonsTotal ?? 0} lectures · {course.level}
         </p>
         <div className="mt-2">
           <PriceTag course={course} />
@@ -1066,7 +1087,7 @@ function CourseCard({
         <div className="mt-4">
           <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
             <span>
-              {Math.min(course.lessonsDone, course.lessonsTotal || 3)} of {course.lessonsTotal || 3}{" "}
+              {Math.min(course.lessonsDone, course.lessonsTotal ?? 0)} of {course.lessonsTotal ?? 0}{" "}
               lectures
             </span>
             <span className="font-semibold text-foreground">{course.progress}% complete</span>
@@ -1163,7 +1184,7 @@ function Dashboard({
 
   return (
     <>
-      <section className="mb-6 overflow-hidden rounded-lg bg-violet text-white">
+      <section className="mb-6 overflow-hidden rounded-lg bg-gradient-to-br from-indigo-700 via-violet-600 to-fuchsia-500 text-white shadow-lg shadow-violet-500/20">
         <div className="flex flex-col gap-6 p-6 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-white/70">
@@ -1230,8 +1251,8 @@ function Dashboard({
             <div className="mt-6">
               <div className="mb-1.5 flex justify-between text-xs text-muted-foreground">
                 <span>
-                  {Math.min(current.lessonsDone, current.lessonsTotal || 3)} of{" "}
-                  {current.lessonsTotal || 3} lectures complete
+                  {Math.min(current.lessonsDone, current.lessonsTotal ?? 0)} of{" "}
+                  {current.lessonsTotal ?? 0} lectures complete
                 </span>
                 <span className="font-semibold text-foreground">{current.progress}%</span>
               </div>
@@ -1332,7 +1353,7 @@ function Dashboard({
         </div>
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {courses.slice(1).map((course) => (
-            <CourseCard key={course.title} course={course} openPlayer={openPlayer} compact />
+            <CourseCard key={course.id || course.slug} course={course} openPlayer={openPlayer} compact />
           ))}
         </div>
       </section>
@@ -1340,10 +1361,19 @@ function Dashboard({
   );
 }
 
-function Courses({ openPlayer }: { openPlayer: (course: Course) => void }) {
+function Courses({
+  openPlayer,
+  categories,
+  selectedCategory,
+  onCategoryChange,
+}: {
+  openPlayer: (course: Course) => void;
+  categories: string[];
+  selectedCategory: string;
+  onCategoryChange: (category: string) => void;
+}) {
   const { courses } = useCommerce();
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState("All");
   const shown = useMemo(
     () =>
       courses.filter(
@@ -1351,9 +1381,9 @@ function Courses({ openPlayer }: { openPlayer: (course: Course) => void }) {
           `${course.title} ${course.description} ${course.instructor}`
             .toLowerCase()
             .includes(query.toLowerCase()) &&
-          (category === "All" || course.category === category),
+          (selectedCategory === "All" || course.category === selectedCategory),
       ),
-    [query, category, courses],
+    [query, selectedCategory, courses],
   );
   return (
     <>
@@ -1375,8 +1405,8 @@ function Courses({ openPlayer }: { openPlayer: (course: Course) => void }) {
           {["All", ...categories].map((item) => (
             <button
               key={item}
-              onClick={() => setCategory(item)}
-              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${category === item ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:bg-secondary"}`}
+              onClick={() => onCategoryChange(item)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${selectedCategory === item ? "border-primary bg-primary/10 text-primary" : "border-border bg-card text-muted-foreground hover:bg-secondary"}`}
             >
               {item}
             </button>
@@ -1390,7 +1420,7 @@ function Courses({ openPlayer }: { openPlayer: (course: Course) => void }) {
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
           {shown.map((course) => (
-            <CourseCard key={course.title} course={course} openPlayer={openPlayer} />
+            <CourseCard key={course.id || course.slug} course={course} openPlayer={openPlayer} />
           ))}
         </div>
       )}
@@ -1570,7 +1600,7 @@ function Assessments({ open }: { open: () => void }) {
       />
       <div className="grid gap-5 sm:grid-cols-2">
         {courses.map((course, index) => (
-          <article key={course.title} className="rounded-lg border border-border bg-card p-5">
+          <article key={course.id || course.slug} className="rounded-lg border border-border bg-card p-5">
             <div className="flex items-center justify-between">
               <span className="grid size-9 place-items-center rounded-md bg-primary/10 text-primary">
                 <Target className="size-4" />
@@ -1715,14 +1745,14 @@ function Certificates({ onOpenCert }: { onOpenCert: (course: Course) => void }) 
         <h2 className="mb-4 text-base font-bold text-foreground">Courses in Progress</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           {inProgressCourses.map((course) => (
-            <div key={course.title} className="rounded-xl border border-border bg-card p-5">
+            <div key={course.id || course.slug} className="rounded-xl border border-border bg-card p-5">
               <div className="flex items-center justify-between">
                 <h3 className="font-bold text-foreground">{course.title}</h3>
                 <span className="text-xs font-bold text-primary">{course.progress}%</span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                {Math.min(course.lessonsDone, course.lessonsTotal || 3)} of{" "}
-                {course.lessonsTotal || 3} lessons completed
+                {Math.min(course.lessonsDone, course.lessonsTotal ?? 0)} of{" "}
+                {course.lessonsTotal ?? 0} lessons completed
               </p>
               <div className="mt-3">
                 <Progress value={course.progress} />
