@@ -133,8 +133,6 @@ function StudentDashboardPage() {
   }, []);
 
   const switchView = (v: StudentNavView) => {
-    // The standalone assignments page has been retired; keep legacy dashboard links safe.
-    if (v === "assignments") v = "dashboard";
     setCurrentView(v);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
@@ -1350,6 +1348,101 @@ function StudentDashboardPage() {
                 ))}
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* VIEW: ASSIGNMENTS — USE THE EXISTING STUDENT DASHBOARD SHELL */}
+      {currentView === "assignments" && (
+        <div className="space-y-6 text-foreground">
+          <div className="flex flex-col justify-between gap-3 border-b border-border pb-4 sm:flex-row sm:items-center">
+            <div>
+              <h1 className="text-xl font-extrabold">My Assignments</h1>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Work published by your instructors for courses you are enrolled in.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => void loadDashboard(true)} className="cursor-pointer">
+              <Clock className="mr-2 size-3.5" /> Refresh assignments
+            </Button>
+          </div>
+
+          {feedbackMsg && (
+            <div role="status" className={`rounded-xl border p-3 text-xs ${feedbackMsg.error ? "border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-300" : "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"}`}>
+              {feedbackMsg.text}
+            </div>
+          )}
+
+          {loading ? (
+            <div className="rounded-2xl border border-border p-8 text-center text-xs text-muted-foreground">
+              <Loader2 className="mx-auto mb-2 size-5 animate-spin" /> Loading your assignments…
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <p className="text-xs text-muted-foreground">Total assignments</p>
+                  <p className="mt-1 text-2xl font-bold">{upcomingAssignments.length}</p>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <p className="text-xs text-muted-foreground">Ready to submit</p>
+                  <p className="mt-1 text-2xl font-bold">{upcomingAssignments.filter((a) => a.submissionStatus === "unsubmitted" || a.submissionStatus === "resubmission_required").length}</p>
+                </div>
+                <div className="rounded-xl border border-border bg-card p-4">
+                  <p className="text-xs text-muted-foreground">Submitted for review</p>
+                  <p className="mt-1 text-2xl font-bold">{upcomingAssignments.filter((a) => a.submissionStatus === "pending" || a.submissionStatus === "approved").length}</p>
+                </div>
+              </div>
+
+              {upcomingAssignments.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-border bg-card p-8 text-center">
+                  <FileText className="mx-auto mb-3 size-6 text-muted-foreground" />
+                  <h2 className="text-sm font-bold">No assignments available yet</h2>
+                  <p className="mx-auto mt-1 max-w-xl text-xs text-muted-foreground">
+                    Assignments published for your enrolled courses will appear here. If you believe an assignment is missing, refresh the page or check your course enrollment.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {upcomingAssignments.map((assignment) => {
+                    const submitted = assignment.submissionStatus === "pending" || assignment.submissionStatus === "approved";
+                    const revision = assignment.submissionStatus === "resubmission_required";
+                    return (
+                      <article key={assignment.id} className="rounded-2xl border border-border bg-card p-5">
+                        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                          <div className="min-w-0">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-primary">{assignment.course}</p>
+                            <h2 className="mt-1 text-base font-bold">{assignment.title}</h2>
+                            {assignment.description && <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-muted-foreground">{assignment.description}</p>}
+                          </div>
+                          <span className={`w-fit shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ${assignment.submissionStatus === "approved" ? "bg-emerald-500/10 text-emerald-600" : submitted ? "bg-amber-500/10 text-amber-600" : revision ? "bg-orange-500/10 text-orange-600" : "bg-primary/10 text-primary"}`}>
+                            {assignment.submissionStatus === "approved" ? "Reviewed" : submitted ? "Awaiting review" : revision ? "Revision requested" : "Not submitted"}
+                          </span>
+                        </div>
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                            <span>Due: {assignment.due ? new Date(assignment.due).toLocaleDateString() : "No deadline"}</span>
+                            <span>Maximum score: {assignment.maxScore}</span>
+                            {assignment.score !== null && <span>Score: {assignment.score}/{assignment.maxScore}</span>}
+                          </div>
+                          {!submitted && (
+                            <Button size="sm" onClick={() => handleOpenSubmit(assignment)} className="bg-indigo-600 text-xs text-white hover:bg-indigo-700">
+                              {revision ? "Resubmit work" : "Submit assignment"} <ArrowRight className="ml-1.5 size-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                        {assignment.feedback && (
+                          <div className="mt-3 rounded-lg bg-muted p-3 text-xs">
+                            <p className="mb-1 font-semibold">Instructor feedback</p>
+                            <p className="whitespace-pre-wrap text-muted-foreground">{assignment.feedback}</p>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
