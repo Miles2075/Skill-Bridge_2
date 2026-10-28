@@ -385,7 +385,14 @@ export function CodeLabView() {
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<"tests" | "console">("tests");
   const [allPassed, setAllPassed] = useState(false);
+  const [isMac, setIsMac] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && typeof navigator !== "undefined") {
+      setIsMac(/(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent || navigator.platform));
+    }
+  }, []);
 
   // Sync code when changing lab
   useEffect(() => {
@@ -756,7 +763,7 @@ export function CodeLabView() {
                   className="h-7 text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-xs"
                 >
                   <Sparkles className="size-3 mr-1 text-amber-300" />
-                  {isRunningTests ? "Testing..." : "Run Tests (⌘+Enter)"}
+                  {isRunningTests ? "Testing..." : `Run Tests (${isMac ? "⌘" : "Ctrl"}+Enter)`}
                 </Button>
               </div>
             </div>
@@ -781,7 +788,10 @@ export function CodeLabView() {
                 <span>Characters: {code.length}</span>
               </div>
               <div className="text-slate-500 hidden sm:block">
-                Press <kbd className="rounded bg-slate-800 px-1 py-0.5 text-slate-300">⌘+Enter</kbd>{" "}
+                Press{" "}
+                <kbd className="rounded bg-slate-800 px-1 py-0.5 text-slate-300">
+                  {isMac ? "⌘" : "Ctrl"}+Enter
+                </kbd>{" "}
                 to execute test suite
               </div>
             </div>
