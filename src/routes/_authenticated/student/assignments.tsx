@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2, ClipboardList, ExternalLink, LoaderCircle, RefreshCw } from "lucide-react";
+import { AlertCircle, CheckCircle2, ClipboardList, LoaderCircle, RefreshCw } from "lucide-react";
 import { lmsClient, type StudentDashboardData } from "@/lib/lms-client";
 
 export const Route = createFileRoute("/_authenticated/student/assignments")({
