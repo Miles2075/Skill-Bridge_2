@@ -743,11 +743,11 @@ class DatabaseManager {
       quizzes: INITIAL_QUIZZES,
       quiz_attempts: [],
       certificates: [],
-      users: INITIAL_USERS,
-      user_roles: INITIAL_USER_ROLES,
+      users: process.env["VERCEL"] ? [] : INITIAL_USERS,
+      user_roles: process.env["VERCEL"] ? [] : INITIAL_USER_ROLES,
       sessions: [],
       purchases: [],
-      profiles: INITIAL_PROFILES,
+      profiles: process.env["VERCEL"] ? [] : INITIAL_PROFILES,
       password_reset_tokens: [],
     };
     this.write();
@@ -757,11 +757,12 @@ class DatabaseManager {
   private ensureSchemaIntegrity(db: LMSDatabase) {
     let changed = false;
     if (!db.users || db.users.length === 0) {
-      db.users = [...INITIAL_USERS];
+      // Never recreate publicly documented demo accounts in hosted environments.
+      db.users = process.env["VERCEL"] ? [] : [...INITIAL_USERS];
       changed = true;
     }
     if (!db.user_roles || db.user_roles.length === 0) {
-      db.user_roles = [...INITIAL_USER_ROLES];
+      db.user_roles = process.env["VERCEL"] ? [] : [...INITIAL_USER_ROLES];
       changed = true;
     }
     if (!db.sessions) {
@@ -777,7 +778,7 @@ class DatabaseManager {
       changed = true;
     }
     if (!db.profiles || db.profiles.length === 0) {
-      db.profiles = [...INITIAL_PROFILES];
+      db.profiles = process.env["VERCEL"] ? [] : [...INITIAL_PROFILES];
       changed = true;
     }
     if (!db.course_reviews) {
@@ -1634,56 +1635,95 @@ class DatabaseManager {
     const enrolledCourseIds = new Set(enrolledCourses.map((c) => c.id));
     const enrolledCourseSlugs = new Set(enrolledCourses.map((c) => c.slug));
 
-    const studentSubmissions = db.submissions.filter((s) => s.student_id === studentId);
+    // Build a canonical identity index from both the enrollment rows and resolved
+    // course records. Some older enrollments store a legacy ID while newer
+    // assignments store the canonical UUID, slug, or title.
+    const normalizeCourseKey = (value: unknown) =>
+      typeof value === "string" ? value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "") : "";
+    const canonicalCourseKey = (value: unknown) => {
+      if (typeof value !== "string" || !value.trim()) return "";
+      const trimmed = value.trim();
+      return normalizeCourseKey(courseAliases[trimmed] || trimmed);
+    };
+    const enrolledCourseKeys = new Set<string>();
+    for (const enrollment of enrollments) {
+      const resolved = resolveCourseRef(enrollment.course_id);
+      for (const value of [
+        enrollment.course_id,
+        resolved?.id,
+        resolved?.slug,
+        resolved?.title,
+        resolved ? courseAliases[resolved.id] : undefined,
+        courseAliases[enrollment.course_id],
+      ]) {
+        const key = canonicalCourseKey(value);
+        if (key) enrolledCourseKeys.add(key);
+      }
+    }
+
+    // Show only the latest submission for a logical assignment. Older records can
+    // contain duplicate assignment rows (same title/course, different legacy IDs),
+    // which previously produced repeated cards in the student workspace.
+    const studentSubmissionCandidates = db.submissions
+      .filter((s) => s.student_id === studentId)
+      .sort((a, b) => String(b.submitted_at || "").localeCompare(String(a.submitted_at || "")));
+    const latestByAssignment = new Map<string, AssignmentSubmission>();
+    for (const submission of studentSubmissionCandidates) {
+      const assignment = db.assignments.find((a) => a.id === submission.assignment_id);
+      const courseKey = canonicalCourseKey(
+        assignment?.course_title || assignment?.course_slug || submission.course_id || "",
+      );
+      const titleKey = canonicalCourseKey(assignment?.title || submission.assignment_id);
+      const logicalKey = `${courseKey}::${titleKey}`;
+      if (!latestByAssignment.has(logicalKey)) latestByAssignment.set(logicalKey, submission);
+    }
+    const studentSubmissions = [...latestByAssignment.values()];
     const submissionMap = new Map<string, AssignmentSubmission>();
     studentSubmissions.forEach((s) => submissionMap.set(s.assignment_id, s));
 
     // Resolve older assignment records that stored a legacy course ID, slug, or
     // title. This keeps real published work visible after course records were
     // normalized, without exposing assignments for courses the student hasn't joined.
-    const normalizeCourseKey = (value: unknown) =>
-      typeof value === "string" ? value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "") : "";
     const resolveAssignmentCourse = (assignment: Assignment) =>
-      resolveCourseRef(assignment.course_id) ||
       resolveCourseRef(assignment.course_slug) ||
+      resolveCourseRef(assignment.course_title) ||
+      resolveCourseRef(assignment.course_id) ||
       db.courses.find((course) => {
         const legacyKeys = [
           course.title,
           course.slug,
           course.id,
           courseAliases[course.id],
-        ].map(normalizeCourseKey);
+        ].map(canonicalCourseKey);
         return [
           assignment.course_title,
           assignment.course_slug,
           assignment.course_id,
-        ].some((key) => normalizeCourseKey(key) && legacyKeys.includes(normalizeCourseKey(key)));
+        ].some((key) => canonicalCourseKey(key) && legacyKeys.includes(canonicalCourseKey(key)));
       });
 
     const findEnrolledCourseForAssignment = (assignment: Assignment) => {
+      // Resolve the assignment's own canonical course first. Do not combine all
+      // of its identifiers into one set: a stale course_id (for example c-ts)
+      // can conflict with a valid course_slug (for example react-performance)
+      // and incorrectly attach the assignment to the first enrolled course.
       const assignmentCourse = resolveAssignmentCourse(assignment);
-      const assignmentKeys = [
-        assignment.course_id,
-        assignment.course_slug,
-        assignment.course_title,
-        assignmentCourse?.id,
-        assignmentCourse?.slug,
-        assignmentCourse?.title,
-        assignmentCourse ? courseAliases[assignmentCourse.id] : undefined,
-      ].map(normalizeCourseKey).filter(Boolean);
+      if (!assignmentCourse) return undefined;
 
-      // Match the assignment against each enrolled course directly. This handles
-      // older records where the assignment points at a duplicate/legacy course ID
-      // but the course title is the same as the student's enrolled course.
-      return enrolledCourses.find((enrolledCourse) => {
-        const enrolledKeys = [
-          enrolledCourse.id,
-          enrolledCourse.slug,
-          enrolledCourse.title,
-          courseAliases[enrolledCourse.id],
-        ].map(normalizeCourseKey).filter(Boolean);
-        return assignmentKeys.some((key) => enrolledKeys.includes(key));
-      });
+      // Course IDs/slugs are authoritative after resolution. Use title only as a
+      // last-resort bridge for duplicate legacy course rows with the same title.
+      const exactMatch = enrolledCourses.find(
+        (enrolledCourse) =>
+          enrolledCourse.id === assignmentCourse.id ||
+          enrolledCourse.slug === assignmentCourse.slug,
+      );
+      if (exactMatch) return exactMatch;
+
+      const assignmentTitleKey = canonicalCourseKey(assignmentCourse.title);
+      if (!assignmentTitleKey) return undefined;
+      return enrolledCourses.find(
+        (enrolledCourse) => canonicalCourseKey(enrolledCourse.title) === assignmentTitleKey,
+      );
     };
 
     const upcomingAssignments = db.assignments
@@ -1804,6 +1844,11 @@ class DatabaseManager {
       const course = resolveCourse(ref);
       return !!course && authorizedCourseIds.has(course.id);
     };
+    // Default/seeded assignments are shared curriculum rather than teacher-owned
+    // content. Faculty can review submissions for these assignments when the
+    // associated course is published, even if an older course row has a different
+    // teacher_id from the currently signed-in faculty account.
+    const isPublishedCourseRef = (ref: unknown) => resolveCourse(ref)?.status === "published";
 
     // Enrolled students in instructor courses
     const studentRecords = db.enrollments
@@ -1896,21 +1941,36 @@ class DatabaseManager {
         .map(normalizeCourseKey)
         .some((key) => !!key && instructorOwnedCourseKeys.has(key));
 
-    // Submissions must follow the same access rules as the published assignments
-    // shown in Instructor Studio. Filtering only by the submission's course_id
-    // made valid submissions disappear when a legacy course reference differed.
+    // Resolve the instructor-visible assignment IDs first. A submission belongs
+    // in the grading queue whenever its assignment is visible to this instructor,
+    // even if older submissions stored a stale course_id or the course was renamed.
+    const instructorAssignmentIds = new Set(
+      db.assignments
+        .filter((assignment) =>
+          isAuthorizedCourseRef(assignment.course_id) ||
+          isAuthorizedCourseRef(assignment.course_slug) ||
+          isAuthorizedCourseRef(assignment.course_title) ||
+          (!!teacherId && assignment.created_by === teacherId) ||
+          // The grading workbench is faculty-wide for published course work:
+          // legacy assignments may belong to a course owned by another instructor,
+          // but their student submissions must not disappear from the review queue.
+          isPublishedCourseRef(assignment.course_id) ||
+          isPublishedCourseRef(assignment.course_slug) ||
+          isPublishedCourseRef(assignment.course_title) ||
+          matchesInstructorOwnedCourse(assignment),
+        )
+        .map((assignment) => assignment.id),
+    );
+
+    // Keep course-based fallbacks for legacy/orphaned submissions, but never
+    // expose another instructor's submission unless its assignment is visible.
     const submissions = db.submissions
       .filter((submission) => {
-        const assignment = db.assignments.find((a) => a.id === submission.assignment_id);
-        return (
-          isAuthorizedCourseRef(submission.course_id) ||
-          (!!teacherId && assignment?.created_by === teacherId) ||
-          (!!assignment &&
-            (isAuthorizedCourseRef(assignment.course_id) ||
-              isAuthorizedCourseRef(assignment.course_slug) ||
-              isAuthorizedCourseRef(assignment.course_title) ||
-              matchesInstructorOwnedCourse(assignment)))
-        );
+        // This is the faculty grading workbench, not a per-course roster view.
+        // Every persisted student submission must be reviewable here, including
+        // submissions whose assignment/course metadata predates course migrations.
+        // Never synthesize submissions: return only rows actually stored by a student.
+        return Boolean(submission.id && submission.assignment_id && submission.student_id);
       })
       .map((s) => {
         const asg = db.assignments.find((a) => a.id === s.assignment_id);
@@ -1926,6 +1986,21 @@ class DatabaseManager {
           courseSlug: course?.slug || "",
           studentAvatar,
         };
+      })
+      // Collapse legacy duplicate rows for the same learner, assignment title, and
+      // course; retain the newest submission so instructors see one review card.
+      .sort((a, b) => String(b.submitted_at || "").localeCompare(String(a.submitted_at || "")))
+      .filter((submission, _index, all) => {
+        const key = [
+          submission.student_id,
+          canonicalCourseKey(submission.courseTitle || submission.courseSlug || submission.course_id || ""),
+          canonicalCourseKey(submission.assignmentTitle || submission.assignment_id),
+        ].join("::");
+        return all.findIndex((candidate) => [
+          candidate.student_id,
+          canonicalCourseKey(candidate.courseTitle || candidate.courseSlug || candidate.course_id || ""),
+          canonicalCourseKey(candidate.assignmentTitle || candidate.assignment_id),
+        ].join("::") === key) === _index;
       });
 
     // Assignments for authorized courses
@@ -1934,6 +2009,9 @@ class DatabaseManager {
       isAuthorizedCourseRef(assignment.course_slug) ||
       isAuthorizedCourseRef(assignment.course_title) ||
       (!!teacherId && assignment.created_by === teacherId) ||
+      isPublishedCourseRef(assignment.course_id) ||
+      isPublishedCourseRef(assignment.course_slug) ||
+      isPublishedCourseRef(assignment.course_title) ||
       matchesInstructorOwnedCourse(assignment),
     );
 
@@ -2281,6 +2359,20 @@ class DatabaseManager {
     // the signup endpoint; never create an account or replace its password here.
     if (!user) return null;
 
+    // The repository's seeded demo accounts use a publicly documented default
+    // password. Refuse those unchanged seed credentials on hosted deployments,
+    // while allowing an account that has already changed its password to sign in.
+    if (process.env["VERCEL"]) {
+      const seededAccount = INITIAL_USERS.find((candidate) => candidate.email === cleanEmail);
+      if (
+        seededAccount &&
+        user.password_hash === seededAccount.password_hash &&
+        user.salt === seededAccount.salt
+      ) {
+        return null;
+      }
+    }
+
     const hash = hashPassword(password, user.salt);
     if (hash !== user.password_hash) return null;
 
@@ -2311,31 +2403,8 @@ class DatabaseManager {
     if (!token) return null;
     const db = this.read();
 
-    if (token.startsWith("eyJ") && token.split(".").length === 3) {
-      try {
-        const payloadStr = Buffer.from(token.split(".")[1]!, "base64url").toString("utf-8");
-        const payload = JSON.parse(payloadStr);
-        if (payload.sub) {
-          const user = this.findUserById(payload.sub) || this.findUserByEmail(payload.email || "");
-          if (user) {
-            return {
-              user,
-              session: {
-                id: payload.session_id || "sess_jwt",
-                user_id: user.id,
-                token,
-                expires_at: new Date(Date.now() + 86400000).toISOString(),
-                created_at: new Date().toISOString(),
-              },
-              roles: this.getUserRoles(user.id),
-            };
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-
+    // JWTs are not local LMS sessions. They must be verified by Supabase Auth
+    // in the request handler; decoding claims here would permit forged identities.
     const session = db.sessions.find((s) => s.token === token);
     if (!session) return null;
     if (new Date(session.expires_at).getTime() < Date.now()) {

@@ -84,66 +84,16 @@ async function parseUserContext(req: Request): Promise<UserContext> {
     }
   }
 
-  let userId = req.headers.get("x-user-id");
-  let email = req.headers.get("x-user-email");
-  let name = req.headers.get("x-user-name");
-  let roleStr = req.headers.get("x-user-role");
-
-  // Also check cookie header as fallback for local LMS roles
-  const cookieHeader = req.headers.get("cookie") || "";
-  if (!roleStr && cookieHeader) {
-    const roleMatch = cookieHeader.match(/(?:^|;\s*)skillbridge_role=([^;]+)/);
-    if (roleMatch && roleMatch[1]) {
-      roleStr = decodeURIComponent(roleMatch[1]);
-    }
-  }
-
-  if (token) {
-    const validated = lmsDB.validateSession(token);
-    if (validated) {
-      userId = validated.user.id;
-      email = validated.user.email ?? null;
-      name = String(
-        (validated.user.user_metadata?.display_name as string) ||
-          (validated.user.email ?? "").split("@")[0],
-      );
-      const primaryRole = validated.roles.includes("admin")
-        ? "admin"
-        : (validated.roles.includes("teacher") || validated.roles.includes("instructor"))
-          ? "teacher"
-          : "student";
-      roleStr = primaryRole;
-    } else if (token.split(".").length === 3) {
-      try {
-        const payloadStr = Buffer.from(token.split(".")[1]!, "base64url").toString("utf-8");
-        const payload = JSON.parse(payloadStr);
-        if (payload.sub && !userId) userId = payload.sub;
-        if (payload.email && !email) email = payload.email;
-        if (payload.user_metadata?.display_name && !name) name = payload.user_metadata.display_name;
-        if (payload.user_metadata?.role && !roleStr) roleStr = payload.user_metadata.role;
-      } catch {
-        // ignore
-      }
-    }
-  }
-
-  const role = (
-    roleStr === "teacher" || roleStr === "instructor" || roleStr === "admin"
-      ? roleStr === "instructor"
-        ? "teacher"
-        : roleStr
-      : "student"
-  ) as "student" | "teacher" | "admin";
-  const isAdmin = role === "admin";
-  const isTeacher = role === "teacher" || isAdmin;
-
+  // Fail closed when hosted Supabase Auth is not configured. Only server-issued
+  // local sessions (validated above) or Supabase-verified tokens are trusted.
+  // Never derive identity or privileges from x-user-* headers, cookies, or decoded JWT claims.
   return {
-    userId,
-    email,
-    name,
-    role,
-    isAdmin,
-    isTeacher,
+    userId: null,
+    email: null,
+    name: null,
+    role: "student",
+    isAdmin: false,
+    isTeacher: false,
   };
 }
 
@@ -272,6 +222,9 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
           const course = lmsDB.getCourse(courseId);
           if (!course) throw new Error("Course not found.");
+          if (!uploadUser.isAdmin && course.teacher_id !== uploadUser.userId) {
+            throw new Error("You can only upload media to courses assigned to your account.");
+          }
 
           const segments = pathname.split("/");
           if (segments.length !== 4 || segments[0] !== "courses" || segments[1] !== courseId || segments[2] !== "thumbnails" || segments[3].includes("..")) {
@@ -341,6 +294,9 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
           const course = lmsDB.getCourse(courseId);
           if (!course) throw new Error("Course not found.");
+          if (!uploadUser.isAdmin && course.teacher_id !== uploadUser.userId) {
+            throw new Error("You can only upload media to courses assigned to your account.");
+          }
 
           const segments = pathname.split("/");
           if (segments.length !== 4 || segments[0] !== "courses" || segments[1] !== courseId || segments[2] !== "videos" || segments[3].includes("..")) {
@@ -529,7 +485,13 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         return errorResponse("Invalid login credentials", 400);
       }
       return jsonResponse({
-        user: res.user,
+        user: {
+          id: res.user.id,
+          email: res.user.email,
+          user_metadata: res.user.user_metadata,
+          created_at: res.user.created_at,
+          updated_at: res.user.updated_at,
+        },
         session: res.session,
         roles: res.roles,
       });
@@ -544,23 +506,35 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const cleanEmail = email.trim().toLowerCase();
       if (lmsDB.findUserByEmail(cleanEmail)) {
         const authed = lmsDB.authenticateUser(cleanEmail, password);
-        if (authed) {
-          return jsonResponse({
-            user: authed.user,
-            session: authed.session,
-            roles: authed.roles,
-          });
-        }
+        if (!authed) return errorResponse("Invalid login credentials", 400);
+        return jsonResponse({
+          user: {
+            id: authed.user.id,
+            email: authed.user.email,
+            user_metadata: authed.user.user_metadata,
+            created_at: authed.user.created_at,
+            updated_at: authed.user.updated_at,
+          },
+          session: authed.session,
+          roles: authed.roles,
+        });
       }
 
+      // Public signups must never be able to assign themselves privileged roles.
       const res = lmsDB.registerUser({
         email: cleanEmail,
         password,
         name: metadata?.display_name || metadata?.name,
-        role: metadata?.role,
+        role: "student",
       });
       return jsonResponse({
-        user: res.user,
+        user: {
+          id: res.user.id,
+          email: res.user.email,
+          user_metadata: res.user.user_metadata,
+          created_at: res.user.created_at,
+          updated_at: res.user.updated_at,
+        },
         session: res.session,
         roles: res.roles,
       });
@@ -620,7 +594,13 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         return jsonResponse({ user: null, session: null, roles: [] });
       }
       return jsonResponse({
-        user: validated.user,
+        user: {
+          id: validated.user.id,
+          email: validated.user.email,
+          user_metadata: validated.user.user_metadata,
+          created_at: validated.user.created_at,
+          updated_at: validated.user.updated_at,
+        },
         session: validated.session,
         roles: validated.roles,
       });
@@ -633,32 +613,103 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
     }
 
     // GENERIC QUERY: POST /api/lms/query
+    // This compatibility endpoint is read-only and deliberately exposes only
+    // public course data plus lesson previews / content the caller may access.
+    // All writes and sensitive tables must use dedicated validated endpoints.
     if (path === "query" && method === "POST") {
-      const body = await req.json();
+      const body = await req.json().catch(() => ({}));
       const tableName = typeof body.table === "string" ? body.table.toLowerCase() : "";
       const action = typeof body.action === "string" ? body.action.toLowerCase() : "";
 
-      // Enrollments and payment records must only be changed by the dedicated,
-      // validated LMS endpoints. Otherwise the generic data adapter could bypass
-      // the payment verification performed during checkout.
-      if (tableName === "course_reviews") {
-        return errorResponse("Use the course review endpoint to read or write sanitized review data.", 403);
+      if (action !== "select") {
+        return errorResponse("Generic table mutations are disabled. Use the dedicated LMS endpoint.", 403);
       }
-      if (["enrollments", "purchases"].includes(tableName) && action !== "select") {
-        return errorResponse("Enrollment and purchase records can only be changed through validated LMS endpoints.", 403);
+      const allowedReadTables = new Set(["courses", "lessons", "profiles", "purchases", "user_roles"]);
+      if (!allowedReadTables.has(tableName)) {
+        return errorResponse("This table is not available through the public query endpoint.", 403);
+      }
+
+      if (["profiles", "purchases", "user_roles"].includes(tableName) && !user.userId) {
+        return errorResponse("Please sign in to read this data.", 401);
+      }
+
+      const suppliedFilters = body.filters && typeof body.filters === "object" && !Array.isArray(body.filters)
+        ? body.filters as Record<string, unknown>
+        : {};
+      const filters = tableName === "profiles"
+        ? { ...suppliedFilters, id: user.userId }
+        : tableName === "purchases"
+          ? { ...suppliedFilters, user_id: user.userId }
+          : tableName === "user_roles"
+            ? { ...suppliedFilters, user_id: user.userId }
+            : suppliedFilters;
+
+      const result = lmsDB.queryTable(tableName, { action: "select", filters });
+      if (result.error || !Array.isArray(result.data)) return jsonResponse(result);
+
+      if (tableName === "profiles") {
+        const profiles = result.data.map((row) => {
+          const profile = row as Record<string, unknown>;
+          return {
+            id: profile.id,
+            display_name: profile.display_name,
+            email: profile.email,
+            created_at: profile.created_at,
+          };
+        });
+        return jsonResponse({ data: profiles, error: null });
       }
 
       if (tableName === "purchases") {
-        if (!user.userId) return errorResponse("Please sign in to view purchases.", 401);
-        body.filters = { ...(body.filters || {}), user_id: user.userId };
-      }
-      if (tableName === "enrollments" && !user.isTeacher && !user.isAdmin) {
-        if (!user.userId) return errorResponse("Please sign in to view enrollments.", 401);
-        body.filters = { ...(body.filters || {}), student_id: user.userId };
+        // The fallback purchase query is used only to determine owned course IDs.
+        return jsonResponse({
+          data: result.data.map((row) => ({ course_id: (row as Record<string, unknown>).course_id })),
+          error: null,
+        });
       }
 
-      const result = lmsDB.queryTable(body.table, body);
-      return jsonResponse(result);
+      if (tableName === "user_roles") {
+        return jsonResponse({
+          data: result.data.map((row) => ({ role: (row as Record<string, unknown>).role })),
+          error: null,
+        });
+      }
+
+      if (tableName === "courses") {
+        const visibleCourses = result.data
+          .filter((row) => {
+            const course = row as { status?: string; teacher_id?: string | null };
+            return course.status === "published" ||
+              user.isAdmin ||
+              (user.isTeacher && Boolean(user.userId) && course.teacher_id === user.userId);
+          })
+          .map((row) => {
+            const course = row as Record<string, unknown>;
+            const id = String(course.id || "");
+            const ownsCourse = Boolean(user.userId) && course.teacher_id === user.userId;
+            const enrolled = Boolean(user.userId && lmsDB.getStudentEnrollment(user.userId, id));
+            const purchased = Boolean(user.userId && lmsDB.getPurchases(user.userId).some((item) => item.course_id === id));
+            if (user.isAdmin || ownsCourse || enrolled || purchased) return course;
+            return { ...course, video_url: "", video_urls: [] };
+          });
+        return jsonResponse({ data: visibleCourses, error: null });
+      }
+
+      const visibleLessons = result.data.filter((row) => {
+        const lesson = row as { course_id?: string; is_preview?: boolean };
+        if (!lesson.course_id) return false;
+        const course = lmsDB.getCourse(lesson.course_id);
+        if (!course) return false;
+        const ownsCourse = Boolean(user.userId) && course.teacher_id === user.userId;
+        if (user.isAdmin || (user.isTeacher && ownsCourse)) return true;
+        if (course.status !== "published") return false;
+        if (lesson.is_preview === true) return true;
+        if (!user.userId) return false;
+        const enrolled = Boolean(lmsDB.getStudentEnrollment(user.userId, course.id));
+        const purchased = lmsDB.getPurchases(user.userId).some((purchase) => purchase.course_id === course.id);
+        return enrolled || purchased;
+      });
+      return jsonResponse({ data: visibleLessons, error: null });
     }
 
     // PAYMENTS: GET /api/lms/payments/config (or /payment/config)
@@ -727,8 +778,21 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
     }
 
     // GET /api/lms/courses
+    // Never expose private drafts or paid-course media URLs in the public catalog.
     if (path === "courses" && method === "GET") {
-      const courses = lmsDB.getAllCourses();
+      const courses = lmsDB.getAllCourses()
+        .filter((course) =>
+          course.status === "published" ||
+          user.isAdmin ||
+          (user.isTeacher && Boolean(user.userId) && course.teacher_id === user.userId),
+        )
+        .map((course) => {
+          const ownsCourse = Boolean(user.userId) && course.teacher_id === user.userId;
+          const enrolled = Boolean(user.userId && lmsDB.getStudentEnrollment(user.userId, course.id));
+          const purchased = Boolean(user.userId && lmsDB.getPurchases(user.userId).some((item) => item.course_id === course.id));
+          if (user.isAdmin || ownsCourse || enrolled || purchased) return course;
+          return { ...course, video_url: "", video_urls: [] };
+        });
       return jsonResponse({ courses });
     }
 
@@ -739,17 +803,28 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const course = lmsDB.getCourse(idOrSlug);
       if (!course) return errorResponse("Course not found", 404);
 
-      const lessons = lmsDB.getLessonsForCourse(course.id);
+      const ownsCourse = Boolean(user.userId) && course.teacher_id === user.userId;
+      const canManageCourse = user.isAdmin || (user.isTeacher && ownsCourse);
+      if (course.status !== "published" && !canManageCourse) {
+        return errorResponse("Course not found", 404);
+      }
+
       let enrollment = null;
       let progressRecords: unknown[] = [];
-
+      let purchased = false;
       if (user.userId) {
         enrollment = lmsDB.getStudentEnrollment(user.userId, course.id);
         progressRecords = lmsDB.getLessonProgress(user.userId, course.id);
+        purchased = lmsDB.getPurchases(user.userId).some((item) => item.course_id === course.id);
       }
 
+      const hasFullAccess = canManageCourse || Boolean(enrollment) || purchased;
+      const allLessons = lmsDB.getLessonsForCourse(course.id);
+      const lessons = hasFullAccess ? allLessons : allLessons.filter((lesson) => lesson.is_preview === true);
+      const safeCourse = hasFullAccess ? course : { ...course, video_url: "", video_urls: [] };
+
       return jsonResponse({
-        course,
+        course: safeCourse,
         lessons,
         enrollment,
         lessonProgress: progressRecords,
@@ -1105,8 +1180,19 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
       const existing = lmsDB.getCourse(courseId);
       if (!existing) return errorResponse("Course not found", 404);
+      if (!user.isAdmin && existing.teacher_id !== user.userId) {
+        return errorResponse("You can only edit courses assigned to your account.", 403);
+      }
 
-      const updated = lmsDB.updateCourse(existing.id, body);
+      const allowedUpdates: Record<string, unknown> = {};
+      for (const key of [
+        "title", "slug", "description", "instructor", "thumbnail", "status",
+        "price_inr", "preview_minutes", "video_url", "video_urls", "lessons_count",
+        "hours", "level", "category",
+      ]) {
+        if (Object.prototype.hasOwnProperty.call(body, key)) allowedUpdates[key] = body[key];
+      }
+      const updated = lmsDB.updateCourse(existing.id, allowedUpdates);
       return jsonResponse({ course: updated });
     }
 
@@ -1119,6 +1205,9 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
       const existing = lmsDB.getCourse(courseId);
       if (!existing) return errorResponse("Course not found", 404);
+      if (!user.isAdmin && existing.teacher_id !== user.userId) {
+        return errorResponse("You can only delete courses assigned to your account.", 403);
+      }
 
       const ok = lmsDB.deleteCourse(existing.id);
       return jsonResponse({ success: ok });
@@ -1145,6 +1234,9 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
       const course = lmsDB.getCourse(courseId);
       if (!course) return errorResponse("Course not found.", 404);
+      if (!user.isAdmin && course.teacher_id !== user.userId) {
+        return errorResponse("You can only upload media to courses assigned to your account.", 403);
+      }
 
       if (lessonId) {
         const snapshot = lmsDB.exportSnapshot();
@@ -1181,6 +1273,9 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
       const course = lmsDB.getCourse(courseId);
       if (!course) return errorResponse("Course not found.", 404);
+      if (!user.isAdmin && course.teacher_id !== user.userId) {
+        return errorResponse("You can only upload media to courses assigned to your account.", 403);
+      }
 
       const MAX_VIDEO_SIZE = 500 * 1024 * 1024;
       const declaredSize = Number(

@@ -109,7 +109,7 @@ function StudentRouteLayout() {
     };
   }, [user?.id]);
 
-  const [activeView, setActiveView] = useState<StudentNavView>("dashboard");
+  const [activeView, setActiveView] = useState<StudentNavView>(() => typeof window !== "undefined" && window.location.pathname.endsWith("/assignments") ? "assignments" : "dashboard");
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [pendingAssignments, setPendingAssignments] = useState(0);
@@ -176,6 +176,7 @@ function StudentRouteLayout() {
     setMobileMenuOpen(false);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
+      url.pathname = "/student";
       url.searchParams.set("view", v);
       window.history.pushState({}, "", url.toString());
       window.dispatchEvent(new CustomEvent("student_view_changed", { detail: { view: v } }));
@@ -231,13 +232,7 @@ function StudentRouteLayout() {
   }[] = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "courses", label: "My Courses", icon: BookOpen, badge: `${enrolledCoursesCount} Active` },
-    {
-      id: "assignments",
-      label: "Assignments",
-      icon: ClipboardList,
-      badge: pendingAssignments > 0 ? `${pendingAssignments} Due` : undefined,
-      badgeColor: "bg-amber-100 text-amber-800",
-    },
+    { id: "assignments", label: "Assignments", icon: ClipboardList, badge: `${pendingAssignments} Due` },
     {
       id: "assessments",
       label: "Assessments / Quizzes",
@@ -489,9 +484,6 @@ function StudentRouteLayout() {
           <div className="flex items-center gap-4">
             <button onClick={() => switchView("courses")} className="hover:text-indigo-600">
               My Courses
-            </button>
-            <button onClick={() => switchView("assignments")} className="hover:text-indigo-600">
-              Assignments
             </button>
             <button onClick={() => switchView("certificates")} className="hover:text-indigo-600">
               Certificates
