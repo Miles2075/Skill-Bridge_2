@@ -172,7 +172,10 @@ function StudentRouteLayout() {
   }, []);
 
   const switchView = (v: StudentNavView) => {
-    if (v === "assignments") v = "dashboard";
+    if (v === "assignments") {
+      window.location.assign("/student/assignments");
+      return;
+    }
     setActiveView(v);
     setMobileMenuOpen(false);
     if (typeof window !== "undefined") {
@@ -232,6 +235,7 @@ function StudentRouteLayout() {
   }[] = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "courses", label: "My Courses", icon: BookOpen, badge: `${enrolledCoursesCount} Active` },
+    { id: "assignments", label: "Assignments", icon: ClipboardList, badge: `${pendingAssignments} Due` },
     {
       id: "assessments",
       label: "Assessments / Quizzes",
