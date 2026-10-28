@@ -29,9 +29,19 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
       const raw = localStorage.getItem(key);
       if (!raw) continue;
       const parsed = JSON.parse(raw);
-      if (typeof parsed?.access_token === "string" && parsed.access_token && !headers["Authorization"]) {
+      if (typeof parsed?.access_token !== "string" || !parsed.access_token) continue;
+
+      // Prefer a server-issued LMS session over a stale Supabase token when the
+      // user signed in through the built-in LMS login fallback.
+      if (parsed.access_token.startsWith("sb_local_")) {
         headers["Authorization"] = `Bearer ${parsed.access_token}`;
         break;
+      }
+
+      // setLocalSession() can create a UI-only placeholder token. Never send that
+      // token to the server as though it were an authenticated session.
+      if (!headers["Authorization"] && !parsed.access_token.startsWith("sb_token_")) {
+        headers["Authorization"] = `Bearer ${parsed.access_token}`;
       }
     }
   } catch {
