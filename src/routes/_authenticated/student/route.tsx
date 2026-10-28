@@ -172,14 +172,11 @@ function StudentRouteLayout() {
   }, []);
 
   const switchView = (v: StudentNavView) => {
-    if (v === "assignments") {
-      window.location.assign("/student/assignments");
-      return;
-    }
     setActiveView(v);
     setMobileMenuOpen(false);
     if (typeof window !== "undefined") {
       const url = new URL(window.location.href);
+      url.pathname = "/student";
       url.searchParams.set("view", v);
       window.history.pushState({}, "", url.toString());
       window.dispatchEvent(new CustomEvent("student_view_changed", { detail: { view: v } }));
