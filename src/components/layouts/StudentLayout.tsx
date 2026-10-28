@@ -106,10 +106,6 @@ function StudentLayout({
   }, [accountMenuOpen]);
 
   const changeView = (next: StudentView) => {
-    if (next === "assignments") {
-      window.location.assign("/student/assignments");
-      return;
-    }
     if (next === "settings") {
       setProfileModalOpen(true);
       setMobileOpen(false);
