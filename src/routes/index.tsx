@@ -245,7 +245,6 @@ const assignments = [
 const navItems: { id: View; label: string; icon: LucideIcon }[] = [
   { id: "dashboard", label: "My Learning", icon: LayoutDashboard },
   { id: "courses", label: "All Courses", icon: BookOpen },
-  { id: "assignments", label: "Assignments", icon: ClipboardList },
   { id: "assessments", label: "Quizzes", icon: Target },
   { id: "notes", label: "Notes", icon: NotebookPen },
   { id: "certificates", label: "Certificates", icon: Award },
@@ -801,7 +800,6 @@ function Skillbridge() {
         param === "dashboard" ||
         param === "courses" ||
         param === "my-learning" ||
-        param === "assignments" ||
         param === "assessments" ||
         param === "notes" ||
         param === "certificates" ||
@@ -911,14 +909,6 @@ function Skillbridge() {
             onOpenCert={(c) => {
               setCertCourse(c);
               setModal("certificate");
-            }}
-          />
-        )}
-        {view === "assignments" && (
-          <Assignments
-            open={(asg) => {
-              setTargetAssignment(asg ?? null);
-              setModal("assignment");
             }}
           />
         )}
@@ -1287,12 +1277,6 @@ function Dashboard({
         <section className="rounded-lg border border-border bg-card p-5 lg:col-span-3">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-lg font-bold">Upcoming deadlines</h2>
-            <button
-              onClick={() => setView("assignments")}
-              className="text-sm font-semibold text-primary hover:underline"
-            >
-              See all
-            </button>
           </div>
           <div className="space-y-3">
             {assignments.map((assignment) => (
