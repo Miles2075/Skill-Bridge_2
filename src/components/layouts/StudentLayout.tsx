@@ -53,6 +53,7 @@ const STUDENT_NAV_ITEMS: { id: StudentView; label: string; icon: LucideIcon }[] 
   { id: "recall", label: "Smart Recall Decks", icon: Brain },
   { id: "focus", label: "Focus & Pomodoro", icon: Timer },
   { id: "my-learning", label: "My Learning & Progress", icon: GraduationCap },
+  { id: "assignments", label: "Assignments", icon: ClipboardList },
   { id: "assessments", label: "Quizzes & Practice", icon: Target },
   { id: "certificates", label: "Certificates", icon: Award },
   { id: "notes", label: "Study Notes", icon: NotebookPen },
@@ -105,6 +106,10 @@ function StudentLayout({
   }, [accountMenuOpen]);
 
   const changeView = (next: StudentView) => {
+    if (next === "assignments") {
+      window.location.assign("/student/assignments");
+      return;
+    }
     if (next === "settings") {
       setProfileModalOpen(true);
       setMobileOpen(false);
