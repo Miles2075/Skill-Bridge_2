@@ -53,7 +53,6 @@ const STUDENT_NAV_ITEMS: { id: StudentView; label: string; icon: LucideIcon }[] 
   { id: "recall", label: "Smart Recall Decks", icon: Brain },
   { id: "focus", label: "Focus & Pomodoro", icon: Timer },
   { id: "my-learning", label: "My Learning & Progress", icon: GraduationCap },
-  { id: "assignments", label: "Assignments & Projects", icon: ClipboardList },
   { id: "assessments", label: "Quizzes & Practice", icon: Target },
   { id: "certificates", label: "Certificates", icon: Award },
   { id: "notes", label: "Study Notes", icon: NotebookPen },
