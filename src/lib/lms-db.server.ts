@@ -1602,7 +1602,25 @@ class DatabaseManager {
   // STUDENT DASHBOARD AGGREGATE
   getStudentDashboard(studentId: string) {
     const db = this.read();
-    const enrollments = db.enrollments.filter((e) => e.student_id === studentId);
+    const studentUser = db.users.find(
+      (u) =>
+        u.id === studentId ||
+        (typeof studentId === "string" &&
+          studentId.includes("@") &&
+          u.email?.toLowerCase().trim() === studentId.toLowerCase().trim()),
+    );
+    const studentEmail = (
+      studentUser?.email ||
+      (typeof studentId === "string" && studentId.includes("@") ? studentId : "")
+    )
+      .toLowerCase()
+      .trim();
+
+    const enrollments = db.enrollments.filter(
+      (e) =>
+        e.student_id === studentId ||
+        (studentEmail && e.student_email && e.student_email.toLowerCase().trim() === studentEmail),
+    );
     // Resolve legacy course aliases as well as canonical IDs and slugs. Older
     // enrollments may retain IDs such as "c-ts" after course slugs were normalized.
     const courseAliases: Record<string, string> = {
@@ -1701,7 +1719,11 @@ class DatabaseManager {
     const enrolledCourseIds = new Set(enrolledCourses.map((c) => c.id));
     const enrolledCourseSlugs = new Set(enrolledCourses.map((c) => c.slug));
 
-    const studentSubmissions = db.submissions.filter((s) => s.student_id === studentId);
+    const studentSubmissions = db.submissions.filter(
+      (s) =>
+        s.student_id === studentId ||
+        (studentEmail && s.student_email && s.student_email.toLowerCase().trim() === studentEmail),
+    );
     const submissionMap = new Map<string, AssignmentSubmission>();
     studentSubmissions.forEach((s) => submissionMap.set(s.assignment_id, s));
 
@@ -1849,8 +1871,26 @@ class DatabaseManager {
   // INSTRUCTOR DASHBOARD AGGREGATE
   getInstructorData(teacherId: string | null, isAdmin: boolean) {
     const db = this.read();
+    const DEFAULT_SEED_TEACHER = "8d95e694-3d47-422e-a017-86a1a0ee1251";
+
+    // Track all courses where this instructor has created assignments
+    const teacherAssignmentCourseKeys = new Set(
+      db.assignments
+        .filter((a) => !teacherId || a.created_by === teacherId)
+        .flatMap((a) => [a.course_id, a.course_slug, a.course_title])
+        .filter((v): v is string => typeof v === "string" && Boolean(v)),
+    );
+
     const authorizedCourses = db.courses.filter(
-      (c) => isAdmin || c.teacher_id === teacherId || c.teacher_id === null,
+      (c) =>
+        isAdmin ||
+        !teacherId ||
+        c.teacher_id === teacherId ||
+        c.teacher_id === null ||
+        c.teacher_id === DEFAULT_SEED_TEACHER ||
+        teacherAssignmentCourseKeys.has(c.id) ||
+        teacherAssignmentCourseKeys.has(c.slug) ||
+        teacherAssignmentCourseKeys.has(c.title),
     );
     const normalizeCourseKey = (value: unknown) =>
       typeof value === "string"
@@ -1882,6 +1922,20 @@ class DatabaseManager {
     const isAuthorizedCourseRef = (ref: unknown) => {
       const course = resolveCourse(ref);
       return !!course && authorizedCourseIds.has(course.id);
+    };
+
+    // Submissions for authorized courses OR assignments created by this teacher
+    const isAuthorizedSubmission = (submission: AssignmentSubmission) => {
+      const asg = db.assignments.find((a) => a.id === submission.assignment_id);
+      return (
+        isAdmin ||
+        !teacherId ||
+        isAuthorizedCourseRef(submission.course_id) ||
+        isAuthorizedCourseRef(asg?.course_id) ||
+        isAuthorizedCourseRef(asg?.course_slug) ||
+        isAuthorizedCourseRef(asg?.course_title) ||
+        (!!teacherId && asg?.created_by === teacherId)
+      );
     };
 
     // Enrolled students in instructor courses
@@ -1958,27 +2012,30 @@ class DatabaseManager {
       });
 
     // Submissions for authorized courses
-    const submissions = db.submissions
-      .filter((submission) => isAuthorizedCourseRef(submission.course_id))
-      .map((s) => {
-        const asg = db.assignments.find((a) => a.id === s.assignment_id);
-        const course = resolveCourse(s.course_id) || resolveCourse(asg?.course_id);
-        const studentUser = db.users.find(
-          (u) => u.id === s.student_id || u.email === s.student_email,
-        );
-        const studentAvatar = studentUser?.user_metadata?.avatar_url || null;
-        return {
-          ...s,
-          assignmentTitle: asg?.title || "Assignment",
-          courseTitle: course?.title || asg?.course_title || "Course",
-          courseSlug: course?.slug || asg?.course_slug || "",
-          studentAvatar,
-        };
-      });
+    const submissions = db.submissions.filter(isAuthorizedSubmission).map((s) => {
+      const asg = db.assignments.find((a) => a.id === s.assignment_id);
+      const course =
+        resolveCourse(s.course_id) ||
+        resolveCourse(asg?.course_id) ||
+        resolveCourse(asg?.course_slug);
+      const studentUser = db.users.find(
+        (u) => u.id === s.student_id || u.email === s.student_email,
+      );
+      const studentAvatar = studentUser?.user_metadata?.avatar_url || null;
+      return {
+        ...s,
+        assignmentTitle: asg?.title || "Assignment",
+        courseTitle: course?.title || asg?.course_title || "Course",
+        courseSlug: course?.slug || asg?.course_slug || "",
+        studentAvatar,
+      };
+    });
 
     // Assignments for authorized courses
     const assignments = db.assignments.filter(
       (assignment) =>
+        isAdmin ||
+        !teacherId ||
         isAuthorizedCourseRef(assignment.course_id) ||
         isAuthorizedCourseRef(assignment.course_slug) ||
         isAuthorizedCourseRef(assignment.course_title) ||

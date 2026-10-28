@@ -10,6 +10,7 @@ import {
   Calendar,
   Check,
   CheckCircle2,
+  ClipboardList,
   Clock,
   Code2,
   ExternalLink,
@@ -155,6 +156,9 @@ function StudentDashboardPage() {
   const [githubUrl, setGithubUrl] = useState("");
   const [solutionNotes, setSolutionNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [assignmentNotes, setAssignmentNotes] = useState<Record<string, string>>({});
+  const [assignmentUrls, setAssignmentUrls] = useState<Record<string, string>>({});
+  const [submittingId, setSubmittingId] = useState<string | null>(null);
 
   // Quiz Attempt Player State
   const [activeQuiz, setActiveQuiz] = useState<ActiveQuizState | null>(null);
@@ -523,6 +527,50 @@ function StudentDashboardPage() {
       });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSubmitInline = async (asg: StudentDashboardData["upcomingAssignments"][0]) => {
+    const summary = (assignmentNotes[asg.id] || "").trim();
+    if (!summary) {
+      setFeedbackMsg({
+        text: "Add a short summary of your solution before submitting.",
+        error: true,
+      });
+      return;
+    }
+    setSubmittingId(asg.id);
+    setFeedbackMsg(null);
+    try {
+      const courseObj = (data?.enrolledCourses || []).find(
+        (c) => c.slug === asg.courseSlug || c.title === asg.course,
+      );
+      const courseId = courseObj?.id || asg.courseSlug;
+
+      await lmsClient.submitAssignment({
+        assignmentId: asg.id,
+        courseId,
+        githubUrl: (assignmentUrls[asg.id] || "").trim(),
+        solutionNotes: summary,
+        maxScore: asg.maxScore,
+        studentName: displayName,
+        studentEmail: email,
+      });
+
+      setFeedbackMsg({
+        text: `Your solution for "${asg.title}" was submitted to your instructor for review!`,
+      });
+      setAssignmentNotes((prev) => ({ ...prev, [asg.id]: "" }));
+      setAssignmentUrls((prev) => ({ ...prev, [asg.id]: "" }));
+      window.dispatchEvent(new CustomEvent("lms_data_updated"));
+      await loadDashboard(true);
+    } catch (err: unknown) {
+      setFeedbackMsg({
+        text: err instanceof Error ? err.message : "Failed to submit assignment. Please try again.",
+        error: true,
+      });
+    } finally {
+      setSubmittingId(null);
     }
   };
 
@@ -1369,99 +1417,211 @@ function StudentDashboardPage() {
       )}
 
       {/* ------------------------------------------------------------- */}
-      {/* VIEW 3: ASSIGNMENTS */}
+      {/* VIEW 3: ASSIGNMENTS (STUDENT WORKSPACE) */}
       {currentView === "assignments" && (
         <div className="space-y-8">
-          <div className="border-b border-slate-200 pb-3">
-            <h1 className="text-xl font-extrabold text-slate-900">
-              Assignments & Capstone Projects
-            </h1>
-            <p className="text-xs text-slate-500">
-              Submit solutions and track instructor reviews, grades, and feedback.
-            </p>
-          </div>
-          <section className="space-y-3">
-            <h2 className="text-base font-bold text-slate-900">Available Course Assignments</h2>
-            {availableAssignments.length ? (
-              availableAssignments.map((asg) => (
-                <div
-                  key={asg.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-5 mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div>
-                    <p className="text-xs font-bold text-indigo-700">{asg.course}</p>
-                    <h3 className="mt-1 font-bold text-slate-900">{asg.title}</h3>
-                    <p className="mt-1 text-xs text-slate-600">{asg.description}</p>
-                    <p className="mt-2 text-xs text-slate-500">
-                      Due {asg.due ? new Date(asg.due).toLocaleDateString() : "No due date"} ·{" "}
-                      {asg.maxScore} max marks
-                    </p>
-                  </div>
-                  <Button onClick={() => handleOpenSubmit(asg)}>Submit Solution</Button>
-                </div>
-              ))
-            ) : (
-              <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">
-                No new assignments to submit. New assignments for your enrolled courses will appear
-                here.
-              </div>
-            )}
-          </section>
-          <section className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-base font-bold text-slate-900">
-                My Submissions & Instructor Reviews ({submittedAssignments.length})
-              </h2>
-              <span className="text-xs text-slate-500">Synced with Instructor Studio</span>
+          <header className="flex flex-col justify-between gap-4 border-b border-slate-200 pb-6 sm:flex-row sm:items-center">
+            <div>
+              <p className="mb-2 flex items-center gap-2 text-sm font-semibold text-indigo-600">
+                <ClipboardList className="size-4" /> STUDENT WORKSPACE
+              </p>
+              <h1 className="text-3xl font-bold tracking-tight text-slate-900">My Assignments</h1>
+              <p className="mt-2 max-w-2xl text-sm text-slate-600">
+                Assignments published by your instructors for courses you are enrolled in. Submit
+                your work here and track instructor feedback.
+              </p>
             </div>
-            {submittedAssignments.length ? (
-              submittedAssignments.map((asg) => (
+            <button
+              type="button"
+              onClick={() => void loadDashboard(true)}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer shadow-xs transition-colors"
+            >
+              <Clock className="size-4" /> Refresh assignments
+            </button>
+          </header>
+
+          {feedbackMsg && (
+            <div
+              role="status"
+              className={`flex items-start gap-2 rounded-lg border p-4 text-sm ${
+                feedbackMsg.error
+                  ? "border-red-200 bg-red-50 text-red-700"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-800"
+              }`}
+            >
+              <span>{feedbackMsg.text}</span>
+            </div>
+          )}
+
+          <section className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-xl font-semibold text-slate-900">Ready to Submit</h2>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                {availableAssignments.length} available
+              </span>
+            </div>
+            {availableAssignments.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+                No assignments currently waiting for submission. When instructors publish new
+                assignments for your enrolled courses, they will appear here.
+              </div>
+            ) : (
+              availableAssignments.map((assignment) => (
                 <article
-                  key={asg.id}
-                  className="rounded-2xl border border-slate-200 bg-white p-5 mb-3"
+                  key={assignment.id}
+                  className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-xs"
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
                     <div>
-                      <h3 className="font-bold text-slate-900">{asg.title}</h3>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {asg.course} · Submitted{" "}
-                        {asg.submittedAt
-                          ? new Date(asg.submittedAt).toLocaleDateString()
-                          : "successfully"}
-                      </p>
+                      <h3 className="text-lg font-semibold text-slate-900">{assignment.title}</h3>
+                      <p className="mt-1 text-sm text-slate-500">{assignment.course}</p>
                     </div>
-                    <span className="rounded-full px-3 py-1 text-xs font-bold bg-amber-100 text-amber-800">
-                      {asg.submissionStatus === "approved"
-                        ? "Graded · Approved"
-                        : asg.submissionStatus === "needs_revision" ||
-                            asg.submissionStatus === "resubmission_required"
-                          ? "Revision Requested"
-                          : "Under Instructor Review"}
+                    <span className="w-fit rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 border border-blue-100">
+                      {assignment.submissionStatus === "resubmission_required" ||
+                      assignment.submissionStatus === "needs_revision"
+                        ? "Revision requested"
+                        : "Not submitted"}
                     </span>
                   </div>
-                  {asg.score !== null && asg.score !== undefined && (
-                    <p className="mt-3 text-sm font-semibold text-slate-800">
-                      Score: {asg.score} / {asg.maxScore}
+                  {assignment.description && (
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                      {assignment.description}
                     </p>
                   )}
-                  {asg.feedback && (
-                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-xs font-semibold text-slate-700">Instructor feedback</p>
-                      <p className="mt-1 text-sm text-slate-600">{asg.feedback}</p>
+                  <div className="grid gap-1 text-xs text-slate-500 sm:grid-cols-2">
+                    <span>
+                      Due:{" "}
+                      {assignment.due
+                        ? new Date(assignment.due).toLocaleDateString()
+                        : "No deadline specified"}
+                    </span>
+                    <span>Maximum score: {assignment.maxScore}</span>
+                  </div>
+                  <label className="block space-y-1.5 text-sm font-medium text-slate-800">
+                    Solution summary <span className="text-red-500">*</span>
+                    <textarea
+                      value={assignmentNotes[assignment.id] ?? ""}
+                      onChange={(e) =>
+                        setAssignmentNotes((prev) => ({
+                          ...prev,
+                          [assignment.id]: e.target.value,
+                        }))
+                      }
+                      rows={3}
+                      placeholder="Explain what you built and how it works…"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 transition-all"
+                    />
+                  </label>
+                  <label className="block space-y-1.5 text-sm font-medium text-slate-800">
+                    GitHub / repository URL{" "}
+                    <span className="font-normal text-slate-400">(optional)</span>
+                    <input
+                      type="url"
+                      value={assignmentUrls[assignment.id] ?? ""}
+                      onChange={(e) =>
+                        setAssignmentUrls((prev) => ({
+                          ...prev,
+                          [assignment.id]: e.target.value,
+                        }))
+                      }
+                      placeholder="https://github.com/…"
+                      className="w-full rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-normal text-slate-900 outline-none focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 transition-all"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void handleSubmitInline(assignment)}
+                    disabled={submittingId === assignment.id}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60 cursor-pointer shadow-xs transition-colors"
+                  >
+                    {submittingId === assignment.id ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : null}
+                    Submit for instructor review
+                  </button>
+                </article>
+              ))
+            )}
+          </section>
+
+          <section className="space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-xl font-semibold text-slate-900">
+                Submitted Work & Instructor Feedback
+              </h2>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                {submittedAssignments.length} submitted
+              </span>
+            </div>
+            {submittedAssignments.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+                Your submitted assignments, grades, and instructor feedback will appear here.
+              </div>
+            ) : (
+              submittedAssignments.map((assignment) => (
+                <article
+                  key={assignment.id}
+                  className="rounded-xl border border-slate-200 bg-white p-5 shadow-xs space-y-3"
+                >
+                  <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-start">
+                    <div>
+                      <h3 className="font-semibold text-slate-900">{assignment.title}</h3>
+                      <p className="mt-1 text-sm text-slate-500">{assignment.course}</p>
+                    </div>
+                    <span
+                      className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${
+                        assignment.submissionStatus === "approved"
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          : assignment.submissionStatus === "needs_revision" ||
+                              assignment.submissionStatus === "resubmission_required"
+                            ? "bg-amber-50 text-amber-700 border border-amber-200"
+                            : "bg-blue-50 text-blue-700 border border-blue-200"
+                      }`}
+                    >
+                      {assignment.submissionStatus === "approved"
+                        ? "Graded · Approved"
+                        : assignment.submissionStatus === "needs_revision" ||
+                            assignment.submissionStatus === "resubmission_required"
+                          ? "Revision Requested"
+                          : "Awaiting instructor review"}
+                    </span>
+                  </div>
+                  {assignment.submittedAt && (
+                    <p className="text-xs text-slate-500">
+                      Submitted {new Date(assignment.submittedAt).toLocaleString()}
+                    </p>
+                  )}
+                  {assignment.score !== null && assignment.score !== undefined && (
+                    <p className="text-sm font-semibold text-slate-900">
+                      Score: {assignment.score} / {assignment.maxScore}
+                    </p>
+                  )}
+                  {assignment.feedback && (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                      <p className="mb-1 font-semibold text-slate-800">Instructor feedback</p>
+                      <p className="whitespace-pre-wrap text-slate-600">{assignment.feedback}</p>
                     </div>
                   )}
-                  {(asg.submissionStatus === "needs_revision" ||
-                    asg.submissionStatus === "resubmission_required") && (
-                    <Button className="mt-3" onClick={() => handleOpenSubmit(asg)}>
-                      Resubmit Solution
-                    </Button>
+                  {assignment.submissionStatus === "pending" && (
+                    <p className="text-sm italic text-slate-500">
+                      Your instructor has received this submission and will provide feedback after
+                      review.
+                    </p>
+                  )}
+                  {(assignment.submissionStatus === "needs_revision" ||
+                    assignment.submissionStatus === "resubmission_required") && (
+                    <div className="pt-2">
+                      <Button
+                        size="sm"
+                        onClick={() => handleOpenSubmit(assignment)}
+                        className="bg-amber-600 text-xs text-white hover:bg-amber-700 cursor-pointer"
+                      >
+                        Resubmit Solution
+                      </Button>
+                    </div>
                   )}
                 </article>
               ))
-            ) : (
-              <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-xs text-slate-500">
-                Your submitted assignments and instructor feedback will appear here.
-              </div>
             )}
           </section>
         </div>
