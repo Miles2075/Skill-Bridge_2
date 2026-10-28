@@ -25,6 +25,26 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
 
   // Also fallback to local LMS session if Supabase session is absent
   try {
+    if (!headers["Authorization"]) {
+      for (const key of [
+        "skillbridge_local_auth_session",
+        "sb-local-auth-token",
+        "sb-csjygxumpnonfupobhih-auth-token",
+      ]) {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        try {
+          const parsed = JSON.parse(raw);
+          const token = parsed?.access_token || parsed?.token;
+          if (typeof token === "string" && token) {
+            headers["Authorization"] = `Bearer ${token}`;
+            break;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
     const localUser = getLocalSession();
     if (localUser) {
       if (!headers["x-user-id"]) headers["x-user-id"] = localUser.id;
@@ -365,7 +385,13 @@ export const lmsClient = {
 
   // PROFILE
   async getProfile(): Promise<{
-    user: { id: string; email: string; user_metadata: Record<string, unknown>; created_at?: string; updated_at?: string };
+    user: {
+      id: string;
+      email: string;
+      user_metadata: Record<string, unknown>;
+      created_at?: string;
+      updated_at?: string;
+    };
   }> {
     return request("profile");
   },
@@ -376,7 +402,9 @@ export const lmsClient = {
   }): Promise<{ user: { id: string; email: string; user_metadata: Record<string, unknown> } }> {
     // Persist the profile in the LMS database and, when this is a Supabase
     // account, mirror it into Supabase Auth metadata so it survives a fresh login.
-    const result = await request<{ user: { id: string; email: string; user_metadata: Record<string, unknown> } }>("profile", {
+    const result = await request<{
+      user: { id: string; email: string; user_metadata: Record<string, unknown> };
+    }>("profile", {
       method: "PATCH",
       body: JSON.stringify(data),
     });
@@ -388,7 +416,9 @@ export const lmsClient = {
       if (data.avatarUrl !== undefined) metadata.avatar_url = data.avatarUrl;
       const { error } = await supabase.auth.updateUser({ data: metadata });
       if (error) {
-        throw new Error(`Profile saved to SkillBridge, but login profile sync failed: ${error.message}`);
+        throw new Error(
+          `Profile saved to SkillBridge, but login profile sync failed: ${error.message}`,
+        );
       }
     }
     return result;
@@ -433,13 +463,15 @@ export const lmsClient = {
 
     const authHeaders = await getAuthHeaders();
     const authToken = authHeaders.Authorization?.replace(/^Bearer\s+/i, "") || "";
-    if (!authToken) throw new Error("Your session could not be verified. Sign in again before uploading.");
+    if (!authToken)
+      throw new Error("Your session could not be verified. Sign in again before uploading.");
 
-    const safeFileName = file.name
-      .normalize("NFKD")
-      .replace(/[^a-zA-Z0-9._-]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 120) || `thumbnail.${extension}`;
+    const safeFileName =
+      file.name
+        .normalize("NFKD")
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 120) || `thumbnail.${extension}`;
     const pathname = `courses/${courseId}/thumbnails/${safeFileName}`;
     const blob = await upload(pathname, file, {
       access: "public",
@@ -474,13 +506,15 @@ export const lmsClient = {
 
     const authHeaders = await getAuthHeaders();
     const authToken = authHeaders.Authorization?.replace(/^Bearer\s+/i, "") || "";
-    if (!authToken) throw new Error("Your session could not be verified. Sign in again before uploading.");
+    if (!authToken)
+      throw new Error("Your session could not be verified. Sign in again before uploading.");
 
-    const safeFileName = file.name
-      .normalize("NFKD")
-      .replace(/[^a-zA-Z0-9._-]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 120) || `video.${extension}`;
+    const safeFileName =
+      file.name
+        .normalize("NFKD")
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 120) || `video.${extension}`;
     const pathname = `courses/${courseId}/videos/${safeFileName}`;
     const blob = await upload(pathname, file, {
       access: "public",

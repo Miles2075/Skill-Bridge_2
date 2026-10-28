@@ -24,9 +24,49 @@ export const Route = createFileRoute("/auth")({
   component: AuthPage,
 });
 
+async function handleLmsAuthSuccess(result: {
+  user: Record<string, unknown>;
+  session: Record<string, unknown>;
+  roles?: string[];
+}): Promise<string> {
+  const token = result.session?.access_token || result.session?.token || "";
+  const sessionData = {
+    ...result.session,
+    access_token: token,
+    token: token,
+    token_type: "bearer",
+    user: result.user,
+  };
+  localStorage.setItem("skillbridge_local_session", JSON.stringify(result.user));
+  localStorage.setItem("skillbridge_local_auth_session", JSON.stringify(sessionData));
+  localStorage.setItem("sb-local-auth-token", JSON.stringify(sessionData));
+  localStorage.setItem("sb-csjygxumpnonfupobhih-auth-token", JSON.stringify(sessionData));
+
+  const role =
+    Array.isArray(result.roles) && result.roles.length > 0
+      ? result.roles[0]
+      : result.user?.user_metadata?.role || "student";
+
+  try {
+    document.cookie = `sb-local-auth-token=${encodeURIComponent(JSON.stringify(sessionData))}; path=/; max-age=2592000; SameSite=Lax`;
+    document.cookie = `skillbridge_role=${role}; path=/; max-age=2592000; SameSite=Lax`;
+  } catch {
+    // ignore
+  }
+
+  window.dispatchEvent(new CustomEvent("local_auth_changed"));
+  window.dispatchEvent(new Event("storage"));
+  return role;
+}
+
 function AuthPage() {
+  const getRedirectRoute = (targetRole: string) =>
+    targetRole === "teacher" || targetRole === "admin" ? "/teach" : "/";
   const [mode, setMode] = useState<"in" | "up" | "forgot" | "reset">(() => {
-    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mode") === "reset") {
+    if (
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("mode") === "reset"
+    ) {
       return "reset";
     }
     return "in";
@@ -61,15 +101,33 @@ function AuthPage() {
       try {
         const { data } = await supabase.auth.getSession();
         const session = data?.session;
-        if (!session?.access_token) {
+        let token = session?.access_token;
+        if (!token) {
+          for (const key of [
+            "skillbridge_local_auth_session",
+            "sb-local-auth-token",
+            "sb-csjygxumpnonfupobhih-auth-token",
+          ]) {
+            const raw = localStorage.getItem(key);
+            if (!raw) continue;
+            try {
+              const p = JSON.parse(raw);
+              if (p?.access_token || p?.token) {
+                token = p.access_token || p.token;
+                break;
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+
+        if (!token) {
           if (!cancelled) setCheckingSession(false);
           return;
         }
 
-        // Supabase JWTs are already managed and refreshed by the Supabase client.
-        // The built-in LMS adapter uses server-issued tokens, which we validate
-        // against the persisted backend session before auto-signing the user in.
-        if (session.access_token.split(".").length === 3) {
+        if (token.split(".").length === 3 && session?.user) {
           if (!cancelled) {
             window.location.replace(routeForRole(session.user?.user_metadata?.role));
           }
@@ -78,14 +136,16 @@ function AuthPage() {
 
         const response = await fetch("/api/lms/auth/session", {
           method: "GET",
-          headers: { Authorization: `Bearer ${session.access_token}` },
+          headers: { Authorization: `Bearer ${token}` },
           cache: "no-store",
         });
         const result = await response.json().catch(() => ({}));
 
         if (cancelled) return;
         if (response.ok && result?.user) {
-          const role = Array.isArray(result.roles) ? result.roles[0] : result.user.user_metadata?.role;
+          const role = Array.isArray(result.roles)
+            ? result.roles[0]
+            : result.user.user_metadata?.role;
           window.location.replace(routeForRole(role));
           return;
         }
@@ -96,7 +156,9 @@ function AuthPage() {
         }
       } catch {
         // A temporary network issue should not erase a saved session.
-        const { data } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+        const { data } = await supabase.auth
+          .getSession()
+          .catch(() => ({ data: { session: null } }));
         if (data?.session && !cancelled) {
           window.location.replace(routeForRole(data.session.user?.user_metadata?.role));
           return;
@@ -137,7 +199,9 @@ function AuthPage() {
           return;
         }
         setMsgKind("success");
-        setMsg("If an account exists for that email, password reset instructions have been sent. Check your inbox and spam folder.");
+        setMsg(
+          "If an account exists for that email, password reset instructions have been sent. Check your inbox and spam folder.",
+        );
         return;
       }
 
@@ -152,7 +216,10 @@ function AuthPage() {
         }
         const { error } = await supabase.auth.updateUser({ password });
         if (error) {
-          setMsg(error.message || "Could not update your password. Request a new reset link if necessary.");
+          setMsg(
+            error.message ||
+              "Could not update your password. Request a new reset link if necessary.",
+          );
           return;
         }
         setMsgKind("success");
@@ -164,42 +231,74 @@ function AuthPage() {
       }
 
       if (mode === "in") {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password,
+        let authError: string | null = null;
+        try {
+          const { data, error } = await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password,
+          });
+          if (!error && data?.session) {
+            const userMetaRole = (data.session.user.user_metadata?.role as string) || "student";
+            window.location.replace(getRedirectRoute(userMetaRole));
+            return;
+          }
+          if (error) authError = error.message;
+        } catch {
+          // Supabase unavailable; try built-in LMS auth
+        }
+
+        // Built-in LMS authentication fallback
+        const response = await fetch("/api/lms/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: cleanEmail, password }),
+          cache: "no-store",
         });
-
-        if (error) {
-          setMsg(error.message || "Sign-in failed. Check your email and password.");
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result?.session || !result?.user) {
+          setMsg(result?.error || authError || "Sign-in failed. Check your email and password.");
           return;
         }
-        if (!data?.session) {
-          setMsg("Sign-in did not return a valid session. Please try again.");
-          return;
-        }
-
-        const userMetaRole = (data.session.user.user_metadata?.role as string) || "student";
-        window.location.replace(getRedirectRoute(userMetaRole));
+        const assignedRole = await handleLmsAuthSuccess(result);
+        window.location.replace(getRedirectRoute(assignedRole));
         return;
       } else {
-        const { data, error } = await supabase.auth.signUp({
-          email: cleanEmail,
-          password,
-          options: {
-            data: { display_name: name.trim() || cleanEmail.split("@")[0], role },
-          },
+        let regError: string | null = null;
+        try {
+          const { data, error } = await supabase.auth.signUp({
+            email: cleanEmail,
+            password,
+            options: {
+              data: { display_name: name.trim() || cleanEmail.split("@")[0], role },
+            },
+          });
+          if (!error && data?.session) {
+            window.location.replace(getRedirectRoute(role));
+            return;
+          }
+          if (error) regError = error.message;
+        } catch {
+          // Supabase unavailable; try built-in LMS auth
+        }
+
+        // Built-in LMS registration fallback
+        const response = await fetch("/api/lms/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: cleanEmail,
+            password,
+            metadata: { display_name: name.trim() || cleanEmail.split("@")[0], role },
+          }),
+          cache: "no-store",
         });
-
-        if (error) {
-          setMsg(error.message || "Registration failed. Please try again.");
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result?.session || !result?.user) {
+          setMsg(result?.error || regError || "Registration failed. Please try again.");
           return;
         }
-        if (!data?.session) {
-          setMsg("Registration did not return a valid session. Please try again.");
-          return;
-        }
-
-        window.location.replace(getRedirectRoute(role));
+        const assignedRole = await handleLmsAuthSuccess(result);
+        window.location.replace(getRedirectRoute(assignedRole || role));
         return;
       }
     } catch (err: unknown) {
@@ -215,16 +314,38 @@ function AuthPage() {
     setMsg("");
     setMsgKind("error");
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password: "password123",
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password: "password123",
+        });
+        if (!error && data?.session) {
+          const targetRole = data.session.user.user_metadata?.role as string;
+          window.location.replace(
+            targetRole === "teacher" || targetRole === "admin" ? "/teach" : "/",
+          );
+          return;
+        }
+      } catch {
+        // Fall back to LMS auth
+      }
+
+      const response = await fetch("/api/lms/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password: "password123" }),
+        cache: "no-store",
       });
-      if (error || !data?.session) {
-        setMsg(error?.message || "This demo account is not available. Please use Sign up or your own account.");
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.session || !result?.user) {
+        setMsg(
+          result?.error ||
+            "This demo account is not available. Please use Sign up or your own account.",
+        );
         return;
       }
-      const targetRole = data.session.user.user_metadata?.role as string;
-      window.location.replace(targetRole === "teacher" || targetRole === "admin" ? "/teach" : "/");
+      const role = await handleLmsAuthSuccess(result);
+      window.location.replace(getRedirectRoute(role));
     } catch (err: unknown) {
       setMsg(err instanceof Error ? err.message : "Could not sign in to the demo account.");
     } finally {
@@ -306,7 +427,9 @@ function AuthPage() {
           {(mode === "in" || mode === "up" || mode === "reset") && (
             <Input
               type="password"
-              placeholder={mode === "reset" ? "New password (min 8 characters)" : "Password (min 6 characters)"}
+              placeholder={
+                mode === "reset" ? "New password (min 8 characters)" : "Password (min 6 characters)"
+              }
               minLength={mode === "reset" ? 8 : 6}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -402,47 +525,47 @@ function AuthPage() {
         )}
 
         {(mode === "in" || mode === "up") && (
-        <div className="mt-6 border-t border-border pt-4">
-          <p className="text-center text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-2">
-            Instant Demo Access
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-xs"
-              onClick={() => void signInDemo("student@skillbridge.edu")}
-            >
-              🎓 Demo Student
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-xs"
-              onClick={() => void signInDemo("instructor@skillbridge.edu")}
-            >
-              👨‍🏫 Demo Instructor
-            </Button>
-          </div>
-          <div className="mt-3 text-center text-[11px] text-muted-foreground space-y-0.5">
-            <div>
-              Student:{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
-                student@skillbridge.edu
-              </code>{" "}
-              / <code className="rounded bg-muted px-1 py-0.5 text-[10px]">password123</code>
+          <div className="mt-6 border-t border-border pt-4">
+            <p className="text-center text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-2">
+              Instant Demo Access
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={() => void signInDemo("student@skillbridge.edu")}
+              >
+                🎓 Demo Student
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="text-xs"
+                onClick={() => void signInDemo("instructor@skillbridge.edu")}
+              >
+                👨‍🏫 Demo Instructor
+              </Button>
             </div>
-            <div>
-              Instructor:{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
-                instructor@skillbridge.edu
-              </code>{" "}
-              / <code className="rounded bg-muted px-1 py-0.5 text-[10px]">password123</code>
+            <div className="mt-3 text-center text-[11px] text-muted-foreground space-y-0.5">
+              <div>
+                Student:{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+                  student@skillbridge.edu
+                </code>{" "}
+                / <code className="rounded bg-muted px-1 py-0.5 text-[10px]">password123</code>
+              </div>
+              <div>
+                Instructor:{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+                  instructor@skillbridge.edu
+                </code>{" "}
+                / <code className="rounded bg-muted px-1 py-0.5 text-[10px]">password123</code>
+              </div>
             </div>
           </div>
-        </div>
         )}
       </form>
     </div>

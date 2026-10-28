@@ -352,7 +352,10 @@ class LocalSupabaseAuth {
       return {
         data: { user: null, session: null },
         error: {
-          message: err instanceof Error ? err.message : "Unable to reach the login service. Please try again.",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Unable to reach the login service. Please try again.",
         },
       };
     }
@@ -424,7 +427,10 @@ class LocalSupabaseAuth {
       return {
         data: { user: null, session: null },
         error: {
-          message: err instanceof Error ? err.message : "Unable to reach the registration service. Please try again.",
+          message:
+            err instanceof Error
+              ? err.message
+              : "Unable to reach the registration service. Please try again.",
         },
       };
     }
@@ -459,10 +465,7 @@ class LocalSupabaseAuth {
     }
   }
 
-  async updateUser(attributes: {
-    data?: Record<string, unknown>;
-    password?: string;
-  }): Promise<{
+  async updateUser(attributes: { data?: Record<string, unknown>; password?: string }): Promise<{
     data: { user: LocalAuthUser | null };
     error: { message: string } | null;
   }> {
@@ -476,7 +479,9 @@ class LocalSupabaseAuth {
       if (!resetToken) {
         return {
           data: { user: null },
-          error: { message: "Open the password reset link from your email to choose a new password." },
+          error: {
+            message: "Open the password reset link from your email to choose a new password.",
+          },
         };
       }
       try {
@@ -588,7 +593,7 @@ const localSupabase = {
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
-export const supabase: any =
+export const supabase: ReturnType<typeof createClient> =
   supabaseUrl && supabaseAnonKey
     ? createClient(supabaseUrl, supabaseAnonKey, {
         auth: {
@@ -597,4 +602,4 @@ export const supabase: any =
           detectSessionInUrl: true,
         },
       })
-    : localSupabase;
+    : (localSupabase as unknown as ReturnType<typeof createClient>);

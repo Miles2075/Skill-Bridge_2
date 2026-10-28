@@ -30,7 +30,7 @@ async function parseUserContext(req: Request): Promise<UserContext> {
     if (localSession) {
       const role = localSession.roles.includes("admin")
         ? "admin"
-        : (localSession.roles.includes("teacher") || localSession.roles.includes("instructor"))
+        : localSession.roles.includes("teacher") || localSession.roles.includes("instructor")
           ? "teacher"
           : "student";
       return {
@@ -54,7 +54,14 @@ async function parseUserContext(req: Request): Promise<UserContext> {
   const supabaseAnonKey = process.env["SUPABASE_ANON_KEY"] || process.env["VITE_SUPABASE_ANON_KEY"];
   if (supabaseUrl && supabaseAnonKey) {
     if (!token) {
-      return { userId: null, email: null, name: null, role: "student", isAdmin: false, isTeacher: false };
+      return {
+        userId: null,
+        email: null,
+        name: null,
+        role: "student",
+        isAdmin: false,
+        isTeacher: false,
+      };
     }
     try {
       const authClient = createClient(supabaseUrl, supabaseAnonKey, {
@@ -63,13 +70,31 @@ async function parseUserContext(req: Request): Promise<UserContext> {
       const { data, error } = await authClient.auth.getUser(token);
       const authUser = data.user;
       if (error || !authUser) {
-        return { userId: null, email: null, name: null, role: "student", isAdmin: false, isTeacher: false };
+        return {
+          userId: null,
+          email: null,
+          name: null,
+          role: "student",
+          isAdmin: false,
+          isTeacher: false,
+        };
       }
       // Privileged roles must be set in app_metadata by a trusted administrator.
       const roleValue = authUser.app_metadata?.role;
-      const role = roleValue === "admin" ? "admin" : (roleValue === "teacher" || roleValue === "instructor") ? "teacher" : "student";
-      const displayName = String(authUser.user_metadata?.display_name || authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "Learner");
-      if (authUser.email) lmsDB.syncExternalUser({ id: authUser.id, email: authUser.email, name: displayName, role });
+      const role =
+        roleValue === "admin"
+          ? "admin"
+          : roleValue === "teacher" || roleValue === "instructor"
+            ? "teacher"
+            : "student";
+      const displayName = String(
+        authUser.user_metadata?.display_name ||
+          authUser.user_metadata?.full_name ||
+          authUser.email?.split("@")[0] ||
+          "Learner",
+      );
+      if (authUser.email)
+        lmsDB.syncExternalUser({ id: authUser.id, email: authUser.email, name: displayName, role });
       return {
         userId: authUser.id,
         email: authUser.email ?? null,
@@ -80,7 +105,14 @@ async function parseUserContext(req: Request): Promise<UserContext> {
       };
     } catch (error) {
       console.error("Supabase token verification failed:", error);
-      return { userId: null, email: null, name: null, role: "student", isAdmin: false, isTeacher: false };
+      return {
+        userId: null,
+        email: null,
+        name: null,
+        role: "student",
+        isAdmin: false,
+        isTeacher: false,
+      };
     }
   }
 
@@ -109,7 +141,7 @@ async function parseUserContext(req: Request): Promise<UserContext> {
       );
       const primaryRole = validated.roles.includes("admin")
         ? "admin"
-        : (validated.roles.includes("teacher") || validated.roles.includes("instructor"))
+        : validated.roles.includes("teacher") || validated.roles.includes("instructor")
           ? "teacher"
           : "student";
       roleStr = primaryRole;
@@ -236,12 +268,19 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
   // the video bytes themselves go directly from the browser to Blob, avoiding
   // Vercel Functions' 4.5 MB request-body limit.
   if (path === "upload-thumbnail-token" && method === "POST") {
-    const blobToken = process.env["BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
-    if (!blobToken) return errorResponse("Vercel Blob is not configured. Add BLOB_READ_WRITE_TOKEN in Vercel.", 503);
+    const blobToken =
+      process.env["BLOB_READ_WRITE_TOKEN"] ||
+      process.env["SKILLBRIDGE_BLOB_READ_WRITE_TOKEN"] ||
+      process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
+    if (!blobToken)
+      return errorResponse(
+        "Vercel Blob is not configured. Add BLOB_READ_WRITE_TOKEN in Vercel.",
+        503,
+      );
 
     let body: HandleUploadBody;
     try {
-      body = await req.json() as HandleUploadBody;
+      body = (await req.json()) as HandleUploadBody;
     } catch {
       return errorResponse("Invalid Blob upload token request.", 400);
     }
@@ -262,27 +301,42 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
           const courseId = typeof payload.courseId === "string" ? payload.courseId : "";
           const originalName = typeof payload.originalName === "string" ? payload.originalName : "";
           const authToken = typeof payload.authToken === "string" ? payload.authToken : "";
-          if (!courseId || !originalName || !authToken) throw new Error("Sign in again before uploading a thumbnail.");
+          if (!courseId || !originalName || !authToken)
+            throw new Error("Sign in again before uploading a thumbnail.");
 
           const authHeaders = new Headers(req.headers);
           authHeaders.set("authorization", `Bearer ${authToken}`);
           const authRequest = new Request(req.url, { method: "GET", headers: authHeaders });
           const uploadUser = await parseUserContext(authRequest);
-          if (!uploadUser.isTeacher || !uploadUser.userId) throw new Error("Forbidden: Instructor role required.");
+          if (!uploadUser.isTeacher || !uploadUser.userId)
+            throw new Error("Forbidden: Instructor role required.");
 
           const course = lmsDB.getCourse(courseId);
           if (!course) throw new Error("Course not found.");
 
           const segments = pathname.split("/");
-          if (segments.length !== 4 || segments[0] !== "courses" || segments[1] !== courseId || segments[2] !== "thumbnails" || segments[3].includes("..")) {
+          if (
+            segments.length !== 4 ||
+            segments[0] !== "courses" ||
+            segments[1] !== courseId ||
+            segments[2] !== "thumbnails" ||
+            segments[3].includes("..")
+          ) {
             throw new Error("Invalid thumbnail upload path.");
           }
           const extension = segments[3].slice(segments[3].lastIndexOf(".")).toLowerCase();
           const allowedExtensions = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif"]);
-          if (!allowedExtensions.has(extension)) throw new Error("Unsupported image format. Use JPG, PNG, WebP, AVIF, or GIF.");
+          if (!allowedExtensions.has(extension))
+            throw new Error("Unsupported image format. Use JPG, PNG, WebP, AVIF, or GIF.");
 
           return {
-            allowedContentTypes: ["image/jpeg", "image/png", "image/webp", "image/avif", "image/gif"],
+            allowedContentTypes: [
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "image/avif",
+              "image/gif",
+            ],
             maximumSizeInBytes: 10 * 1024 * 1024,
             addRandomSuffix: true,
             tokenPayload: JSON.stringify({
@@ -299,17 +353,27 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       return jsonResponse(result);
     } catch (error) {
       console.error("Vercel Blob thumbnail upload token error:", error);
-      return errorResponse(error instanceof Error ? error.message : "Could not prepare thumbnail upload.", 400);
+      return errorResponse(
+        error instanceof Error ? error.message : "Could not prepare thumbnail upload.",
+        400,
+      );
     }
   }
 
   if (path === "upload-video-token" && method === "POST") {
-    const blobToken = process.env["BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
-    if (!blobToken) return errorResponse("Vercel Blob is not configured. Add BLOB_READ_WRITE_TOKEN in Vercel.", 503);
+    const blobToken =
+      process.env["BLOB_READ_WRITE_TOKEN"] ||
+      process.env["SKILLBRIDGE_BLOB_READ_WRITE_TOKEN"] ||
+      process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
+    if (!blobToken)
+      return errorResponse(
+        "Vercel Blob is not configured. Add BLOB_READ_WRITE_TOKEN in Vercel.",
+        503,
+      );
 
     let body: HandleUploadBody;
     try {
-      body = await req.json() as HandleUploadBody;
+      body = (await req.json()) as HandleUploadBody;
     } catch {
       return errorResponse("Invalid Blob upload token request.", 400);
     }
@@ -320,7 +384,12 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         request: req,
         token: blobToken,
         onBeforeGenerateToken: async (pathname, clientPayload) => {
-          let payload: { courseId?: unknown; lessonId?: unknown; originalName?: unknown; authToken?: unknown };
+          let payload: {
+            courseId?: unknown;
+            lessonId?: unknown;
+            originalName?: unknown;
+            authToken?: unknown;
+          };
           try {
             payload = JSON.parse(clientPayload || "{}");
           } catch {
@@ -328,36 +397,56 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
           }
 
           const courseId = typeof payload.courseId === "string" ? payload.courseId : "";
-          const lessonId = typeof payload.lessonId === "string" && payload.lessonId ? payload.lessonId : null;
+          const lessonId =
+            typeof payload.lessonId === "string" && payload.lessonId ? payload.lessonId : null;
           const originalName = typeof payload.originalName === "string" ? payload.originalName : "";
           const authToken = typeof payload.authToken === "string" ? payload.authToken : "";
-          if (!courseId || !originalName || !authToken) throw new Error("Sign in again before uploading a video.");
+          if (!courseId || !originalName || !authToken)
+            throw new Error("Sign in again before uploading a video.");
 
           const authHeaders = new Headers(req.headers);
           authHeaders.set("authorization", `Bearer ${authToken}`);
           const authRequest = new Request(req.url, { method: "GET", headers: authHeaders });
           const uploadUser = await parseUserContext(authRequest);
-          if (!uploadUser.isTeacher || !uploadUser.userId) throw new Error("Forbidden: Instructor role required.");
+          if (!uploadUser.isTeacher || !uploadUser.userId)
+            throw new Error("Forbidden: Instructor role required.");
 
           const course = lmsDB.getCourse(courseId);
           if (!course) throw new Error("Course not found.");
 
           const segments = pathname.split("/");
-          if (segments.length !== 4 || segments[0] !== "courses" || segments[1] !== courseId || segments[2] !== "videos" || segments[3].includes("..")) {
+          if (
+            segments.length !== 4 ||
+            segments[0] !== "courses" ||
+            segments[1] !== courseId ||
+            segments[2] !== "videos" ||
+            segments[3].includes("..")
+          ) {
             throw new Error("Invalid video upload path.");
           }
           const extension = segments[3].slice(segments[3].lastIndexOf(".")).toLowerCase();
           const allowedExtensions = new Set([".mp4", ".webm", ".mov", ".m4v"]);
-          if (!allowedExtensions.has(extension)) throw new Error("Unsupported video format. Use MP4, WebM, MOV, or M4V.");
+          if (!allowedExtensions.has(extension))
+            throw new Error("Unsupported video format. Use MP4, WebM, MOV, or M4V.");
 
           if (lessonId) {
             const snapshot = lmsDB.exportSnapshot();
-            const lesson = snapshot.lessons.find((item) => item.id === lessonId && (item.course_id === course.id || item.course_id === course.slug));
+            const lesson = snapshot.lessons.find(
+              (item) =>
+                item.id === lessonId &&
+                (item.course_id === course.id || item.course_id === course.slug),
+            );
             if (!lesson) throw new Error("Lesson not found for this course.");
           }
 
           return {
-            allowedContentTypes: ["video/mp4", "video/webm", "video/quicktime", "video/x-m4v", "application/octet-stream"],
+            allowedContentTypes: [
+              "video/mp4",
+              "video/webm",
+              "video/quicktime",
+              "video/x-m4v",
+              "application/octet-stream",
+            ],
             maximumSizeInBytes: 500 * 1024 * 1024,
             addRandomSuffix: true,
             tokenPayload: JSON.stringify({
@@ -376,7 +465,10 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       return jsonResponse(result);
     } catch (error) {
       console.error("Vercel Blob client upload token error:", error);
-      return errorResponse(error instanceof Error ? error.message : "Could not prepare video upload.", 400);
+      return errorResponse(
+        error instanceof Error ? error.message : "Could not prepare video upload.",
+        400,
+      );
     }
   }
 
@@ -386,7 +478,9 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
     // AUTH: POST /api/lms/auth/forgot-password
     if (path === "auth/forgot-password" && method === "POST") {
       const body = (await req.json()) as { email?: string };
-      const email = String(body.email || "").trim().toLowerCase();
+      const email = String(body.email || "")
+        .trim()
+        .toLowerCase();
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         return errorResponse("Enter a valid email address.");
       }
@@ -396,7 +490,9 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const smtpPort = Number(process.env["SMTP_PORT"] || 465);
       const smtpUser = process.env["SMTP_USER"]?.trim() || "";
       const smtpPass = process.env["SMTP_PASS"] || "";
-      const smtpConfigured = Boolean(smtpUser && smtpPass && Number.isInteger(smtpPort) && smtpPort > 0);
+      const smtpConfigured = Boolean(
+        smtpUser && smtpPass && Number.isInteger(smtpPort) && smtpPort > 0,
+      );
       const emailFrom =
         process.env["EMAIL_FROM"]?.trim() ||
         process.env["RESEND_FROM_EMAIL"]?.trim() ||
@@ -414,7 +510,8 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const userToReset = lmsDB.findUserByEmail(email);
       if (!userToReset) {
         return jsonResponse({
-          message: "If an account exists for that email, password reset instructions have been sent.",
+          message:
+            "If an account exists for that email, password reset instructions have been sent.",
         });
       }
 
@@ -423,21 +520,26 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
       if (!lmsDB.createPasswordResetToken(email, tokenHash, expiresAt)) {
         return jsonResponse({
-          message: "If an account exists for that email, password reset instructions have been sent.",
+          message:
+            "If an account exists for that email, password reset instructions have been sent.",
         });
       }
 
       const configuredAppUrl = (process.env["APP_URL"] || "").trim();
       const vercelUrl = (process.env["VERCEL_URL"] || "").trim();
-      const configuredIsLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(configuredAppUrl);
-      const baseUrl = configuredAppUrl && !configuredIsLocal
-        ? configuredAppUrl
-        : vercelUrl
-          ? `https://${vercelUrl}`
-          : url.origin;
+      const configuredIsLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?/i.test(
+        configuredAppUrl,
+      );
+      const baseUrl =
+        configuredAppUrl && !configuredIsLocal
+          ? configuredAppUrl
+          : vercelUrl
+            ? `https://${vercelUrl}`
+            : url.origin;
       const resetUrl = `${baseUrl.replace(/\/+$/, "")}/auth?mode=reset&token=${encodeURIComponent(rawToken)}`;
-      const displayName = String(userToReset.user_metadata?.display_name || "there")
-        .replace(/[&<>"]/g, (char) => {
+      const displayName = String(userToReset.user_metadata?.display_name || "there").replace(
+        /[&<>"]/g,
+        (char) => {
           const replacements: Record<string, string> = {
             "&": "&amp;",
             "<": "&lt;",
@@ -445,7 +547,8 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
             '"': "&quot;",
           };
           return replacements[char] || char;
-        });
+        },
+      );
 
       const subject = "Reset your Skillbridge password";
       const html = `<div style="font-family:Arial,sans-serif;max-width:560px;margin:0 auto;color:#182033"><h2>Reset your Skillbridge password</h2><p>Hi ${displayName},</p><p>We received a request to reset the password for your Skillbridge account.</p><p><a href="${resetUrl}" style="display:inline-block;background:#4338ca;color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;font-weight:bold">Choose a new password</a></p><p>This link expires in 30 minutes and can be used once. If you did not request a reset, you can ignore this email.</p></div>`;
@@ -487,13 +590,22 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
           if (!emailResponse.ok) {
             lmsDB.cancelPasswordResetToken(tokenHash);
             console.error("Password reset email provider returned HTTP", emailResponse.status);
-            return errorResponse("We could not send the reset email right now. Please try again later.", 502);
+            return errorResponse(
+              "We could not send the reset email right now. Please try again later.",
+              502,
+            );
           }
         }
       } catch (err) {
         lmsDB.cancelPasswordResetToken(tokenHash);
-        console.error("Password reset email delivery failed:", err instanceof Error ? err.message : "Unknown error");
-        return errorResponse("We could not send the reset email right now. Please try again later.", 502);
+        console.error(
+          "Password reset email delivery failed:",
+          err instanceof Error ? err.message : "Unknown error",
+        );
+        return errorResponse(
+          "We could not send the reset email right now. Please try again later.",
+          502,
+        );
       }
 
       return jsonResponse({
@@ -507,13 +619,17 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const token = String(body.token || "").trim();
       const password = String(body.password || "");
       if (!token) return errorResponse("The password reset link is missing or invalid.");
-      if (password.length < 8) return errorResponse("Your new password must be at least 8 characters long.");
+      if (password.length < 8)
+        return errorResponse("Your new password must be at least 8 characters long.");
       if (password.length > 128) return errorResponse("Your new password is too long.");
 
       const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
       const updatedUser = lmsDB.resetPasswordWithToken(tokenHash, password);
       if (!updatedUser) {
-        return errorResponse("This password reset link is invalid or expired. Request a new one.", 400);
+        return errorResponse(
+          "This password reset link is invalid or expired. Request a new one.",
+          400,
+        );
       }
       return jsonResponse({ success: true });
     }
@@ -529,8 +645,18 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         return errorResponse("Invalid login credentials", 400);
       }
       return jsonResponse({
-        user: res.user,
-        session: res.session,
+        user: {
+          id: res.user.id,
+          email: res.user.email,
+          user_metadata: res.user.user_metadata,
+          created_at: res.user.created_at,
+          updated_at: res.user.updated_at,
+        },
+        session: {
+          ...res.session,
+          access_token: res.session.token,
+          token_type: "bearer",
+        },
         roles: res.roles,
       });
     }
@@ -546,8 +672,18 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         const authed = lmsDB.authenticateUser(cleanEmail, password);
         if (authed) {
           return jsonResponse({
-            user: authed.user,
-            session: authed.session,
+            user: {
+              id: authed.user.id,
+              email: authed.user.email,
+              user_metadata: authed.user.user_metadata,
+              created_at: authed.user.created_at,
+              updated_at: authed.user.updated_at,
+            },
+            session: {
+              ...authed.session,
+              access_token: authed.session.token,
+              token_type: "bearer",
+            },
             roles: authed.roles,
           });
         }
@@ -560,8 +696,18 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         role: metadata?.role,
       });
       return jsonResponse({
-        user: res.user,
-        session: res.session,
+        user: {
+          id: res.user.id,
+          email: res.user.email,
+          user_metadata: res.user.user_metadata,
+          created_at: res.user.created_at,
+          updated_at: res.user.updated_at,
+        },
+        session: {
+          ...res.session,
+          access_token: res.session.token,
+          token_type: "bearer",
+        },
         roles: res.roles,
       });
     }
@@ -619,8 +765,18 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         return jsonResponse({ user: null, session: null, roles: [] });
       }
       return jsonResponse({
-        user: validated.user,
-        session: validated.session,
+        user: {
+          id: validated.user.id,
+          email: validated.user.email,
+          user_metadata: validated.user.user_metadata,
+          created_at: validated.user.created_at,
+          updated_at: validated.user.updated_at,
+        },
+        session: {
+          ...validated.session,
+          access_token: validated.session.token,
+          token_type: "bearer",
+        },
         roles: validated.roles,
       });
     }
@@ -641,10 +797,16 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       // validated LMS endpoints. Otherwise the generic data adapter could bypass
       // the payment verification performed during checkout.
       if (tableName === "course_reviews") {
-        return errorResponse("Use the course review endpoint to read or write sanitized review data.", 403);
+        return errorResponse(
+          "Use the course review endpoint to read or write sanitized review data.",
+          403,
+        );
       }
       if (["enrollments", "purchases"].includes(tableName) && action !== "select") {
-        return errorResponse("Enrollment and purchase records can only be changed through validated LMS endpoints.", 403);
+        return errorResponse(
+          "Enrollment and purchase records can only be changed through validated LMS endpoints.",
+          403,
+        );
       }
 
       if (tableName === "purchases") {
@@ -721,7 +883,10 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
           myReview: { rating: own.rating, reviewText: own.review_text, updatedAt: own.updated_at },
         });
       } catch (error) {
-        return errorResponse(error instanceof Error ? error.message : "Could not save review.", 400);
+        return errorResponse(
+          error instanceof Error ? error.message : "Could not save review.",
+          400,
+        );
       }
     }
 
@@ -759,11 +924,12 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
     if (path === "enroll" && method === "POST") {
       if (!user.userId) return errorResponse("Please sign in before enrolling.", 401);
       const body = await req.json().catch(() => ({}));
-      const requestedCourseId = typeof body.courseId === "string"
-        ? body.courseId
-        : typeof body.courseSlug === "string"
-          ? body.courseSlug
-          : "";
+      const requestedCourseId =
+        typeof body.courseId === "string"
+          ? body.courseId
+          : typeof body.courseSlug === "string"
+            ? body.courseSlug
+            : "";
       if (!requestedCourseId) return errorResponse("Missing courseId");
 
       const course = lmsDB.getCourse(requestedCourseId);
@@ -772,14 +938,15 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       }
 
       // Paid courses are unlocked only by the verified payment endpoint.
-      const existingPurchase = lmsDB.getPurchases(user.userId).some(
-        (purchase) => purchase.course_id === course.id,
-      );
+      const existingPurchase = lmsDB
+        .getPurchases(user.userId)
+        .some((purchase) => purchase.course_id === course.id);
       if (course.price_inr > 0 && !existingPurchase) {
         return errorResponse("Payment required before enrolling in this course.", 402);
       }
 
-      const studentName = user.name || String(body.studentName || user.email?.split("@")[0] || "Student Learner");
+      const studentName =
+        user.name || String(body.studentName || user.email?.split("@")[0] || "Student Learner");
       const studentEmail = user.email || String(body.studentEmail || "");
       const enrollment = lmsDB.enrollStudent(user.userId, course.id, studentName, studentEmail);
       return jsonResponse({ enrollment });
@@ -787,7 +954,10 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
     // POST /api/lms/payment/create-order
     // Create an actual Razorpay order; never return simulated order IDs.
-    if ((path === "payment/create-order" || path === "payments/create-order") && method === "POST") {
+    if (
+      (path === "payment/create-order" || path === "payments/create-order") &&
+      method === "POST"
+    ) {
       if (!user.userId) return errorResponse("Please sign in before purchasing a course.", 401);
       const body = await req.json().catch(() => ({}));
       const requestedCourseId = typeof body.courseId === "string" ? body.courseId : "";
@@ -795,7 +965,8 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
       const course = lmsDB.getCourse(requestedCourseId);
       if (!course) return errorResponse("Course not found.", 404);
-      if (course.status !== "published") return errorResponse("This course is not available for purchase.", 409);
+      if (course.status !== "published")
+        return errorResponse("This course is not available for purchase.", 409);
       if (!Number.isFinite(course.price_inr) || course.price_inr <= 0) {
         return errorResponse("This course does not require a paid checkout.", 400);
       }
@@ -836,13 +1007,17 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         });
         if (!orderResponse.ok) {
           const detail = await orderResponse.text().catch(() => "");
-          console.error("Razorpay order API rejected request:", orderResponse.status, detail.slice(0, 500));
+          console.error(
+            "Razorpay order API rejected request:",
+            orderResponse.status,
+            detail.slice(0, 500),
+          );
           return errorResponse(
             "Razorpay could not create the order. Check that the test/live API keys in Vercel match.",
             502,
           );
         }
-        razorpayOrder = await orderResponse.json() as typeof razorpayOrder;
+        razorpayOrder = (await orderResponse.json()) as typeof razorpayOrder;
       } catch (error) {
         console.error("Razorpay order creation request failed:", error);
         return errorResponse("Could not reach Razorpay to create the payment order.", 502);
@@ -877,7 +1052,8 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       }
 
       const course = lmsDB.getCourse(requestedCourseId);
-      if (!course || course.status !== "published") return errorResponse("Course not found or not published.", 404);
+      if (!course || course.status !== "published")
+        return errorResponse("Course not found or not published.", 404);
       if (!Number.isFinite(course.price_inr) || course.price_inr <= 0) {
         return errorResponse("This course is not a paid course.", 400);
       }
@@ -898,12 +1074,21 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       }
       const expectedBytes = Buffer.from(expectedSignature, "hex");
       const suppliedBytes = Buffer.from(signature, "hex");
-      if (expectedBytes.length !== suppliedBytes.length || !crypto.timingSafeEqual(expectedBytes, suppliedBytes)) {
-        return errorResponse("Razorpay signature verification failed. The course has not been unlocked.", 400);
+      if (
+        expectedBytes.length !== suppliedBytes.length ||
+        !crypto.timingSafeEqual(expectedBytes, suppliedBytes)
+      ) {
+        return errorResponse(
+          "Razorpay signature verification failed. The course has not been unlocked.",
+          400,
+        );
       }
 
       const auth = Buffer.from(`${keyId}:${keySecret}`).toString("base64");
-      const razorpayHeaders = { Authorization: `Basic ${auth}`, "Content-Type": "application/json" };
+      const razorpayHeaders = {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/json",
+      };
       const expectedAmount = Math.round(course.price_inr * 100);
 
       let razorpayOrder: {
@@ -918,7 +1103,7 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
           { headers: razorpayHeaders },
         );
         if (!orderResponse.ok) return errorResponse("Could not confirm this Razorpay order.", 502);
-        razorpayOrder = await orderResponse.json() as typeof razorpayOrder;
+        razorpayOrder = (await orderResponse.json()) as typeof razorpayOrder;
       } catch (error) {
         console.error("Razorpay order verification request failed:", error);
         return errorResponse("Could not reach Razorpay to verify the order.", 502);
@@ -931,7 +1116,10 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         razorpayOrder.notes?.["course_id"] !== course.id ||
         razorpayOrder.notes?.["student_id"] !== user.userId
       ) {
-        return errorResponse("This payment order does not match your account, course, or course price.", 403);
+        return errorResponse(
+          "This payment order does not match your account, course, or course price.",
+          403,
+        );
       }
 
       let razorpayPayment: {
@@ -946,8 +1134,9 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
           `https://api.razorpay.com/v1/payments/${encodeURIComponent(paymentId)}`,
           { headers: razorpayHeaders },
         );
-        if (!paymentResponse.ok) return errorResponse("Could not confirm the Razorpay payment.", 502);
-        razorpayPayment = await paymentResponse.json() as typeof razorpayPayment;
+        if (!paymentResponse.ok)
+          return errorResponse("Could not confirm the Razorpay payment.", 502);
+        razorpayPayment = (await paymentResponse.json()) as typeof razorpayPayment;
       } catch (error) {
         console.error("Razorpay payment verification request failed:", error);
         return errorResponse("Could not reach Razorpay to verify the payment.", 502);
@@ -975,12 +1164,18 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
           if (!captureResponse.ok) {
             const detail = await captureResponse.text().catch(() => "");
             console.error("Razorpay capture failed:", captureResponse.status, detail.slice(0, 500));
-            return errorResponse("Payment was authorized but could not be captured. Course access has not been granted.", 402);
+            return errorResponse(
+              "Payment was authorized but could not be captured. Course access has not been granted.",
+              402,
+            );
           }
-          razorpayPayment = await captureResponse.json() as typeof razorpayPayment;
+          razorpayPayment = (await captureResponse.json()) as typeof razorpayPayment;
         } catch (error) {
           console.error("Razorpay capture request failed:", error);
-          return errorResponse("Payment capture could not be confirmed. Course access has not been granted.", 502);
+          return errorResponse(
+            "Payment capture could not be confirmed. Course access has not been granted.",
+            502,
+          );
         }
       }
 
@@ -990,7 +1185,8 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
       // Trust only the authenticated session identity, never a user ID sent in the request body.
       const studentId = user.userId;
-      const studentName = user.name || String(body.userName || user.email?.split("@")[0] || "Student Learner");
+      const studentName =
+        user.name || String(body.userName || user.email?.split("@")[0] || "Student Learner");
       const studentEmail = user.email || String(body.userEmail || "");
       const purchase = lmsDB.recordPurchase({
         userId: studentId,
@@ -1138,7 +1334,10 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       } catch {
         return errorResponse("Invalid video URL.");
       }
-      if (parsedVideoUrl.protocol !== "https:" || !parsedVideoUrl.hostname.endsWith(".blob.vercel-storage.com")) {
+      if (
+        parsedVideoUrl.protocol !== "https:" ||
+        !parsedVideoUrl.hostname.endsWith(".blob.vercel-storage.com")
+      ) {
         return errorResponse("Video must be uploaded to the configured Vercel Blob store.");
       }
 
@@ -1147,14 +1346,23 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
 
       if (lessonId) {
         const snapshot = lmsDB.exportSnapshot();
-        const lesson = snapshot.lessons.find((item) => item.id === lessonId && (item.course_id === course.id || item.course_id === course.slug));
+        const lesson = snapshot.lessons.find(
+          (item) =>
+            item.id === lessonId &&
+            (item.course_id === course.id || item.course_id === course.slug),
+        );
         if (!lesson) return errorResponse("Lesson not found for this course.", 404);
         const updatedLesson = lmsDB.updateLesson(lessonId, { video_url: videoUrl });
         if (!updatedLesson) return errorResponse("Could not save video to the lesson.", 500);
       } else {
-        let currentUrls = course.video_urls && Array.isArray(course.video_urls)
-          ? [...course.video_urls].filter((url): url is string => typeof url === "string" && Boolean(url.trim()))
-          : course.video_url ? [course.video_url] : [];
+        let currentUrls =
+          course.video_urls && Array.isArray(course.video_urls)
+            ? [...course.video_urls].filter(
+                (url): url is string => typeof url === "string" && Boolean(url.trim()),
+              )
+            : course.video_url
+              ? [course.video_url]
+              : [];
 
         // If this course has real Blob uploads, remove the old sample URLs
         // that earlier versions inserted automatically during course creation.
@@ -1167,7 +1375,11 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
         lmsDB.updateCourse(course.id, { video_url: videoUrl, video_urls: currentUrls });
       }
 
-      return jsonResponse({ videoUrl, fileName: String(body.fileName || ""), size: Number(body.size) || 0 });
+      return jsonResponse({
+        videoUrl,
+        fileName: String(body.fileName || ""),
+        size: Number(body.size) || 0,
+      });
     }
 
     // POST /api/lms/upload-video
@@ -1224,7 +1436,10 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       };
 
       try {
-        const blobToken = process.env["BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_BLOB_READ_WRITE_TOKEN"] || process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
+        const blobToken =
+          process.env["BLOB_READ_WRITE_TOKEN"] ||
+          process.env["SKILLBRIDGE_BLOB_READ_WRITE_TOKEN"] ||
+          process.env["SKILLBRIDGE_READ_WRITE_TOKEN"];
         if (blobToken) {
           const blob = await put("courses/" + course.id + "/videos/" + uniqueName, req.body, {
             access: "public",
@@ -1238,7 +1453,10 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
           fs.mkdirSync(uploadDir, { recursive: true });
           const filePath = nodePath.join(uploadDir, uniqueName);
           const writeStream = fs.createWriteStream(filePath);
-          await pipeline(Readable.fromWeb(req.body as unknown as Parameters<typeof Readable.fromWeb>[0]), writeStream);
+          await pipeline(
+            Readable.fromWeb(req.body as unknown as Parameters<typeof Readable.fromWeb>[0]),
+            writeStream,
+          );
           const writtenStat = await fs.promises.stat(filePath);
           if (declaredSize > 0 && writtenStat.size === 0) {
             await fs.promises.rm(filePath, { force: true }).catch(() => {});
@@ -1455,8 +1673,8 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
       const snapshot = lmsDB.exportSnapshot();
       const assignment = snapshot.assignments.find((item) => item.id === id);
       if (!assignment) return jsonResponse({ success: false });
-      const course = lmsDB.getCourse(assignment.course_id) ||
-        lmsDB.getCourse(assignment.course_slug);
+      const course =
+        lmsDB.getCourse(assignment.course_id) || lmsDB.getCourse(assignment.course_slug);
       if (!course) return errorResponse("Assignment course not found.", 404);
       if (!user.isAdmin && course.teacher_id && course.teacher_id !== user.userId) {
         return errorResponse("You can only delete assignments for your own courses.", 403);
@@ -1550,7 +1768,6 @@ async function handleLmsApiRequestWithLocalStore(req: Request): Promise<Response
   }
 }
 
-
 function getNeonConnectionString(): string | undefined {
   const candidates = [
     process.env["DATABASE_URL"],
@@ -1570,7 +1787,10 @@ let neonClientUrl: string | undefined;
 
 function getNeonClient() {
   const url = getNeonConnectionString();
-  if (!url) throw new Error("Neon PostgreSQL is not configured. Set DATABASE_URL in the Vercel environment.");
+  if (!url)
+    throw new Error(
+      "Neon PostgreSQL is not configured. Set DATABASE_URL in the Vercel environment.",
+    );
   if (!neonClient || neonClientUrl !== url) {
     if (neonClient) void neonClient.end({ timeout: 1 }).catch(() => {});
     neonClient = postgres(url, { max: 3, idle_timeout: 20, connect_timeout: 10 });
@@ -1601,24 +1821,31 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
     } catch (error) {
       const err = error as { code?: string };
       console.error("Neon health check failed:", error);
-      return jsonResponse({
-        ok: false,
-        database: "neon",
-        connected: false,
-        error: getNeonConnectionString()
-          ? "Neon connection failed. Check the connection string, network access, and database permissions."
-          : "No database connection string found. Configure DATABASE_URL in Vercel.",
-        code: err.code || "DATABASE_CONNECTION_FAILED",
-      }, 503);
+      return jsonResponse(
+        {
+          ok: false,
+          database: "neon",
+          connected: false,
+          error: getNeonConnectionString()
+            ? "Neon connection failed. Check the connection string, network access, and database permissions."
+            : "No database connection string found. Configure DATABASE_URL in Vercel.",
+          code: err.code || "DATABASE_CONNECTION_FAILED",
+        },
+        503,
+      );
     }
   }
 
   if (!getNeonConnectionString()) {
     // Local file-backed mode is useful for local development, but is not durable on Vercel.
     if (process.env["VERCEL"]) {
-      return jsonResponse({
-        error: "Neon PostgreSQL is not configured. Add DATABASE_URL to the Vercel project and redeploy.",
-      }, 503);
+      return jsonResponse(
+        {
+          error:
+            "Neon PostgreSQL is not configured. Add DATABASE_URL to the Vercel project and redeploy.",
+        },
+        503,
+      );
     }
     return handleLmsApiRequestWithLocalStore(req);
   }
@@ -1675,6 +1902,12 @@ export async function handleLmsApiRequest(req: Request): Promise<Response | null
     });
   } catch (error) {
     console.error("Neon LMS persistence error:", error);
-    return jsonResponse({ error: "The LMS database is temporarily unavailable. Check DATABASE_URL and database connectivity." }, 503);
+    return jsonResponse(
+      {
+        error:
+          "The LMS database is temporarily unavailable. Check DATABASE_URL and database connectivity.",
+      },
+      503,
+    );
   }
 }
